@@ -3,7 +3,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 type Admin = ReturnType<typeof createSupabaseAdminClient>;
 
 // इन buckets में user का डेटा है: दुकान की फोटो और बने हुए poster
-const BUCKETS = ["shop-photos", "outputs"] as const;
+const BUCKETS = ["shop-photos", "outputs", "voice-notes"] as const;
 const PAGE_SIZE = 100;
 const REMOVE_CHUNK = 100;
 
