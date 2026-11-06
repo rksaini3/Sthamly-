@@ -10,15 +10,20 @@ import type {
 // ============================================================
 // ⚠️ VERIFY BEFORE PRODUCTION
 // model ID, input/output का ढांचा और दाम Fal.ai की आधिकारिक
-// pricing और API docs से जांचकर ही बदलें। नीचे सब अनुमान हैं।
+// pricing और API docs से जांचकर ही बदलें।
 // verified: true करने से पहले कोई असली AI call न करें।
+//
+// स्थिति (Nov 2026):
+// - image: "fal-ai/flux/schnell" endpoint ID मिला है, output का ढांचा अभी जांचना है।
+// - text: "fal-ai/any-llm" Fal पर deprecated है। नया text model चुनना बाकी है।
 // ============================================================
 
 const QUEUE_BASE = "https://queue.fal.run";
 
-// लागत paise में। ये docs/MVP_BRIEF.md के अनुमान हैं (पोस्टर ₹0.15, रील ₹4.50, कैप्शन ₹0.05)।
+// लागत paise में। image का दाम Fal पर लगभग $0.003 प्रति image दिखा (cloudprice)।
+// text का दाम अभी तय नहीं है, इसलिए अनुमान है।
 export const FAL_MODELS = {
-  image: { id: "REPLACE/image-model", costPaise: 15, verified: false },
+  image: { id: "fal-ai/flux/schnell", costPaise: 25, verified: false },
   video: { id: "REPLACE/video-model", costPaise: 450, verified: false },
   text: { id: "REPLACE/text-model", costPaise: 5, verified: false },
 } as const;
@@ -52,9 +57,17 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Submit का जवाब: status और result के URLs भी इसी में आते हैं
+interface SubmitResponse {
+  request_id: string;
+  status_url: string;
+  response_url: string;
+}
+
 /**
  * Fal queue: submit करें, status देखें, फिर result लें।
- * लंबे काम (रील) के लिए queue ज़रूरी है, वरना request कट सकती है।
+ * Status और result के URLs submit के जवाब से लिए जाते हैं (Fal docs के अनुसार),
+ * खुद से नहीं बनाए जाते, क्योंकि कुछ models के path अलग होते हैं।
  */
 async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): Promise<T> {
   const headers = falHeaders();
@@ -67,7 +80,7 @@ async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): 
   if (!submit.ok) {
     throw new Error(`fal submit failed (${submit.status}): ${await submit.text()}`);
   }
-  const { request_id } = (await submit.json()) as { request_id: string };
+  const { status_url, response_url } = (await submit.json()) as SubmitResponse;
 
   const startedAt = Date.now();
   while (true) {
@@ -75,9 +88,7 @@ async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): 
       throw new Error(`fal timeout (${modelId}) after ${timeoutMs}ms`);
     }
 
-    const statusRes = await fetch(`${QUEUE_BASE}/${modelId}/requests/${request_id}/status`, {
-      headers,
-    });
+    const statusRes = await fetch(status_url, { headers });
     if (!statusRes.ok) {
       throw new Error(`fal status failed (${statusRes.status})`);
     }
@@ -90,7 +101,7 @@ async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): 
     await sleep(POLL_INTERVAL_MS);
   }
 
-  const resultRes = await fetch(`${QUEUE_BASE}/${modelId}/requests/${request_id}`, { headers });
+  const resultRes = await fetch(response_url, { headers });
   if (!resultRes.ok) {
     throw new Error(`fal result failed (${resultRes.status})`);
   }
