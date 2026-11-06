@@ -183,7 +183,9 @@ async function runJob(admin: Admin, jobId: string, shopId: string, input: Stored
   await assertUnderCap(jobId);
 
   // ---- 2. Poster: दुकानदार की अपनी फोटो बेस होगी (AI का खर्च नहीं) ----
-  const background = await loadPhotoBackground(admin, input.photoPaths[0]);
+  // पहली फोटो ही बेस है। फोटो न हो तो सादा background इस्तेमाल होगा।
+  const firstPhoto = input.photoPaths[0];
+  const background = firstPhoto ? await loadPhotoBackground(admin, firstPhoto) : null;
 
   let poster = await renderPoster({
     shopName: shop.name,
