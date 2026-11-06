@@ -9,6 +9,7 @@ import { applyWatermark } from "@/lib/render/watermark";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendJobFailed, sendOutputReady } from "@/lib/whatsapp/outbound";
 import type { JobInput } from "@/types/domain";
+import type { Json } from "@/types/database";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -17,9 +18,6 @@ const BATCH_SIZE = 3;
 const PHOTO_BUCKET = "shop-photos"; // private, दुकानदार की अपलोड की गई फोटो
 const OUTPUT_BUCKET = "outputs"; // private, बने हुए poster
 const SIGNED_URL_SECONDS = 60 * 60 * 24;
-
-// "running" job इतनी देर बाद अटकी मानी जाएगी (maxDuration 300 सेकंड से काफी ऊपर)
-const STALE_AFTER_MS = 15 * 60 * 1000;
 
 type Admin = ReturnType<typeof createSupabaseAdminClient>;
 type StoredInput = JobInput & { wantReel?: boolean };
@@ -37,6 +35,14 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+// jobs.input (jsonb) को StoredInput में बदलें। createJob ने ये fields ही लिखे हैं।
+function toStoredInput(raw: Json): StoredInput {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new Error("job input is not an object");
+  }
+  return raw as unknown as StoredInput;
+}
+
 // ---- Entry point ----
 
 export async function GET(req: NextRequest) {
@@ -46,10 +52,6 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createSupabaseAdminClient();
-
-  // पहले अटकी हुई jobs संभालें, फिर नई queue उठाएं
-  await recoverStaleJobs(admin, JOB_MAX_ATTEMPTS);
-
   const { data: queued, error } = await admin
     .from("jobs")
     .select("id")
@@ -69,58 +71,6 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({ processed: queued?.length ?? 0, ...counts });
-}
-
-// ---- अटकी हुई jobs ----
-
-/**
- * "running" में बहुत देर से पड़ी jobs को संभालें।
- * बची कोशिश हो तो दोबारा queue में डालें, वरना विफल करके credit लौटाएं।
- */
-async function recoverStaleJobs(admin: Admin, maxAttempts: number) {
-  const cutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
-
-  const { data: stale, error } = await admin
-    .from("jobs")
-    .select("id, shop_id, attempts, started_at")
-    .eq("status", "running")
-    .lt("started_at", cutoff);
-
-  if (error) {
-    console.error("worker: stale read failed", error);
-    return;
-  }
-
-  for (const job of stale ?? []) {
-    const attempts = job.attempts + 1;
-    const message = "worker timeout: job बीच में रुक गई थी";
-
-    // सिर्फ वही बदलें जो अभी भी उसी claim में अटकी है (दो cron runs एक साथ न संभालें)
-    if (attempts >= maxAttempts) {
-      const { data: claimed } = await admin
-        .from("jobs")
-        .update({
-          status: "failed",
-          attempts,
-          error: message,
-          finished_at: new Date().toISOString(),
-        })
-        .eq("id", job.id)
-        .eq("status", "running")
-        .eq("started_at", job.started_at ?? "")
-        .select("id")
-        .maybeSingle();
-
-      if (claimed) await refundAndNotify(admin, job.id, job.shop_id);
-    } else {
-      await admin
-        .from("jobs")
-        .update({ status: "queued", attempts, error: message, started_at: null })
-        .eq("id", job.id)
-        .eq("status", "running")
-        .eq("started_at", job.started_at ?? "");
-    }
-  }
 }
 
 // ---- एक job ----
@@ -144,7 +94,7 @@ async function processJob(admin: Admin, jobId: string, maxAttempts: number): Pro
   const attempts = job.attempts + 1;
 
   try {
-    await runJob(admin, job.id, job.shop_id, job.input as StoredInput);
+    await runJob(admin, job.id, job.shop_id, toStoredInput(job.input));
     return "done";
   } catch (error) {
     const message = messageOf(error);
@@ -171,7 +121,14 @@ async function processJob(admin: Admin, jobId: string, maxAttempts: number): Pro
       })
       .eq("id", jobId);
 
-    await refundAndNotify(admin, jobId, job.shop_id);
+    try {
+      await refundCredits(jobId);
+    } catch (refundError) {
+      // Refund न हो तो यह गंभीर है, log में साफ दिखे
+      console.error("worker: REFUND FAILED", jobId, messageOf(refundError));
+    }
+
+    await notifyFailure(admin, job.shop_id);
     return "failed";
   }
 }
@@ -267,8 +224,20 @@ async function runJob(admin: Admin, jobId: string, shopId: string, input: Stored
 
   await assertUnderCap(jobId);
 
-  // ---- 5. Job पूरा ----
-  // यह आखिरी लिखना है। इसके बाद job retry नहीं होगा, इसलिए रील का credit भी सिर्फ यहीं के बाद लौटता है।
+  // ---- 5. रील: अभी इस worker में नहीं बनती ----
+  // रील का credit वापस करें, पोस्टर और कैप्शन भेजें। बाद में रील का रास्ता जुड़ेगा।
+  if (input.wantReel) {
+    const { error: reelRefundError } = await admin.from("usage_ledger").insert({
+      user_id: shop.user_id,
+      delta: 1,
+      reason: "refund_reel",
+      job_id: jobId,
+      kind: "reel",
+    });
+    if (reelRefundError) throw new Error(`reel refund failed: ${reelRefundError.message}`);
+  }
+
+  // ---- 6. Job पूरा ----
   const totalCost = await getJobCostPaise(jobId);
   const { error: doneError } = await admin
     .from("jobs")
@@ -280,11 +249,6 @@ async function runJob(admin: Admin, jobId: string, shopId: string, input: Stored
     })
     .eq("id", jobId);
   if (doneError) throw new Error(`job done update failed: ${doneError.message}`);
-
-  // ---- 6. रील: अभी इस worker में नहीं बनती, इसलिए उसका credit वापस ----
-  if (input.wantReel) {
-    await refundUnusedReel(admin, jobId, shop.user_id);
-  }
 
   // ---- 7. WhatsApp पर भेजें (विफल हो तो job पूरा रहता है, डेटा dashboard पर है) ----
   if (recipient) {
@@ -309,48 +273,6 @@ async function loadPhotoBackground(
   // Satori सिर्फ PNG और JPEG लेता है
   if (data.type !== "image/png" && data.type !== "image/jpeg") return null;
   return { data: Buffer.from(await data.arrayBuffer()), mimeType: data.type };
-}
-
-/**
- * विफल job के credit लौटाएं और यूज़र को सूचना दें।
- * दोनों में से कुछ विफल हो तो log में दिखे, job की स्थिति पर असर न पड़े।
- */
-async function refundAndNotify(admin: Admin, jobId: string, shopId: string) {
-  try {
-    await refundCredits(jobId);
-  } catch (refundError) {
-    console.error("worker: REFUND FAILED", jobId, messageOf(refundError));
-  }
-  await notifyFailure(admin, shopId);
-}
-
-/**
- * रील का credit एक बार वापस करें।
- * पहले से वापस हो चुका हो तो कुछ नहीं करता (retry या दोबारा चलने पर भी दोहरा credit नहीं जुड़ेगा)।
- */
-async function refundUnusedReel(admin: Admin, jobId: string, userId: string) {
-  try {
-    const { data: existing, error: readError } = await admin
-      .from("usage_ledger")
-      .select("id")
-      .eq("job_id", jobId)
-      .eq("reason", "refund_reel")
-      .maybeSingle();
-    if (readError) throw readError;
-    if (existing) return;
-
-    const { error } = await admin.from("usage_ledger").insert({
-      user_id: userId,
-      delta: 1,
-      reason: "refund_reel",
-      job_id: jobId,
-      kind: "reel",
-    });
-    if (error) throw error;
-  } catch (error) {
-    // Job तो पूरा हो चुका है। Credit न लौटे तो log में साफ दिखे।
-    console.error("worker: REEL REFUND FAILED", jobId, messageOf(error));
-  }
 }
 
 async function deliver(
