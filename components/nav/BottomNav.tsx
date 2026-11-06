@@ -2,25 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import styles from "@/components/nav/BottomNav.module.css";
 
 // बार सिर्फ इन्हीं पन्नों पर दिखेगा
 const VISIBLE_ON = ["/dashboard", "/onboarding", "/pricing"] as const;
 
-interface NavItem {
-  href: string;
-  label: string;
-}
-
-const LEFT: NavItem = { href: "/dashboard", label: "आउटपुट" };
-const CENTER: NavItem = { href: "/onboarding", label: "पोस्ट" };
-const RIGHT: NavItem = { href: "/pricing", label: "खाता" }; // बाद में /account बनेगा
+// "बोलें" बटन फिलहाल WhatsApp खोलता है, जहाँ वॉइस नोट भेजा जाता है
+const WHATSAPP_NUMBER = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "";
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-// बाएं tab का icon: चार खाने (आउटपुट की सूची)
 function GridIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
@@ -32,7 +26,24 @@ function GridIcon() {
   );
 }
 
-// दाएं tab का icon: व्यक्ति (खाता)
+function PlusIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+      <rect x="3" y="3" width="18" height="18" rx="4" />
+      <path d="M12 8v8M8 12h8" />
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </svg>
+  );
+}
+
 function UserIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
@@ -42,16 +53,26 @@ function UserIcon() {
   );
 }
 
-// बीच का बड़ा बटन: पोस्टर वाला icon (सफेद कागज़ और चमक)
-function PostIcon() {
+function TabLink({
+  href,
+  label,
+  active,
+  icon,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+  icon: ReactNode;
+}) {
   return (
-    <svg width="34" height="34" viewBox="0 0 48 48" fill="none" aria-hidden>
-      <rect x="10" y="6" width="28" height="36" rx="5" fill="#fff" />
-      <rect x="15" y="13" width="18" height="12" rx="2" fill="#e0561a" opacity="0.35" />
-      <rect x="15" y="29" width="18" height="3" rx="1.5" fill="#e0561a" />
-      <rect x="15" y="35" width="11" height="3" rx="1.5" fill="#e0561a" />
-      <path d="M38 6l1.4 3.2L42.6 10.6 39.4 12 38 15.2 36.6 12 33.4 10.6 36.6 9.2Z" fill="#fff" />
-    </svg>
+    <Link
+      href={href}
+      className={`${styles.item} ${active ? styles.itemActive : ""}`}
+      aria-current={active ? "page" : undefined}
+    >
+      {icon}
+      <span>{label}</span>
+    </Link>
   );
 }
 
@@ -61,40 +82,48 @@ export function BottomNav() {
   const visible = VISIBLE_ON.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   if (!visible) return null;
 
+  // नंबर न हो तो बोलें बटन पोस्ट वाले पन्ने पर जाएगा
+  const voiceHref = WHATSAPP_NUMBER ? `https://wa.me/${WHATSAPP_NUMBER}` : "/onboarding";
+  const voiceIsExternal = voiceHref.startsWith("http");
+
   return (
     <>
       {/* नीचे का बार सामग्री को ढकने न पाए, इसलिए जगह छोड़ी जाती है */}
       <div className={styles.spacer} aria-hidden />
 
       <nav className={styles.nav} aria-label="मुख्य मेनू">
-        <Link
-          href={LEFT.href}
-          className={`${styles.item} ${isActive(pathname, LEFT.href) ? styles.itemActive : ""}`}
-          aria-current={isActive(pathname, LEFT.href) ? "page" : undefined}
-        >
-          <GridIcon />
-          <span>{LEFT.label}</span>
-        </Link>
+        <TabLink
+          href="/dashboard"
+          label="आउटपुट"
+          active={isActive(pathname, "/dashboard")}
+          icon={<GridIcon />}
+        />
 
-        <Link
-          href={CENTER.href}
+        <TabLink
+          href="/onboarding"
+          label="पोस्ट"
+          active={isActive(pathname, "/onboarding")}
+          icon={<PlusIcon />}
+        />
+
+        <a
+          href={voiceHref}
           className={styles.center}
-          aria-current={isActive(pathname, CENTER.href) ? "page" : undefined}
+          target={voiceIsExternal ? "_blank" : undefined}
+          rel={voiceIsExternal ? "noreferrer" : undefined}
         >
           <span className={styles.centerCircle}>
-            <PostIcon />
+            <MicIcon />
           </span>
-          <span>{CENTER.label}</span>
-        </Link>
+          <span>बोलें</span>
+        </a>
 
-        <Link
-          href={RIGHT.href}
-          className={`${styles.item} ${isActive(pathname, RIGHT.href) ? styles.itemActive : ""}`}
-          aria-current={isActive(pathname, RIGHT.href) ? "page" : undefined}
-        >
-          <UserIcon />
-          <span>{RIGHT.label}</span>
-        </Link>
+        <TabLink
+          href="/pricing"
+          label="खाता"
+          active={isActive(pathname, "/pricing")}
+          icon={<UserIcon />}
+        />
       </nav>
     </>
   );
