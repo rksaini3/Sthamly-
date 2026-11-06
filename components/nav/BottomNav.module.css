@@ -1,7 +1,7 @@
-/* नीचे का बार: चार बराबर खाने, बीच वाला बटन ऊपर उठा हुआ */
+/* नीचे का बार: तीन बराबर टैब। माइक बटन दाएं किनारे पर तैरता है। */
 
 .spacer {
-  height: 96px;
+  height: 80px;
 }
 
 .nav {
@@ -11,8 +11,8 @@
   bottom: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  align-items: end;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   background: var(--bg, #f7f5f2);
   border-top: 1px solid var(--border, rgba(127, 127, 127, 0.25));
@@ -34,25 +34,23 @@
   font-weight: 600;
 }
 
-.center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  color: var(--text, inherit);
-  text-decoration: none;
-  font-size: 0.8rem;
-  font-weight: 600;
-  transform: translateY(-16px);
-}
-
-.centerCircle {
+/* माइक: दाएं किनारे पर, bar के ठीक ऊपर */
+.fab {
+  position: fixed;
+  right: 14px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 999px;
   background: var(--accent, #e0561a);
   box-shadow: 0 6px 16px rgba(224, 86, 26, 0.35);
+  text-decoration: none;
+}
+
+.fab:active {
+  transform: scale(0.94);
 }
