@@ -222,3 +222,133 @@ export function OnboardingForm() {
 
           <label className="field">
             दुकान का प्रकार
+            <select
+              className="input"
+              value={category}
+              onChange={(e) => setCategory(e.target.value as ShopCategory)}
+            >
+              {SHOP_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {CATEGORY_LABELS[c]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            शहर
+            <input
+              className="input"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              required
+              maxLength={60}
+            />
+          </label>
+
+          <label className="field">
+            WhatsApp नंबर (10 अंक)
+            <input
+              className="input"
+              type="tel"
+              inputMode="numeric"
+              value={phoneInput}
+              onChange={(e) => setPhoneInput(e.target.value)}
+              required
+              placeholder="9876543210"
+            />
+          </label>
+
+          <Button type="submit" block disabled={busy}>
+            {busy ? "सेव हो रहा है…" : "आगे बढ़ें"}
+          </Button>
+        </form>
+      )}
+
+      {step === 2 && (
+        <div className="card stack">
+          <p>दुकान या प्रोडक्ट की 1 से 3 फोटो चुनें। पहली फोटो पोस्टर की बेस बनेगी।</p>
+
+          <label className="field">
+            <span className="photo-count">
+              फोटो चुनें ({photoPaths.length}/{MAX_PHOTOS})
+            </span>
+            <input
+              className="file-input"
+              type="file"
+              accept="image/jpeg,image/png"
+              multiple
+              disabled={busy || photoPaths.length >= MAX_PHOTOS}
+              onChange={(e) => handlePhotoSelect(e.target.files)}
+            />
+          </label>
+
+          <Button
+            type="button"
+            block
+            disabled={busy || photoPaths.length === 0}
+            onClick={() => setStep(3)}
+          >
+            आगे बढ़ें
+          </Button>
+        </div>
+      )}
+
+      {step === 3 && (
+        <form className="card stack" onSubmit={handleOfferSubmit}>
+          <label className="field">
+            ऑफर या रेट
+            <input
+              className="input"
+              value={offerText}
+              onChange={(e) => setOfferText(e.target.value)}
+              required
+              minLength={3}
+              maxLength={300}
+              placeholder="जैसे: 1 किलो काजू कतली ₹600"
+            />
+          </label>
+
+          <label className="field">
+            मौका (वैकल्पिक)
+            <input
+              className="input"
+              value={occasion}
+              onChange={(e) => setOccasion(e.target.value)}
+              maxLength={60}
+              placeholder="जैसे: छठ, शादी सीज़न, सेल"
+            />
+          </label>
+
+          <label className="field">
+            भाषा
+            <select
+              className="input"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+            >
+              {LANGUAGE_OPTIONS.map((l) => (
+                <option key={l.value} value={l.value}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={wantReel}
+              onChange={(e) => setWantReel(e.target.checked)}
+            />
+            <span>रील भी बनवाएं (अभी प्रायोगिक, credit ज़्यादा लगता है)</span>
+          </label>
+
+          <Button type="submit" block disabled={busy}>
+            {busy ? "भेजा जा रहा है…" : "पोस्टर बनवाएं"}
+          </Button>
+        </form>
+      )}
+    </div>
+  );
+}
