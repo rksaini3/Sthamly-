@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Card } from "@/components/ui/Card";
+import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { OutputCard } from "@/components/dashboard/OutputCard";
 import { formatDate } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -37,7 +38,7 @@ export default async function DashboardPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/");
+  if (!user) redirect("/login?next=/dashboard");
 
   // RLS की वजह से सिर्फ इसी यूज़र की दुकानों के jobs आएंगे
   const { data, error } = await supabase
@@ -79,6 +80,10 @@ export default async function DashboardPage() {
 
   return (
     <main style={pageStyle}>
+      <AutoRefresh
+        active={rows.some(({ job }) => job.status === "queued" || job.status === "running")}
+      />
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1 style={{ margin: 0 }}>आपके आउटपुट</h1>
         <Link href="/onboarding" style={{ fontWeight: 600 }}>
