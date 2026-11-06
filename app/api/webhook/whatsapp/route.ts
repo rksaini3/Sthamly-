@@ -21,6 +21,13 @@ const messageSchema = z.object({
       caption: z.string().optional(),
     })
     .optional(),
+  audio: z
+    .object({
+      id: z.string(),
+      mime_type: z.string(),
+      voice: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 const payloadSchema = z.object({
@@ -101,6 +108,7 @@ export async function POST(req: NextRequest) {
           text: message.text?.body ?? null,
           imageId: message.image?.id ?? null,
           imageCaption: message.image?.caption ?? null,
+          audioId: message.audio?.id ?? null,
           timestamp: message.timestamp,
         });
       }
