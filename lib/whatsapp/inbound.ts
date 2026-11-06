@@ -1,7 +1,13 @@
-import { getPublicEnv } from "@/lib/env";
+import { eraseUserData } from "@/lib/account/erase";
 import { createJob } from "@/lib/jobs/create";
+import { getPublicEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { setPendingPhoto, takePendingPhoto } from "@/lib/whatsapp/conversation";
+import {
+  setPendingAction,
+  setPendingPhoto,
+  takePendingAction,
+  takePendingPhoto,
+} from "@/lib/whatsapp/conversation";
 import { sendText } from "@/lib/whatsapp/client";
 import { saveWhatsAppPhoto, UnsupportedPhotoError } from "@/lib/whatsapp/photo";
 
@@ -18,18 +24,28 @@ export interface InboundMessage {
 // Postgres का unique violation code
 const UNIQUE_VIOLATION = "23505";
 
-type Command = "help" | "stop" | "delete" | null;
+type Command = "help" | "stop" | "delete" | "confirm_delete" | null;
 
 const HELP_TEXT = [
   "Sthamly: उपलब्ध कमांड",
   "",
   "• मदद: यह सूची",
   "• STOP या रोको: संदेश बंद करें",
-  "• डेटा हटाओ: अपना डेटा हटवाने का अनुरोध",
+  "• डेटा हटाओ: अपना पूरा डेटा हटवाएं",
   "",
   "नया ऑफर भेजने के लिए बस ऑफर लिखें, जैसे:",
   "1 किलो काजू कतली ₹600",
 ].join("\n");
+
+const CONFIRM_DELETE_TEXT = [
+  "पक्का करें: आपकी दुकान, फोटो, पोस्टर और खाता हमेशा के लिए हट जाएंगे।",
+  "",
+  "अगर पक्का है तो 10 मिनट में \"हां हटाओ\" लिखें।",
+  "कुछ और लिखने पर यह अनुरोध रद्द हो जाएगा।",
+].join("\n");
+
+const DELETED_TEXT =
+  "आपका डेटा हटा दिया गया है। Sthamly फिर से इस्तेमाल करने के लिए नए सिरे से शुरू करें।";
 
 function normalizePhone(raw: string): string {
   // Meta देता है "919876543210" (सिर्फ अंक, बिना +)। हम वही रखते हैं।
@@ -42,6 +58,7 @@ function parseCommand(text: string | null): Command {
   if (t === "मदद" || t === "help") return "help";
   if (t === "stop" || t === "रोको") return "stop";
   if (t === "डेटा हटाओ" || t === "delete") return "delete";
+  if (t === "हां हटाओ" || t === "हाँ हटाओ" || t === "yes delete") return "confirm_delete";
   return null;
 }
 
@@ -153,7 +170,10 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
     return;
   }
 
-  // 4. कमांड
+  // 4. लंबित कार्रवाई (जैसे "डेटा हटाओ" की पुष्टि) लें। हर नया संदेश उसे बंद करता है।
+  const pendingAction = await takePendingAction(phone);
+
+  // 5. कमांड
   if (command === "help") {
     await sendText(message.from, HELP_TEXT);
     return;
@@ -176,15 +196,31 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
   }
 
   if (command === "delete") {
-    // TODO: deletion_requests table बनने पर यहां रिकॉर्ड करें (docs/COMPLIANCE.md देखें)
-    await sendText(
-      message.from,
-      "आपका डेटा हटाने का अनुरोध दर्ज हो गया है। हमारी टीम आपसे संपर्क करेगी।",
-    );
+    await setPendingAction(phone, "erase");
+    await sendText(message.from, CONFIRM_DELETE_TEXT);
     return;
   }
 
-  // 5. फोटो: सहेजें और ऑफर का इंतज़ार करें
+  if (command === "confirm_delete") {
+    if (pendingAction !== "erase") {
+      await sendText(message.from, "कोई हटाने का अनुरोध नहीं है। पहले \"डेटा हटाओ\" लिखें।");
+      return;
+    }
+
+    try {
+      await eraseUserData(profile.id, phone);
+      await sendText(message.from, DELETED_TEXT);
+    } catch (err) {
+      console.error("inbound: erase failed", err);
+      await sendText(
+        message.from,
+        "डेटा हटाने में दिक्कत आई। थोड़ी देर बाद \"डेटा हटाओ\" दोबारा लिखें।",
+      );
+    }
+    return;
+  }
+
+  // 6. फोटो: सहेजें और ऑफर का इंतज़ार करें
   if (message.type === "image" && message.imageId) {
     try {
       const photoPath = await saveWhatsAppPhoto(profile.id, message.imageId);
@@ -207,12 +243,12 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
     return;
   }
 
-  // 6. ऑफर: फोटो के साथ जोड़कर पोस्टर का job बनाएं
+  // 7. ऑफर: फोटो के साथ जोड़कर पोस्टर का job बनाएं
   if (message.type === "text" && message.text) {
     await handleOffer(message, profile.id);
     return;
   }
 
-  // 7. बाकी प्रकार (audio, sticker आदि): मदद दिखाएं, चुप न रहें
+  // 8. बाकी प्रकार (audio, sticker आदि): मदद दिखाएं, चुप न रहें
   await sendText(message.from, HELP_TEXT);
 }
