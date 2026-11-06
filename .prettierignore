@@ -1,1 +1,7 @@
-hi
+.next
+node_modules
+package-lock.json
+next-env.d.ts
+types/database.ts
+supabase/.temp
+public
