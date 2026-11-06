@@ -18,6 +18,9 @@ const PHOTO_BUCKET = "shop-photos"; // private, दुकानदार की 
 const OUTPUT_BUCKET = "outputs"; // private, बने हुए poster
 const SIGNED_URL_SECONDS = 60 * 60 * 24;
 
+// "running" job इतनी देर बाद अटकी मानी जाएगी (maxDuration 300 सेकंड से काफी ऊपर)
+const STALE_AFTER_MS = 15 * 60 * 1000;
+
 type Admin = ReturnType<typeof createSupabaseAdminClient>;
 type StoredInput = JobInput & { wantReel?: boolean };
 type Outcome = "done" | "failed" | "retry" | "skipped";
@@ -43,6 +46,10 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = createSupabaseAdminClient();
+
+  // पहले अटकी हुई jobs संभालें, फिर नई queue उठाएं
+  await recoverStaleJobs(admin, JOB_MAX_ATTEMPTS);
+
   const { data: queued, error } = await admin
     .from("jobs")
     .select("id")
@@ -64,13 +71,65 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ processed: queued?.length ?? 0, ...counts });
 }
 
+// ---- अटकी हुई jobs ----
+
+/**
+ * "running" में बहुत देर से पड़ी jobs को संभालें।
+ * बची कोशिश हो तो दोबारा queue में डालें, वरना विफल करके credit लौटाएं।
+ */
+async function recoverStaleJobs(admin: Admin, maxAttempts: number) {
+  const cutoff = new Date(Date.now() - STALE_AFTER_MS).toISOString();
+
+  const { data: stale, error } = await admin
+    .from("jobs")
+    .select("id, shop_id, attempts, started_at")
+    .eq("status", "running")
+    .lt("started_at", cutoff);
+
+  if (error) {
+    console.error("worker: stale read failed", error);
+    return;
+  }
+
+  for (const job of stale ?? []) {
+    const attempts = job.attempts + 1;
+    const message = "worker timeout: job बीच में रुक गई थी";
+
+    // सिर्फ वही बदलें जो अभी भी उसी claim में अटकी है (दो cron runs एक साथ न संभालें)
+    if (attempts >= maxAttempts) {
+      const { data: claimed } = await admin
+        .from("jobs")
+        .update({
+          status: "failed",
+          attempts,
+          error: message,
+          finished_at: new Date().toISOString(),
+        })
+        .eq("id", job.id)
+        .eq("status", "running")
+        .eq("started_at", job.started_at ?? "")
+        .select("id")
+        .maybeSingle();
+
+      if (claimed) await refundAndNotify(admin, job.id, job.shop_id);
+    } else {
+      await admin
+        .from("jobs")
+        .update({ status: "queued", attempts, error: message, started_at: null })
+        .eq("id", job.id)
+        .eq("status", "running")
+        .eq("started_at", job.started_at ?? "");
+    }
+  }
+}
+
 // ---- एक job ----
 
 async function processJob(admin: Admin, jobId: string, maxAttempts: number): Promise<Outcome> {
   // 1. Claim: सिर्फ queued को running करें, ताकि दो workers एक job न लें
   const { data: job, error: claimError } = await admin
     .from("jobs")
-    .update({ status: "running" })
+    .update({ status: "running", started_at: new Date().toISOString() })
     .eq("id", jobId)
     .eq("status", "queued")
     .select("id, shop_id, input, attempts")
@@ -112,14 +171,7 @@ async function processJob(admin: Admin, jobId: string, maxAttempts: number): Pro
       })
       .eq("id", jobId);
 
-    try {
-      await refundCredits(jobId);
-    } catch (refundError) {
-      // Refund न हो तो यह गंभीर है, log में साफ दिखे
-      console.error("worker: REFUND FAILED", jobId, messageOf(refundError));
-    }
-
-    await notifyFailure(admin, job.shop_id);
+    await refundAndNotify(admin, jobId, job.shop_id);
     return "failed";
   }
 }
@@ -257,6 +309,19 @@ async function loadPhotoBackground(
   // Satori सिर्फ PNG और JPEG लेता है
   if (data.type !== "image/png" && data.type !== "image/jpeg") return null;
   return { data: Buffer.from(await data.arrayBuffer()), mimeType: data.type };
+}
+
+/**
+ * विफल job के credit लौटाएं और यूज़र को सूचना दें।
+ * दोनों में से कुछ विफल हो तो log में दिखे, job की स्थिति पर असर न पड़े।
+ */
+async function refundAndNotify(admin: Admin, jobId: string, shopId: string) {
+  try {
+    await refundCredits(jobId);
+  } catch (refundError) {
+    console.error("worker: REFUND FAILED", jobId, messageOf(refundError));
+  }
+  await notifyFailure(admin, shopId);
 }
 
 /**
