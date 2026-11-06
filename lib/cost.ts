@@ -1,5 +1,6 @@
 import { getServerEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/types/database";
 
 // migration 0005_cost_events.sql के step values से मेल खाते हैं
 export const COST_STEPS = [
@@ -18,7 +19,7 @@ export interface CostEvent {
   provider: string;
   model?: string | null;
   costPaise: number; // paise में, पूर्णांक
-  meta?: Record<string, unknown>;
+  meta?: Json; // DB का jsonb टाइप
 }
 
 function assertValid(event: CostEvent): void {
