@@ -1,7 +1,10 @@
-.next
 node_modules
-package-lock.json
-next-env.d.ts
-types/database.ts
+.next
+out
+dist
+build
+coverage
 supabase/.temp
-public
+types/database.ts
+package-lock.json
+pnpm-lock.yaml
