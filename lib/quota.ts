@@ -24,7 +24,7 @@ export interface QuotaResult {
 }
 
 // यूज़र का सक्रिय प्लान। न मिले तो Free।
-async function getActivePlan(userId: string): Promise<Plan> {
+export async function getActivePlan(userId: string): Promise<Plan> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("subscriptions")
