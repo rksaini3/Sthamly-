@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { OutputCard } from "@/components/dashboard/OutputCard";
-import { Card } from "@/components/ui/Card";
 import { formatDate } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { JobStatus, OutputType } from "@/types/domain";
@@ -51,7 +50,7 @@ export default async function DashboardPage() {
     console.error("dashboard: jobs read failed", error);
     return (
       <main className="page stack">
-        <h1>आपके आउटपुट</h1>
+        <h1 style={{ margin: 0 }}>आपके पोस्टर</h1>
         <p className="alert alert-error">डेटा नहीं मिल पाया। पेज दोबारा खोलें।</p>
       </main>
     );
@@ -78,46 +77,48 @@ export default async function DashboardPage() {
     })),
   );
 
-  const hasActive = rows.some(({ job }) => job.status === "queued" || job.status === "running");
+  const hasActive = rows.some(
+    ({ job }) => job.status === "queued" || job.status === "running",
+  );
 
   return (
     <main className="page stack">
       <AutoRefresh active={hasActive} />
 
-      <header className="row">
-        <div>
-          <p className="brand">Sthamly</p>
-          <h1>आपके आउटपुट</h1>
-        </div>
+      <div className="row">
+        <h1 style={{ margin: 0 }}>आपके पोस्टर</h1>
         <Link href="/onboarding" className="btn btn-primary">
-          नया पोस्टर
+          नया पोस्ट
         </Link>
-      </header>
+      </div>
 
       {rows.length === 0 && (
-        <Card>
-          <p className="muted">
-            अभी कोई आउटपुट नहीं है। <Link href="/onboarding">पहला पोस्टर बनवाएं</Link>।
+        <div className="card stack">
+          <p className="muted" style={{ margin: 0 }}>
+            अभी कोई पोस्टर नहीं है।
           </p>
-        </Card>
+          <Link href="/onboarding" className="btn btn-primary btn-block">
+            पहला पोस्टर बनवाएं
+          </Link>
+        </div>
       )}
 
       {rows.map(({ job, outputs }) => (
-        <Card key={job.id}>
+        <div key={job.id} className="card">
           <div className="row">
-            <span className="job-status">{STATUS_LABEL[job.status]}</span>
+            <strong className="job-status">{STATUS_LABEL[job.status]}</strong>
             <span className="job-date">{formatDate(job.created_at)}</span>
           </div>
 
           {job.status === "failed" && (
-            <p className="alert alert-error" style={{ marginTop: 12 }}>
+            <p className="alert alert-error" style={{ marginTop: 8 }}>
               इस बार बन नहीं पाया। आपका credit वापस कर दिया गया है।
             </p>
           )}
 
           {job.status !== "done" && job.status !== "failed" && (
             <p className="muted" style={{ marginTop: 8 }}>
-              कुछ मिनट लग सकते हैं। यह पेज अपने-आप ताज़ा होगा।
+              कुछ मिनट लग सकते हैं। पेज अपने-आप ताज़ा होता रहेगा।
             </p>
           )}
 
@@ -130,7 +131,7 @@ export default async function DashboardPage() {
               watermarked={output.watermarked}
             />
           ))}
-        </Card>
+        </div>
       ))}
     </main>
   );
