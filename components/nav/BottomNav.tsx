@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BrandIcon } from "@/components/nav/BrandIcon";
 import styles from "./BottomNav.module.css";
 
 // नेवबार सिर्फ इन्हीं पन्नों पर दिखेगा (landing और login पर नहीं)
@@ -58,7 +59,7 @@ export function BottomNav() {
           aria-label="नया पोस्टर बनाएं"
           aria-current={isActive("/onboarding") ? "page" : undefined}
         >
-          <span className={styles.brandMark}>SPG</span>
+          <BrandIcon size={60} />
           <span>नया पोस्टर</span>
         </Link>
 
