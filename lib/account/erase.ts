@@ -2,63 +2,79 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type Admin = ReturnType<typeof createSupabaseAdminClient>;
 
-// यूज़र की फाइलें जिन buckets में रहती हैं
+// इन buckets में user का डेटा है: दुकान की फोटो और बने हुए poster
 const BUCKETS = ["shop-photos", "outputs"] as const;
+const PAGE_SIZE = 100;
 const REMOVE_CHUNK = 100;
 
-// किसी folder की सारी फाइलें (अंदर की sub-folders समेत) पाथ की सूची में
-async function listAllFiles(admin: Admin, bucket: string, prefix: string): Promise<string[]> {
-  const { data, error } = await admin.storage.from(bucket).list(prefix, { limit: 1000 });
-  if (error) throw error;
+// किसी folder के अंदर की सारी फाइलों के पूरे path (अंदर के folders भी)
+async function listFilesRecursive(admin: Admin, bucket: string, folder: string): Promise<string[]> {
+  const found: string[] = [];
+  let offset = 0;
 
-  const paths: string[] = [];
-  for (const entry of data ?? []) {
-    const full = `${prefix}/${entry.name}`;
-    // Supabase में folder का id null होता है
-    if (entry.id === null) {
-      paths.push(...(await listAllFiles(admin, bucket, full)));
-    } else {
-      paths.push(full);
+  for (;;) {
+    const { data, error } = await admin.storage
+      .from(bucket)
+      .list(folder, { limit: PAGE_SIZE, offset });
+    if (error) throw new Error(`storage list failed (${bucket}/${folder}): ${error.message}`);
+    if (!data || data.length === 0) break;
+
+    for (const entry of data) {
+      const path = `${folder}/${entry.name}`;
+      if (entry.id === null) {
+        // Folder है: अंदर उतरें
+        found.push(...(await listFilesRecursive(admin, bucket, path)));
+      } else {
+        found.push(path);
+      }
     }
+
+    if (data.length < PAGE_SIZE) break;
+    offset += data.length;
   }
-  return paths;
+
+  return found;
 }
 
-async function removeUserFolder(admin: Admin, bucket: string, userId: string): Promise<void> {
-  const paths = await listAllFiles(admin, bucket, userId);
+async function removeFiles(admin: Admin, bucket: string, paths: string[]): Promise<void> {
   for (let i = 0; i < paths.length; i += REMOVE_CHUNK) {
-    const { error } = await admin.storage.from(bucket).remove(paths.slice(i, i + REMOVE_CHUNK));
-    if (error) throw error;
+    const chunk = paths.slice(i, i + REMOVE_CHUNK);
+    const { error } = await admin.storage.from(bucket).remove(chunk);
+    if (error) throw new Error(`storage remove failed (${bucket}): ${error.message}`);
   }
 }
 
 /**
- * यूज़र का पूरा डेटा हटाएं: फाइलें, खाता, और संदेश के रिकॉर्ड।
- * खाता हटने पर profile, दुकानें, jobs, outputs, ledger और consents अपने-आप हट जाते हैं (cascade)।
+ * दुकानदार का पूरा डेटा मिटाएं (DPDP के तहत)।
+ * क्रम: फाइलें → WhatsApp रिकॉर्ड → सबूत का log → auth user (इससे profiles, shops, jobs आदि cascade से हटते हैं)।
  */
 export async function eraseUserData(userId: string, phone: string): Promise<void> {
   const admin = createSupabaseAdminClient();
 
-  // 1. पहले फाइलें, ताकि खाता हटने के बाद उनके रास्ते न बचें
+  // 1. फोटो और poster फाइलें
   for (const bucket of BUCKETS) {
-    await removeUserFolder(admin, bucket, userId);
+    const files = await listFilesRecursive(admin, bucket, userId);
+    await removeFiles(admin, bucket, files);
   }
 
-  // 2. खाता (और उससे जुड़ा सारा डेटाबेस का हिस्सा)
-  const { error: authError } = await admin.auth.admin.deleteUser(userId);
-  if (authError) throw authError;
-
-  // 3. फोन से जुड़े बचे रिकॉर्ड
+  // 2. WhatsApp बातचीत और duplicate-जांच का रिकॉर्ड (phone से)
   const { error: convError } = await admin.from("conversations").delete().eq("phone", phone);
-  if (convError) console.error("erase: conversations delete failed", convError);
+  if (convError) throw convError;
 
-  const { error: msgError } = await admin.from("processed_messages").delete().eq("from_phone", phone);
-  if (msgError) console.error("erase: processed_messages delete failed", msgError);
+  const { error: processedError } = await admin
+    .from("processed_messages")
+    .delete()
+    .eq("from_phone", phone);
+  if (processedError) throw processedError;
 
-  // 4. सबूत के लिए: फोन नंबर और समय
+  // 3. सबूत के लिए सिर्फ phone और समय (कोई और निजी डेटा नहीं)
   const { error: logError } = await admin.from("deletion_log").insert({
     from_phone: phone,
     completed_at: new Date().toISOString(),
   });
   if (logError) console.error("erase: deletion_log insert failed", logError);
+
+  // 4. Auth user हटाएं
+  const { error: authError } = await admin.auth.admin.deleteUser(userId);
+  if (authError) throw authError;
 }
