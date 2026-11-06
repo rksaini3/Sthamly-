@@ -10,6 +10,8 @@ const serverSchema = z.object({
   WHATSAPP_APP_SECRET: z.string().min(1),
   CRON_SECRET: z.string().min(16),
   FAL_KEY: z.string().optional(),
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().optional(),
   MAX_COST_PAISE_PER_JOB: z.coerce.number().int().positive().default(1500),
   JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
 });
