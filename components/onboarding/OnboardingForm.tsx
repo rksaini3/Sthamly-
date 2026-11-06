@@ -1,10 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
-import { Button } from "@/components/ui/Button";
+import { useEffect, useState, type FormEvent } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { SHOP_CATEGORIES, type Language, type ShopCategory } from "@/types/domain";
+import { SHOP_CATEGORIES, type ShopCategory } from "@/types/domain";
 
 const PHOTO_BUCKET = "shop-photos";
 const MAX_PHOTOS = 3;
@@ -17,22 +16,20 @@ const CATEGORY_LABELS: Record<ShopCategory, string> = {
   coaching_clinic: "कोचिंग / क्लिनिक",
 };
 
-const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
-  { value: "hinglish", label: "हिंग्लिश" },
-  { value: "hindi", label: "हिंदी" },
-  { value: "bhojpuri", label: "भोजपुरी" },
-  { value: "awadhi", label: "अवधी" },
-];
-
 function messageOf(error: unknown): string {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error && error.message) {
+    if (error.message.includes("permission denied")) {
+      return "डेटा सेव नहीं हो पाया। थोड़ी देर बाद दोबारा कोशिश करें।";
+    }
+    return error.message;
+  }
   if (typeof error === "object" && error !== null && "message" in error) {
     return String((error as { message: unknown }).message);
   }
   return "कुछ गड़बड़ हुई, दोबारा कोशिश करें";
 }
 
-// भारतीय नंबर: 10 अंक हों तो आगे 91 लगाएं (WhatsApp के "from" जैसा फॉर्मेट)
+// भारतीय नंबर: 10 अंक हों तो आगे 91 लगाएं
 function normalizePhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) return `91${digits}`;
@@ -40,31 +37,86 @@ function normalizePhone(raw: string): string | null {
   return null;
 }
 
+// सेव किए नंबर को फॉर्म में 10 अंकों में दिखाएं
+function displayPhone(phone: string | null): string {
+  if (!phone) return "";
+  return phone.length === 12 && phone.startsWith("91") ? phone.slice(2) : phone;
+}
+
 export function OnboardingForm() {
   const router = useRouter();
 
+  const [checking, setChecking] = useState(true);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // चरण 1
+  // लॉग-इन user और उसकी दुकान
+  const [userId, setUserId] = useState<string | null>(null);
+  const [shopId, setShopId] = useState<string | null>(null);
+
+  // चरण 1: दुकान की जानकारी
   const [shopName, setShopName] = useState("");
   const [category, setCategory] = useState<ShopCategory>("sweets");
   const [city, setCity] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
 
-  // चरण 1 के बाद बनने वाली चीज़ें
-  const [userId, setUserId] = useState<string | null>(null);
-  const [shopId, setShopId] = useState<string | null>(null);
-
-  // चरण 2
+  // चरण 2: फोटो
   const [photoPaths, setPhotoPaths] = useState<string[]>([]);
 
-  // चरण 3
+  // चरण 3: ऑफर
   const [offerText, setOfferText] = useState("");
   const [occasion, setOccasion] = useState("");
-  const [language, setLanguage] = useState<Language>("hinglish");
-  const [wantReel, setWantReel] = useState(false);
+
+  // पहली बार खुलने पर: user और उसकी दुकान देखें
+  // दुकान मिल जाए तो सीधे फोटो वाले चरण पर भेजें, ताकि दुकान दोबारा न बने
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+          router.replace("/login?next=/onboarding");
+          return;
+        }
+
+        const { data: shop, error: shopError } = await supabase
+          .from("shops")
+          .select("id, name, category, city, phone")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (shopError) throw shopError;
+
+        if (cancelled) return;
+
+        setUserId(user.id);
+        if (shop) {
+          setShopId(shop.id);
+          setShopName(shop.name);
+          setCategory(shop.category);
+          setCity(shop.city);
+          setPhoneInput(displayPhone(shop.phone));
+          setStep(2);
+        }
+      } catch (err) {
+        if (!cancelled) setError(messageOf(err));
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   async function handleShopSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -72,40 +124,35 @@ export function OnboardingForm() {
     setBusy(true);
 
     try {
+      if (!userId) throw new Error("पहले लॉग-इन करें");
+
       const phone = normalizePhone(phoneInput);
       if (!phone) throw new Error("सही फोन नंबर डालें (10 अंक)");
 
       const supabase = createSupabaseBrowserClient();
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-      if (userError || !user) throw new Error("पहले लॉग-इन करें");
+      const cityValue = city.trim();
 
-      // Profile: phone और शहर (RLS: सिर्फ अपना)
       const { error: profileError } = await supabase
         .from("profiles")
-        .upsert({ id: user.id, phone, city: city.trim() }, { onConflict: "id" });
+        .upsert({ id: userId, phone, city: cityValue }, { onConflict: "id" });
       if (profileError) throw profileError;
 
-      // दुकान बनाएं (दोबारा बने नहीं, अगर पहले बन चुकी हो)
-      if (!shopId) {
-        const { data: shop, error: shopError } = await supabase
+      const values = { name: shopName.trim(), category, city: cityValue, phone };
+
+      if (shopId) {
+        // दुकान पहले से है: बदलाव सेव करें, नई दुकान न बनाएं
+        const { error } = await supabase.from("shops").update(values).eq("id", shopId);
+        if (error) throw error;
+      } else {
+        const { data: shop, error } = await supabase
           .from("shops")
-          .insert({
-            user_id: user.id,
-            name: shopName.trim(),
-            category,
-            city: city.trim(),
-            phone,
-          })
+          .insert({ ...values, user_id: userId })
           .select("id")
           .single();
-        if (shopError) throw shopError;
+        if (error) throw error;
         setShopId(shop.id);
       }
 
-      setUserId(user.id);
       setStep(2);
     } catch (err) {
       setError(messageOf(err));
@@ -136,7 +183,6 @@ export function OnboardingForm() {
         }
 
         const ext = file.type === "image/png" ? "png" : "jpg";
-        // पाथ यूज़र के folder में, जैसा API जांचती है
         const path = `${userId}/${crypto.randomUUID()}.${ext}`;
 
         const { error: uploadError } = await supabase.storage
@@ -171,8 +217,8 @@ export function OnboardingForm() {
           offerText: offerText.trim(),
           occasion: occasion.trim() || null,
           photoPaths,
-          language,
-          wantReel,
+          language: "hinglish",
+          wantReel: false,
         }),
       });
 
@@ -182,7 +228,7 @@ export function OnboardingForm() {
       };
 
       if (!res.ok || !body.jobId) {
-        throw new Error(body.error?.message ?? "job नहीं बन पाया");
+        throw new Error(body.error?.message ?? "पोस्टर का काम शुरू नहीं हो पाया");
       }
 
       router.push(`/dashboard?job=${body.jobId}`);
@@ -190,6 +236,10 @@ export function OnboardingForm() {
       setError(messageOf(err));
       setBusy(false);
     }
+  }
+
+  if (checking) {
+    return <p className="muted">लोड हो रहा है…</p>;
   }
 
   return (
@@ -259,9 +309,9 @@ export function OnboardingForm() {
             />
           </label>
 
-          <Button type="submit" block disabled={busy}>
-            {busy ? "सेव हो रहा है…" : "आगे बढ़ें"}
-          </Button>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy ? "सेव हो रहा है…" : shopId ? "बदलाव सेव करें" : "आगे बढ़ें"}
+          </button>
         </form>
       )}
 
@@ -283,14 +333,34 @@ export function OnboardingForm() {
             />
           </label>
 
-          <Button
+          {photoPaths.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-block"
+              disabled={busy}
+              onClick={() => setPhotoPaths([])}
+            >
+              फोटो फिर से चुनें
+            </button>
+          )}
+
+          <button
             type="button"
-            block
+            className="btn btn-primary btn-block"
             disabled={busy || photoPaths.length === 0}
             onClick={() => setStep(3)}
           >
             आगे बढ़ें
-          </Button>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-ghost btn-block"
+            disabled={busy}
+            onClick={() => setStep(1)}
+          >
+            दुकान की जानकारी बदलें
+          </button>
         </div>
       )}
 
@@ -320,33 +390,18 @@ export function OnboardingForm() {
             />
           </label>
 
-          <label className="field">
-            भाषा
-            <select
-              className="input"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as Language)}
-            >
-              {LANGUAGE_OPTIONS.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={wantReel}
-              onChange={(e) => setWantReel(e.target.checked)}
-            />
-            <span>रील भी बनवाएं (अभी प्रायोगिक, credit ज़्यादा लगता है)</span>
-          </label>
-
-          <Button type="submit" block disabled={busy}>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
             {busy ? "भेजा जा रहा है…" : "पोस्टर बनवाएं"}
-          </Button>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-ghost btn-block"
+            disabled={busy}
+            onClick={() => setStep(2)}
+          >
+            पीछे
+          </button>
         </form>
       )}
     </div>
