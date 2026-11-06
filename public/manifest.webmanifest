@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Sthamly",
+  "short_name": "Sthamly",
+  "description": "दुकान की फोटो भेजें, रील और पोस्टर पाएं।",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f5f2",
+  "theme_color": "#e0561a",
+  "lang": "hi",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
