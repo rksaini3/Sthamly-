@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { BottomNav } from "@/components/nav/BottomNav";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import "./globals.css";
 
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="hi">
       <body>
         {children}
+        <BottomNav />
         <ServiceWorkerRegister />
       </body>
     </html>
