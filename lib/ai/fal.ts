@@ -14,18 +14,22 @@ import type {
 // verified: true करने से पहले कोई असली AI call न करें।
 //
 // स्थिति (Nov 2026):
-// - image: "fal-ai/flux/schnell" endpoint ID मिला है, output का ढांचा अभी जांचना है।
-// - text: "fal-ai/any-llm" Fal पर deprecated है। नया text model चुनना बाकी है।
+// - text: "openrouter/router" (Fal पर चालू बताया गया है)। Input: prompt, model; output: output।
+//         पहली असली call सफल हो तो verified: true करें।
+// - image: "fal-ai/flux/schnell" ID मिला है, output का ढांचा अभी जांचना है।
+// - "fal-ai/any-llm" deprecated है, इसे इस्तेमाल न करें।
 // ============================================================
 
 const QUEUE_BASE = "https://queue.fal.run";
 
-// लागत paise में। image का दाम Fal पर लगभग $0.003 प्रति image दिखा (cloudprice)।
-// text का दाम अभी तय नहीं है, इसलिए अनुमान है।
+// Caption के लिए कौन-सा model (openrouter के नाम के हिसाब से)। सस्ता और तेज़ रखा है।
+const TEXT_MODEL = "anthropic/claude-haiku-5.5";
+
+// लागत paise में। ये अनुमान हैं, असली दाम Fal के usage.cost से बाद में लिया जा सकता है।
 export const FAL_MODELS = {
   image: { id: "fal-ai/flux/schnell", costPaise: 25, verified: false },
   video: { id: "REPLACE/video-model", costPaise: 450, verified: false },
-  text: { id: "REPLACE/text-model", costPaise: 5, verified: false },
+  text: { id: "openrouter/router", costPaise: 5, verified: false },
 } as const;
 
 const TIMEOUT_MS = {
@@ -157,12 +161,14 @@ export const falProvider: AIProvider = {
   async generateText(req: TextRequest): Promise<AIResult> {
     assertVerified(FAL_MODELS.text);
 
+    // सिर्फ docs में बताए fields भेज रहे हैं। max_tokens जैसे extra fields
+    // का असर पहली असली call में देखें, तभी उन्हें जोड़ें।
     const output = await runModel<FalOutput>(
       FAL_MODELS.text.id,
-      { prompt: req.prompt, max_tokens: req.maxTokens ?? 500 },
+      { prompt: req.prompt, model: TEXT_MODEL },
       TIMEOUT_MS.text,
     );
-    const text = output.output ?? output.text;
+    const text = (output.output ?? output.text ?? "").trim();
     if (!text) {
       throw new Error("fal text: output खाली है");
     }
