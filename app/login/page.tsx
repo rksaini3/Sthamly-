@@ -39,50 +39,52 @@ function LoginForm() {
   }
 
   return (
-    <main style={{ maxWidth: 480, margin: "0 auto", padding: "32px 20px" }}>
-      <h1 style={{ marginTop: 0 }}>लॉग-इन करें</h1>
+    <main className="page stack">
+      <div className="stack" style={{ gap: 8 }}>
+        <p className="brand">Sthamly</p>
+        <h1>लॉग-इन करें</h1>
+        <p className="muted">ईमेल पर एक लिंक आएगा। उस पर क्लिक करें, पासवर्ड की ज़रूरत नहीं।</p>
+      </div>
 
       {linkFailed && (
-        <p role="alert" style={{ color: "#b91c1c" }}>
+        <p role="alert" className="alert alert-error">
           लिंक पुराना या गलत है। नया लिंक मंगाएं।
         </p>
       )}
 
       {status === "sent" ? (
-        <div>
+        <section className="card stack">
+          <h2>ईमेल भेज दिया गया है</h2>
           <p>
-            <strong>{email}</strong> पर लॉग-इन लिंक भेज दिया गया है। अपना ईमेल खोलें और लिंक पर
-            क्लिक करें।
+            <strong>{email}</strong> पर लॉग-इन लिंक गया है।
           </p>
-          <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
-            ईमेल न दिखे तो Spam फोल्डर देखें।
-          </p>
-          <Button type="button" onClick={() => setStatus("idle")}>
+          <p className="muted">ईमेल न दिखे तो Spam फोल्डर देखें।</p>
+          <Button variant="ghost" block onClick={() => setStatus("idle")}>
             दूसरा ईमेल डालें
           </Button>
-        </div>
+        </section>
       ) : (
-        <form onSubmit={handleSubmit}>
-          <label style={{ display: "block", marginBottom: 12, fontWeight: 600 }}>
+        <form className="card stack" onSubmit={handleSubmit}>
+          <label className="field">
             ईमेल
             <input
+              className="input"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
               placeholder="aap@example.com"
-              style={{ display: "block", width: "100%", padding: 10, fontSize: "1rem", marginTop: 4 }}
             />
           </label>
 
           {status === "error" && message && (
-            <p role="alert" style={{ color: "#b91c1c" }}>
+            <p role="alert" className="alert alert-error">
               {message}
             </p>
           )}
 
-          <Button type="submit" disabled={status === "sending"}>
+          <Button type="submit" block disabled={status === "sending"}>
             {status === "sending" ? "भेजा जा रहा है…" : "लॉग-इन लिंक भेजें"}
           </Button>
         </form>
