@@ -9,8 +9,6 @@ const serverSchema = z.object({
   WHATSAPP_VERIFY_TOKEN: z.string().min(1),
   WHATSAPP_APP_SECRET: z.string().min(1),
   CRON_SECRET: z.string().min(16),
-  GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().optional(),
   FAL_KEY: z.string().optional(),
   MAX_COST_PAISE_PER_JOB: z.coerce.number().int().positive().default(1500),
   JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
