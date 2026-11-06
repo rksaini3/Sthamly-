@@ -4,6 +4,7 @@ import type {
   AIResult,
   ImageRequest,
   TextRequest,
+  TranscribeRequest,
   VideoRequest,
 } from "@/lib/ai/types";
 
@@ -12,8 +13,6 @@ import type {
 // model ID, input/output का ढांचा और दाम Fal.ai की आधिकारिक
 // pricing और API docs से जांचकर ही बदलें।
 // verified: true करने से पहले कोई असली AI call न करें।
-// Text model अभी unverified है: एक बार असली test call करें,
-// output में `output` फील्ड आ रही हो तो verified: true करें।
 // ============================================================
 
 const QUEUE_BASE = "https://queue.fal.run";
@@ -21,17 +20,19 @@ const QUEUE_BASE = "https://queue.fal.run";
 // Text के लिए OpenRouter router, और उसके ज़रिए Claude Haiku 5.5
 const TEXT_MODEL = "anthropic/claude-haiku-5.5";
 
-// लागत paise में। ये docs/MVP_BRIEF.md के अनुमान हैं (पोस्टर ₹0.15, रील ₹4.50, कैप्शन ₹0.05)।
+// लागत paise में। ये अनुमान हैं।
 export const FAL_MODELS = {
   image: { id: "fal-ai/flux/schnell", costPaise: 15, verified: false },
   video: { id: "REPLACE/video-model", costPaise: 450, verified: false },
   text: { id: "openrouter/router", costPaise: 5, verified: false },
+  audio: { id: "fal-ai/whisper", costPaise: 5, verified: false },
 } as const;
 
 const TIMEOUT_MS = {
   image: 60_000,
   video: 300_000,
   text: 30_000,
+  audio: 120_000,
 } as const;
 
 const POLL_INTERVAL_MS = 2_000;
@@ -57,7 +58,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Fal queue submit का जवाब: status और result के URL यहीं से लें, खुद न बनाएं
+// Fal queue submit का जवाब: status और result के URL यहीं से लें
 interface QueueSubmit {
   request_id: string;
   status_url: string;
@@ -66,7 +67,6 @@ interface QueueSubmit {
 
 /**
  * Fal queue: submit करें, status देखें, फिर result लें।
- * लंबे काम (रील) के लिए queue ज़रूरी है, वरना request कट सकती है।
  */
 async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): Promise<T> {
   const headers = falHeaders();
@@ -107,7 +107,7 @@ async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): 
   return (await resultRes.json()) as T;
 }
 
-// Fal के output का वह हिस्सा जो हम इस्तेमाल करते हैं (मॉडल के हिसाब से इनमें से एक होगा)
+// Fal के output का वह हिस्सा जो हम इस्तेमाल करते हैं
 interface FalOutput {
   images?: { url?: string }[];
   video?: { url?: string };
@@ -115,7 +115,6 @@ interface FalOutput {
   text?: string;
 }
 
-// Output से URL निकालना, ढांचा न मिले तो साफ error
 function pickUrl(output: FalOutput, path: (o: FalOutput) => unknown, label: string): string {
   const url = path(output);
   if (typeof url !== "string" || url.length === 0) {
@@ -156,7 +155,6 @@ export const falProvider: AIProvider = {
   async generateText(req: TextRequest): Promise<AIResult> {
     assertVerified(FAL_MODELS.text);
 
-    // maxTokens अभी भेजा नहीं जाता: router का इनपुट ढांचा test के बाद ही तय होगा
     const output = await runModel<FalOutput>(
       FAL_MODELS.text.id,
       { prompt: req.prompt, model: TEXT_MODEL },
@@ -168,5 +166,18 @@ export const falProvider: AIProvider = {
     }
 
     return { text, costPaise: FAL_MODELS.text.costPaise };
+  },
+
+  async transcribe(req: TranscribeRequest): Promise<AIResult> {
+    assertVerified(FAL_MODELS.audio);
+
+    const output = await runModel<FalOutput>(
+      FAL_MODELS.audio.id,
+      { audio_url: req.audioUrl, language: req.language, task: "transcribe" },
+      TIMEOUT_MS.audio,
+    );
+    const text = (output.text ?? output.output ?? "").trim();
+
+    return { text, costPaise: FAL_MODELS.audio.costPaise };
   },
 };
