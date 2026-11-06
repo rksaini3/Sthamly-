@@ -433,7 +433,7 @@ export type Database = {
       };
 
       conversations: {
-              conversations: {
+              
         Row: {
           phone: string;
           pending_photo_path: string | null;
