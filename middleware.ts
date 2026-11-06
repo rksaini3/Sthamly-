@@ -11,44 +11,54 @@ function isProtected(pathname: string): boolean {
 }
 
 export async function middleware(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anonKey) {
-    // env नहीं है तो साफ error दें, चुपचाप न खोलें
-    return new NextResponse("Supabase env missing", { status: 500 });
-  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
   // Session cookies को refresh करने के लिए response बनाना पड़ता है
   let response = NextResponse.next({ request });
 
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
+  // env न हो तो middleware crash न करे। सिर्फ सुरक्षित पन्ने login पर जाएंगे।
+  if (!url || !anonKey) {
+    console.error("middleware: NEXT_PUBLIC_SUPABASE_URL या ANON_KEY सेट नहीं है");
+    return redirectIfProtected(request, response, false);
+  }
 
-  // getUser() server पर session की जांच करता है (getSession() cookie पर भरोसा करता है)
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = createServerClient(url, anonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+        },
+      },
+    });
 
-  if (isProtected(request.nextUrl.pathname) && !user) {
+    // getUser() server पर session की जांच करता है (getSession() cookie पर भरोसा करता है)
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    return redirectIfProtected(request, response, Boolean(user));
+  } catch (error) {
+    // Supabase तक न पहुंचे तो भी पेज खुले, बस सुरक्षित पन्ने पर login दिखे
+    console.error("middleware: auth check failed", error);
+    return redirectIfProtected(request, response, false);
+  }
+}
+
+function redirectIfProtected(request: NextRequest, response: NextResponse, loggedIn: boolean) {
+  if (isProtected(request.nextUrl.pathname) && !loggedIn) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = `?next=${encodeURIComponent(request.nextUrl.pathname)}`;
     return NextResponse.redirect(loginUrl);
   }
-
   return response;
 }
 
