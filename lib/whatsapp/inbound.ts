@@ -10,6 +10,7 @@ import {
 } from "@/lib/whatsapp/conversation";
 import { sendText } from "@/lib/whatsapp/client";
 import { saveWhatsAppPhoto, UnsupportedPhotoError } from "@/lib/whatsapp/photo";
+import { handleOfferReply, handleVoiceNote } from "@/lib/whatsapp/voice";
 
 export interface InboundMessage {
   waMessageId: string;
@@ -18,6 +19,7 @@ export interface InboundMessage {
   text: string | null;
   imageId: string | null;
   imageCaption: string | null;
+  audioId: string | null;
   timestamp: string;
 }
 
@@ -33,8 +35,10 @@ const HELP_TEXT = [
   "• STOP या रोको: संदेश बंद करें",
   "• डेटा हटाओ: अपना पूरा डेटा हटवाएं",
   "",
-  "नया ऑफर भेजने के लिए बस ऑफर लिखें, जैसे:",
+  "पोस्टर के लिए: पहले दुकान की फोटो भेजें, फिर ऑफर लिखें, जैसे:",
   "1 किलो काजू कतली ₹600",
+  "",
+  "या वॉइस नोट भेजें, जैसे: \"कल दिवाली पर काजू कतली 10% ऑफ\"",
 ].join("\n");
 
 const CONFIRM_DELETE_TEXT = [
@@ -65,7 +69,7 @@ function parseCommand(text: string | null): Command {
 function onboardingText(): string {
   const appUrl = getPublicEnv().NEXT_PUBLIC_APP_URL;
   return [
-    "नमस्ते! Sthamly पर अपनी दुकान का पोस्टर और रील बनवाने के लिए यहां से शुरू करें:",
+    "नमस्ते! Sthamly पर अपनी दुकान का पोस्टर बनवाने के लिए यहां से शुरू करें:",
     `${appUrl}/onboarding`,
   ].join("\n");
 }
@@ -243,12 +247,29 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
     return;
   }
 
-  // 7. ऑफर: फोटो के साथ जोड़कर पोस्टर का job बनाएं
+  // 7. वॉइस नोट: समझकर पुष्टि मांगें (पोस्टर "हां" के बाद बनेगा)
+  if (message.type === "audio" && message.audioId) {
+    try {
+      await handleVoiceNote(phone, message.audioId);
+    } catch (err) {
+      console.error("inbound: voice failed", err);
+      await sendText(
+        message.from,
+        "आवाज़ प्रोसेस नहीं हो पाई। थोड़ी देर बाद दोबारा भेजें, या लिखकर भेजें।",
+      );
+    }
+    return;
+  }
+
+  // 8. Text: पहले देखें कि यह "हां" या "नहीं" का जवाब तो नहीं, फिर ऑफर मानें
   if (message.type === "text" && message.text) {
+    const handledAsReply = await handleOfferReply(phone, message.text);
+    if (handledAsReply) return;
+
     await handleOffer(message, profile.id);
     return;
   }
 
-  // 8. बाकी प्रकार (audio, sticker आदि): मदद दिखाएं, चुप न रहें
+  // 9. बाकी प्रकार (sticker आदि): मदद दिखाएं, चुप न रहें
   await sendText(message.from, HELP_TEXT);
 }
