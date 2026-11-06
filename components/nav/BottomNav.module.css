@@ -60,3 +60,13 @@
   letter-spacing: 0.06em;
   box-shadow: 0 6px 16px rgba(224, 86, 26, 0.35);
 }
+.centerCircle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  background: #e0561a;
+  box-shadow: 0 6px 16px rgba(224, 86, 26, 0.35);
+}
