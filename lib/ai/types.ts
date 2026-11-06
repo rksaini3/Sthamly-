@@ -23,9 +23,15 @@ export interface TextRequest {
   maxTokens?: number;
 }
 
+export interface TranscribeRequest {
+  audioUrl: string; // सार्वजनिक (signed) URL, जिससे model audio पढ़ेगा
+  language: "hi" | "en";
+}
+
 export interface AIProvider {
   readonly name: string;
   generateImage(req: ImageRequest): Promise<AIResult>;
   generateVideo(req: VideoRequest): Promise<AIResult>;
   generateText(req: TextRequest): Promise<AIResult>;
+  transcribe(req: TranscribeRequest): Promise<AIResult>;
 }
