@@ -7,7 +7,7 @@ import { getActivePlan, refundCredits } from "@/lib/quota";
 import { renderPoster } from "@/lib/render/poster";
 import { applyWatermark } from "@/lib/render/watermark";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { sendImage, sendText } from "@/lib/whatsapp/client";
+import { sendJobFailed, sendOutputReady } from "@/lib/whatsapp/outbound";
 import type { JobInput } from "@/types/domain";
 
 export const runtime = "nodejs";
@@ -215,20 +215,8 @@ async function runJob(admin: Admin, jobId: string, shopId: string, input: Stored
 
   await assertUnderCap(jobId);
 
-  // ---- 5. रील: अभी इस worker में नहीं बनती ----
-  // रील का credit वापस करें, पोस्टर और कैप्शन भेजें। बाद में रील का रास्ता जुड़ेगा।
-  if (input.wantReel) {
-    const { error: reelRefundError } = await admin.from("usage_ledger").insert({
-      user_id: shop.user_id,
-      delta: 1,
-      reason: "refund_reel",
-      job_id: jobId,
-      kind: "reel",
-    });
-    if (reelRefundError) throw new Error(`reel refund failed: ${reelRefundError.message}`);
-  }
-
-  // ---- 6. Job पूरा ----
+  // ---- 5. Job पूरा ----
+  // यह आखिरी लिखना है। इसके बाद job retry नहीं होगा, इसलिए रील का credit भी सिर्फ यहीं के बाद लौटता है।
   const totalCost = await getJobCostPaise(jobId);
   const { error: doneError } = await admin
     .from("jobs")
@@ -240,6 +228,11 @@ async function runJob(admin: Admin, jobId: string, shopId: string, input: Stored
     })
     .eq("id", jobId);
   if (doneError) throw new Error(`job done update failed: ${doneError.message}`);
+
+  // ---- 6. रील: अभी इस worker में नहीं बनती, इसलिए उसका credit वापस ----
+  if (input.wantReel) {
+    await refundUnusedReel(admin, jobId, shop.user_id);
+  }
 
   // ---- 7. WhatsApp पर भेजें (विफल हो तो job पूरा रहता है, डेटा dashboard पर है) ----
   if (recipient) {
@@ -266,6 +259,35 @@ async function loadPhotoBackground(
   return { data: Buffer.from(await data.arrayBuffer()), mimeType: data.type };
 }
 
+/**
+ * रील का credit एक बार वापस करें।
+ * पहले से वापस हो चुका हो तो कुछ नहीं करता (retry या दोबारा चलने पर भी दोहरा credit नहीं जुड़ेगा)।
+ */
+async function refundUnusedReel(admin: Admin, jobId: string, userId: string) {
+  try {
+    const { data: existing, error: readError } = await admin
+      .from("usage_ledger")
+      .select("id")
+      .eq("job_id", jobId)
+      .eq("reason", "refund_reel")
+      .maybeSingle();
+    if (readError) throw readError;
+    if (existing) return;
+
+    const { error } = await admin.from("usage_ledger").insert({
+      user_id: userId,
+      delta: 1,
+      reason: "refund_reel",
+      job_id: jobId,
+      kind: "reel",
+    });
+    if (error) throw error;
+  } catch (error) {
+    // Job तो पूरा हो चुका है। Credit न लौटे तो log में साफ दिखे।
+    console.error("worker: REEL REFUND FAILED", jobId, messageOf(error));
+  }
+}
+
 async function deliver(
   admin: Admin,
   recipient: string,
@@ -279,14 +301,13 @@ async function deliver(
       .createSignedUrl(posterPath, SIGNED_URL_SECONDS);
     if (error || !signed) throw new Error(error?.message ?? "no signed url");
 
-    await sendImage(recipient, signed.signedUrl, "आपका पोस्टर तैयार है");
-    await sendText(recipient, captionText);
-    if (wantReel) {
-      await sendText(
-        recipient,
-        "रील अभी तैयार नहीं हो पाई। उसका credit आपके खाते में वापस कर दिया गया है।",
-      );
-    }
+    await sendOutputReady(recipient, {
+      posterUrl: signed.signedUrl,
+      captionText,
+      extraNote: wantReel
+        ? "रील अभी तैयार नहीं हो पाई। उसका credit आपके खाते में वापस कर दिया गया है।"
+        : null,
+    });
   } catch (error) {
     console.error("worker: delivery failed", recipient, messageOf(error));
   }
@@ -308,10 +329,7 @@ async function notifyFailure(admin: Admin, shopId: string) {
       .maybeSingle();
     if (!profile?.phone) return;
 
-    await sendText(
-      profile.phone,
-      "माफ़ करें, आपका पोस्टर इस बार नहीं बन पाया। आपका credit वापस कर दिया गया है। कृपया थोड़ी देर बाद दोबारा कोशिश करें।",
-    );
+    await sendJobFailed(profile.phone);
   } catch (error) {
     console.error("worker: failure notice failed", messageOf(error));
   }
