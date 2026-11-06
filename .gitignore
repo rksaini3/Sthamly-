@@ -1,1 +1,35 @@
-hi
+# dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# build output
+build/
+dist/
+*.tsbuildinfo
+
+# environment (कभी commit नहीं)
+.env
+.env.local
+.env.*.local
+
+# Vercel
+.vercel/
+
+# Supabase local
+supabase/.temp/
+.supabase/
+
+# editor और OS
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# logs और coverage
+*.log
+npm-debug.log*
+coverage/
