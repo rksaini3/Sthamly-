@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Card } from "@/components/ui/Card";
 import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { OutputCard } from "@/components/dashboard/OutputCard";
+import { Card } from "@/components/ui/Card";
 import { formatDate } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { JobStatus, OutputType } from "@/types/domain";
@@ -50,9 +50,9 @@ export default async function DashboardPage() {
   if (error) {
     console.error("dashboard: jobs read failed", error);
     return (
-      <main style={pageStyle}>
+      <main className="page stack">
         <h1>आपके आउटपुट</h1>
-        <p style={{ color: "#b91c1c" }}>डेटा नहीं मिल पाया। पेज दोबारा खोलें।</p>
+        <p className="alert alert-error">डेटा नहीं मिल पाया। पेज दोबारा खोलें।</p>
       </main>
     );
   }
@@ -78,43 +78,46 @@ export default async function DashboardPage() {
     })),
   );
 
-  return (
-    <main style={pageStyle}>
-      <AutoRefresh
-        active={rows.some(({ job }) => job.status === "queued" || job.status === "running")}
-      />
+  const hasActive = rows.some(({ job }) => job.status === "queued" || job.status === "running");
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0 }}>आपके आउटपुट</h1>
-        <Link href="/onboarding" style={{ fontWeight: 600 }}>
+  return (
+    <main className="page stack">
+      <AutoRefresh active={hasActive} />
+
+      <header className="row">
+        <div>
+          <p className="brand">Sthamly</p>
+          <h1>आपके आउटपुट</h1>
+        </div>
+        <Link href="/onboarding" className="btn btn-primary">
           नया पोस्टर
         </Link>
-      </div>
+      </header>
 
       {rows.length === 0 && (
-        <p style={{ color: "var(--muted)" }}>
-          अभी कोई आउटपुट नहीं है। <Link href="/onboarding">पहला पोस्टर बनवाएं</Link>।
-        </p>
+        <Card>
+          <p className="muted">
+            अभी कोई आउटपुट नहीं है। <Link href="/onboarding">पहला पोस्टर बनवाएं</Link>।
+          </p>
+        </Card>
       )}
 
       {rows.map(({ job, outputs }) => (
         <Card key={job.id}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-            <strong>{STATUS_LABEL[job.status]}</strong>
-            <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-              {formatDate(job.created_at)}
-            </span>
+          <div className="row">
+            <span className="job-status">{STATUS_LABEL[job.status]}</span>
+            <span className="job-date">{formatDate(job.created_at)}</span>
           </div>
 
           {job.status === "failed" && (
-            <p style={{ color: "#b91c1c", margin: "8px 0 0" }}>
+            <p className="alert alert-error" style={{ marginTop: 12 }}>
               इस बार बन नहीं पाया। आपका credit वापस कर दिया गया है।
             </p>
           )}
 
           {job.status !== "done" && job.status !== "failed" && (
-            <p style={{ color: "var(--muted)", margin: "8px 0 0" }}>
-              कुछ मिनट लग सकते हैं। पेज दोबारा खोलकर देखें।
+            <p className="muted" style={{ marginTop: 8 }}>
+              कुछ मिनट लग सकते हैं। यह पेज अपने-आप ताज़ा होगा।
             </p>
           )}
 
@@ -132,5 +135,3 @@ export default async function DashboardPage() {
     </main>
   );
 }
-
-const pageStyle = { maxWidth: 480, margin: "0 auto", padding: "24px 20px" };
