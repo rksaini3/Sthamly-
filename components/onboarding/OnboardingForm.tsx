@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { SHOP_CATEGORIES, type Language, type ShopCategory } from "@/types/domain";
 
@@ -24,9 +23,6 @@ const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
   { value: "bhojpuri", label: "भोजपुरी" },
   { value: "awadhi", label: "अवधी" },
 ];
-
-const inputStyle = { display: "block", width: "100%", padding: 10, fontSize: "1rem", marginTop: 4 };
-const labelStyle = { display: "block", marginBottom: 12, fontWeight: 600 };
 
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -197,158 +193,32 @@ export function OnboardingForm() {
   }
 
   return (
-    <div>
-      <p style={{ color: "var(--muted)", marginTop: 0 }}>चरण {step} / 3</p>
+    <div className="stack">
+      <div className="stack" style={{ gap: 8 }}>
+        <p className="muted">चरण {step} / 3</p>
+        <div className="progress" aria-hidden>
+          <div className="progress-bar" style={{ width: `${(step / 3) * 100}%` }} />
+        </div>
+      </div>
 
       {error && (
-        <Card>
-          <p role="alert" style={{ color: "#b91c1c", margin: 0 }}>
-            {error}
-          </p>
-        </Card>
+        <p role="alert" className="alert alert-error">
+          {error}
+        </p>
       )}
 
       {step === 1 && (
-        <form onSubmit={handleShopSubmit}>
-          <label style={labelStyle}>
+        <form className="card stack" onSubmit={handleShopSubmit}>
+          <label className="field">
             दुकान का नाम
             <input
+              className="input"
               value={shopName}
               onChange={(e) => setShopName(e.target.value)}
               required
               maxLength={80}
-              style={inputStyle}
             />
           </label>
 
-          <label style={labelStyle}>
+          <label className="field">
             दुकान का प्रकार
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as ShopCategory)}
-              style={inputStyle}
-            >
-              {SHOP_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={labelStyle}>
-            शहर
-            <input
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              required
-              maxLength={60}
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={labelStyle}>
-            WhatsApp नंबर (10 अंक)
-            <input
-              type="tel"
-              inputMode="numeric"
-              value={phoneInput}
-              onChange={(e) => setPhoneInput(e.target.value)}
-              required
-              placeholder="9876543210"
-              style={inputStyle}
-            />
-          </label>
-
-          <Button type="submit" disabled={busy}>
-            {busy ? "सेव हो रहा है…" : "आगे बढ़ें"}
-          </Button>
-        </form>
-      )}
-
-      {step === 2 && (
-        <div>
-          <p style={{ marginTop: 0 }}>
-            दुकान या प्रोडक्ट की 1 से 3 फोटो चुनें। पहली फोटो पोस्टर की बेस बनेगी।
-          </p>
-
-          <label style={labelStyle}>
-            फोटो चुनें ({photoPaths.length}/{MAX_PHOTOS})
-            <input
-              type="file"
-              accept="image/jpeg,image/png"
-              multiple
-              disabled={busy || photoPaths.length >= MAX_PHOTOS}
-              onChange={(e) => handlePhotoSelect(e.target.files)}
-              style={{ display: "block", marginTop: 8 }}
-            />
-          </label>
-
-          <Button
-            type="button"
-            disabled={busy || photoPaths.length === 0}
-            onClick={() => setStep(3)}
-          >
-            आगे बढ़ें
-          </Button>
-        </div>
-      )}
-
-      {step === 3 && (
-        <form onSubmit={handleOfferSubmit}>
-          <label style={labelStyle}>
-            ऑफर या रेट
-            <input
-              value={offerText}
-              onChange={(e) => setOfferText(e.target.value)}
-              required
-              minLength={3}
-              maxLength={300}
-              placeholder="जैसे: 1 किलो काजू कतली ₹600"
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={labelStyle}>
-            मौका (वैकल्पिक)
-            <input
-              value={occasion}
-              onChange={(e) => setOccasion(e.target.value)}
-              maxLength={60}
-              placeholder="जैसे: छठ, शादी सीज़न, सेल"
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={labelStyle}>
-            भाषा
-            <select
-              value={language}
-              onChange={(e) => setLanguage(e.target.value as Language)}
-              style={inputStyle}
-            >
-              {LANGUAGE_OPTIONS.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8 }}>
-            <input
-              type="checkbox"
-              checked={wantReel}
-              onChange={(e) => setWantReel(e.target.checked)}
-            />
-            रील भी बनवाएं (अभी प्रायोगिक, credit ज़्यादा लगता है)
-          </label>
-
-          <Button type="submit" disabled={busy}>
-            {busy ? "भेजा जा रहा है…" : "पोस्टर बनवाएं"}
-          </Button>
-        </form>
-      )}
-    </div>
-  );
-}
