@@ -433,12 +433,15 @@ export type Database = {
       };
 
       conversations: {
+              conversations: {
         Row: {
           phone: string;
           pending_photo_path: string | null;
           pending_photo_at: string | null;
-          pending_action: string | null; // migration 0009 (जैसे "erase")
+          pending_action: string | null; // migration 0009
           pending_action_at: string | null; // migration 0009
+          pending_offer: Json | null; // migration 0011
+          pending_offer_at: string | null; // migration 0011
           updated_at: string;
         };
         Insert: {
@@ -447,6 +450,8 @@ export type Database = {
           pending_photo_at?: string | null;
           pending_action?: string | null;
           pending_action_at?: string | null;
+          pending_offer?: Json | null;
+          pending_offer_at?: string | null;
           updated_at?: string;
         };
         Update: {
@@ -455,6 +460,8 @@ export type Database = {
           pending_photo_at?: string | null;
           pending_action?: string | null;
           pending_action_at?: string | null;
+          pending_offer?: Json | null;
+          pending_offer_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];
