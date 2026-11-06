@@ -353,3 +353,19 @@ img {
   font: inherit;
   white-space: pre-wrap;
 }
+/* ---- Legal पन्ने ---- */
+
+.alert-draft {
+  background: var(--accent-soft);
+  color: var(--ink-soft);
+  border: 1px solid var(--accent);
+}
+
+.legal-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--ink-soft);
+}
