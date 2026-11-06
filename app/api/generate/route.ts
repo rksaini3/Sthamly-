@@ -4,6 +4,7 @@ import { createJob } from "@/lib/jobs/create";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const bodySchema = z.object({
   shopId: z.string().uuid(),
@@ -19,6 +20,16 @@ function errorResponse(code: string, message: string, status: number, details?: 
 }
 
 export async function POST(req: NextRequest) {
+  // कोई भी अनचाही गड़बड़ हो, जवाब हमेशा JSON में जाए, खाली नहीं
+  try {
+    return await handleGenerate(req);
+  } catch (error) {
+    console.error("generate: unexpected error", error);
+    return errorResponse("INTERNAL", "सर्वर पर गड़बड़ हुई, थोड़ी देर बाद दोबारा कोशिश करें", 500);
+  }
+}
+
+async function handleGenerate(req: NextRequest) {
   // 1. Login जांच (server पर verify)
   const supabase = await createSupabaseServerClient();
   const {
