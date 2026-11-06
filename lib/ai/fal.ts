@@ -12,22 +12,18 @@ import type {
 // model ID, input/output का ढांचा और दाम Fal.ai की आधिकारिक
 // pricing और API docs से जांचकर ही बदलें।
 // verified: true करने से पहले कोई असली AI call न करें।
-//
-// स्थिति (Nov 2026):
-// - text: "openrouter/router" (Fal पर चालू बताया गया है)। Input: prompt, model; output: output।
-//         पहली असली call सफल हो तो verified: true करें।
-// - image: "fal-ai/flux/schnell" ID मिला है, output का ढांचा अभी जांचना है।
-// - "fal-ai/any-llm" deprecated है, इसे इस्तेमाल न करें।
+// Text model अभी unverified है: एक बार असली test call करें,
+// output में `output` फील्ड आ रही हो तो verified: true करें।
 // ============================================================
 
 const QUEUE_BASE = "https://queue.fal.run";
 
-// Caption के लिए कौन-सा model (openrouter के नाम के हिसाब से)। सस्ता और तेज़ रखा है।
+// Text के लिए OpenRouter router, और उसके ज़रिए Claude Haiku 5.5
 const TEXT_MODEL = "anthropic/claude-haiku-5.5";
 
-// लागत paise में। ये अनुमान हैं, असली दाम Fal के usage.cost से बाद में लिया जा सकता है।
+// लागत paise में। ये docs/MVP_BRIEF.md के अनुमान हैं (पोस्टर ₹0.15, रील ₹4.50, कैप्शन ₹0.05)।
 export const FAL_MODELS = {
-  image: { id: "fal-ai/flux/schnell", costPaise: 25, verified: false },
+  image: { id: "fal-ai/flux/schnell", costPaise: 15, verified: false },
   video: { id: "REPLACE/video-model", costPaise: 450, verified: false },
   text: { id: "openrouter/router", costPaise: 5, verified: false },
 } as const;
@@ -61,8 +57,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Submit का जवाब: status और result के URLs भी इसी में आते हैं
-interface SubmitResponse {
+// Fal queue submit का जवाब: status और result के URL यहीं से लें, खुद न बनाएं
+interface QueueSubmit {
   request_id: string;
   status_url: string;
   response_url: string;
@@ -70,8 +66,7 @@ interface SubmitResponse {
 
 /**
  * Fal queue: submit करें, status देखें, फिर result लें।
- * Status और result के URLs submit के जवाब से लिए जाते हैं (Fal docs के अनुसार),
- * खुद से नहीं बनाए जाते, क्योंकि कुछ models के path अलग होते हैं।
+ * लंबे काम (रील) के लिए queue ज़रूरी है, वरना request कट सकती है।
  */
 async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): Promise<T> {
   const headers = falHeaders();
@@ -84,7 +79,7 @@ async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): 
   if (!submit.ok) {
     throw new Error(`fal submit failed (${submit.status}): ${await submit.text()}`);
   }
-  const { status_url, response_url } = (await submit.json()) as SubmitResponse;
+  const queued = (await submit.json()) as QueueSubmit;
 
   const startedAt = Date.now();
   while (true) {
@@ -92,7 +87,7 @@ async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): 
       throw new Error(`fal timeout (${modelId}) after ${timeoutMs}ms`);
     }
 
-    const statusRes = await fetch(status_url, { headers });
+    const statusRes = await fetch(queued.status_url, { headers });
     if (!statusRes.ok) {
       throw new Error(`fal status failed (${statusRes.status})`);
     }
@@ -105,7 +100,7 @@ async function runModel<T>(modelId: string, input: unknown, timeoutMs: number): 
     await sleep(POLL_INTERVAL_MS);
   }
 
-  const resultRes = await fetch(response_url, { headers });
+  const resultRes = await fetch(queued.response_url, { headers });
   if (!resultRes.ok) {
     throw new Error(`fal result failed (${resultRes.status})`);
   }
@@ -161,14 +156,13 @@ export const falProvider: AIProvider = {
   async generateText(req: TextRequest): Promise<AIResult> {
     assertVerified(FAL_MODELS.text);
 
-    // सिर्फ docs में बताए fields भेज रहे हैं। max_tokens जैसे extra fields
-    // का असर पहली असली call में देखें, तभी उन्हें जोड़ें।
+    // maxTokens अभी भेजा नहीं जाता: router का इनपुट ढांचा test के बाद ही तय होगा
     const output = await runModel<FalOutput>(
       FAL_MODELS.text.id,
       { prompt: req.prompt, model: TEXT_MODEL },
       TIMEOUT_MS.text,
     );
-    const text = (output.output ?? output.text ?? "").trim();
+    const text = output.output ?? output.text;
     if (!text) {
       throw new Error("fal text: output खाली है");
     }
