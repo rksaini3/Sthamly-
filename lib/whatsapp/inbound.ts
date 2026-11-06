@@ -1,6 +1,9 @@
 import { getPublicEnv } from "@/lib/env";
+import { createJob } from "@/lib/jobs/create";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { setPendingPhoto, takePendingPhoto } from "@/lib/whatsapp/conversation";
 import { sendText } from "@/lib/whatsapp/client";
+import { saveWhatsAppPhoto, UnsupportedPhotoError } from "@/lib/whatsapp/photo";
 
 export interface InboundMessage {
   waMessageId: string;
@@ -48,6 +51,69 @@ function onboardingText(): string {
     "नमस्ते! Sthamly पर अपनी दुकान का पोस्टर और रील बनवाने के लिए यहां से शुरू करें:",
     `${appUrl}/onboarding`,
   ].join("\n");
+}
+
+// यूज़र की पहली दुकान (अभी एक ही दुकान का चलन है)
+async function primaryShopId(userId: string): Promise<string | null> {
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("shops")
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+// फोटो के बाद आया ऑफर: फोटो और ऑफर जोड़कर पोस्टर का job बनाना
+async function handleOffer(message: InboundMessage, userId: string): Promise<void> {
+  const phone = normalizePhone(message.from);
+  const appUrl = getPublicEnv().NEXT_PUBLIC_APP_URL;
+  const offerText = (message.text ?? "").trim();
+
+  if (offerText.length < 3 || offerText.length > 300) {
+    await sendText(message.from, "ऑफर 3 से 300 अक्षरों में लिखें, जैसे: 1 किलो काजू कतली ₹600");
+    return;
+  }
+
+  const shopId = await primaryShopId(userId);
+  if (!shopId) {
+    await sendText(message.from, `पहले दुकान बनाएं: ${appUrl}/onboarding`);
+    return;
+  }
+
+  const photoPath = await takePendingPhoto(phone);
+  if (!photoPath) {
+    await sendText(message.from, "पहले दुकान की फोटो भेजें, फिर ऑफर लिखें।");
+    return;
+  }
+
+  const result = await createJob({
+    userId,
+    shopId,
+    offerText,
+    photoPaths: [photoPath],
+    language: "hinglish",
+    wantReel: false,
+  });
+
+  if (!result.ok) {
+    if (result.code === "QUOTA_EXCEEDED") {
+      // फोटो वापस रख दें, ताकि कोटा बढ़ने के बाद उसी फोटो से दोबारा भेज सकें
+      await setPendingPhoto(phone, photoPath);
+      await sendText(
+        message.from,
+        `इस महीने का पोस्टर कोटा खत्म हो गया है। प्लान देखें: ${appUrl}/pricing`,
+      );
+      return;
+    }
+    await sendText(message.from, "पोस्टर शुरू नहीं हो पाया। थोड़ी देर बाद फिर से ऑफर भेजें।");
+    return;
+  }
+
+  await sendText(message.from, "ठीक है, पोस्टर बन रहा है। कुछ मिनट में यहीं भेज देंगे।");
 }
 
 /**
@@ -102,7 +168,10 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
       .is("revoked_at", null);
     if (error) throw error;
 
-    await sendText(message.from, "ठीक है, अब से हम संदेश नहीं भेजेंगे। वापस जुड़ना हो तो 'मदद' लिखें।");
+    await sendText(
+      message.from,
+      "ठीक है, अब से हम संदेश नहीं भेजेंगे। वापस जुड़ना हो तो 'मदद' लिखें।",
+    );
     return;
   }
 
@@ -115,8 +184,22 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
     return;
   }
 
-  // 5. सामान्य संदेश (अभी सिर्फ पहचान और पुष्टि; पोस्टर बनाना अगली फाइल में)
-  if (message.type === "image") {
+  // 5. फोटो: सहेजें और ऑफर का इंतज़ार करें
+  if (message.type === "image" && message.imageId) {
+    try {
+      const photoPath = await saveWhatsAppPhoto(profile.id, message.imageId);
+      await setPendingPhoto(phone, photoPath);
+    } catch (err) {
+      if (err instanceof UnsupportedPhotoError) {
+        await sendText(message.from, "फोटो JPG या PNG में भेजें, please।");
+        return;
+      }
+      // बाकी गलतियां (download, storage) लॉग में जाएं और यूज़र को सादा संदेश मिले
+      console.error("inbound: photo save failed", err);
+      await sendText(message.from, "फोटो सेव नहीं हो पाई। थोड़ी देर बाद दोबारा भेजें।");
+      return;
+    }
+
     await sendText(
       message.from,
       "फोटो मिल गई। अब ऑफर लिखकर भेजें, जैसे: 1 किलो काजू कतली ₹600",
@@ -124,14 +207,12 @@ export async function handleInboundMessage(message: InboundMessage): Promise<voi
     return;
   }
 
+  // 6. ऑफर: फोटो के साथ जोड़कर पोस्टर का job बनाएं
   if (message.type === "text" && message.text) {
-    await sendText(
-      message.from,
-      "ऑफर नोट कर लिया है। पोस्टर बनाने की सुविधा अभी तैयार हो रही है।",
-    );
+    await handleOffer(message, profile.id);
     return;
   }
 
-  // 6. बाकी प्रकार (audio, sticker आदि): मदद दिखाएं, चुप न रहें
+  // 7. बाकी प्रकार (audio, sticker आदि): मदद दिखाएं, चुप न रहें
   await sendText(message.from, HELP_TEXT);
 }
