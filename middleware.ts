@@ -44,8 +44,8 @@ export async function middleware(request: NextRequest) {
 
   if (isProtected(request.nextUrl.pathname) && !user) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/";
-    loginUrl.search = "";
+    loginUrl.pathname = "/login";
+    loginUrl.search = `?next=${encodeURIComponent(request.nextUrl.pathname)}`;
     return NextResponse.redirect(loginUrl);
   }
 
@@ -53,6 +53,8 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // स्टैटिक फाइलें और Next.js के internal रास्ते छोड़कर बाकी पर चलेगा
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|robots.txt|icons/|fonts/|api/).*)"],
+  // स्टैटिक फाइलें, PWA की फाइलें और Next.js के internal रास्ते छोड़कर बाकी पर चलेगा
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|robots.txt|icons/|fonts/|api/).*)",
+  ],
 };
