@@ -2,6 +2,7 @@ import type { ShopCategory } from "@/types/domain";
 
 // Supabase schema के TypeScript types (migrations 0001–0009 से मेल खाते हुए)
 // अगर remote schema बदले, तो `npx supabase gen types typescript ...` से फिर से generate करें।
+
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
@@ -462,18 +463,18 @@ export type Database = {
       deletion_log: {
         Row: {
           id: number;
-          phone: string; // सिर्फ phone और समय, कोई और निजी डेटा नहीं (migration 0009)
-          deleted_at: string;
+          from_phone: string; // सिर्फ phone और समय, कोई और निजी डेटा नहीं (migration 0009)
+          completed_at: string;
         };
         Insert: {
           id?: number;
-          phone: string;
-          deleted_at?: string;
+          from_phone: string;
+          completed_at?: string;
         };
         Update: {
           id?: number;
-          phone?: string;
-          deleted_at?: string;
+          from_phone?: string;
+          completed_at?: string;
         };
         Relationships: [];
       };
