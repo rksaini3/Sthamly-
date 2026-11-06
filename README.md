@@ -1,40 +1,59 @@
 # Sthamly
 
-छोटे शहर के दुकानदारों के लिए WhatsApp-first AI ad assistant।
-दुकानदार दुकान की फोटो और ऑफर भेजता है, और उसे पोस्टर (1:1), हिंग्लिश कैप्शन मिलते हैं। रील (9:16) अगले चरण में जुड़ेगी।
+दुकानदारों के लिए WhatsApp-first AI सेवा। दुकान की फोटो और ऑफर भेजें, पोस्टर और हिंग्लिश कैप्शन पाएं।
 
-> **Status:** Pilot की तैयारी। Login, WhatsApp flow, credit, poster render, dashboard, PWA और डेटा हटाने का रास्ता लिखा जा चुका है। अभी बाकी: AI caption provider, पहली बार typecheck और build, और end-to-end टेस्ट। पूरा प्लान `docs/MVP_BRIEF.md` में है।
+## स्टैक
 
-## Stack
+- Next.js 15 (App Router), TypeScript, PWA
+- Supabase: Postgres, Auth, Storage (RLS के साथ)
+- WhatsApp Cloud API (Meta)
+- Gemini (caption), satori और resvg (पोस्टर)
+- Vercel (hosting और cron)
 
-- **Next.js 15 (App Router) + TypeScript (strict)**, Vercel पर deploy
-- **Supabase:** Postgres, Auth (ईमेल magic link), Storage (RLS के साथ)
-- **WhatsApp Cloud API** (Meta) for messaging
-- **AI:** provider adapter (`lib/ai/`). Caption के लिए provider अभी तय होना है।
-- **Poster:** satori + resvg (हिंदी font से)
-- **Validation:** zod
-- **PWA:** manifest और service worker, Home screen पर install हो सकता है
-- **Billing (Phase 2):** Razorpay (UPI AutoPay)
-
-## फोल्डर
-
-| Path | क्या है |
-|---|---|
-| `app/` | Pages और API routes (`app/api/...`) |
-| `components/` | React components (`ui/`, `nav/`, `onboarding/`, `dashboard/`, `pricing/`, `legal/`, `pwa/`) |
-| `lib/` | Server और shared logic: env, supabase, whatsapp, ai, render, quota, prompts, jobs, account |
-| `types/` | Domain types, WhatsApp payload types, Supabase DB types |
-| `supabase/migrations/` | Postgres schema, RLS और storage |
-| `public/` | Static files, icons, manifest, service worker |
-| `scripts/` | Local test और seed scripts (TypeScript, `tsx` से चलते हैं) |
-| `docs/` | प्लान, architecture, file tree, compliance, metrics, pilot log |
-
-पूरी फाइल सूची: `docs/FILE_TREE.md`।
-
-## शुरू कैसे करें
+## शुरू करें
 
 ```bash
-cp .env.example .env.local     # keys भरें
+nvm use            # .nvmrc के हिसाब से Node
 npm install
-npm run typecheck              # TypeScript जांच
-npm run dev                    # http://localhost:3000
+cp .env.example .env.local   # फिर उसमें अपनी keys भरें
+npm run dev
+```
+
+## Database
+
+Supabase SQL Editor में `supabase/migrations/` की फाइलें क्रम से चलाएं (0001 से 0009 तक)।
+Schema बदलने के बाद:
+
+```bash
+npm run db:types   # types/database.ts बनाता है
+```
+
+## स्क्रिप्ट
+
+| कमांड | काम |
+|---|---|
+| `npm run dev` | लोकल सर्वर |
+| `npm run build` | production build |
+| `npm run typecheck` | TypeScript जांच |
+| `npm run lint` | ESLint |
+| `npm run format` / `format:check` | Prettier |
+| `npm run test:webhook` | WhatsApp webhook का लोकल टेस्ट |
+
+## Deploy (Vercel)
+
+1. GitHub पर repo बनाएं, फिर Vercel में Import करें।
+2. `.env.example` की सारी keys Vercel के Environment Variables में डालें।
+3. `NEXT_PUBLIC_APP_URL` को production domain पर रखें।
+4. Supabase में Site URL और Redirect URLs में production `/auth/callback` जोड़ें।
+5. WhatsApp webhook का URL production domain पर बदलें।
+
+## सुरक्षा
+
+- `SUPABASE_SERVICE_ROLE_KEY`, `WHATSAPP_ACCESS_TOKEN`, `CRON_SECRET`, `GEMINI_API_KEY` सिर्फ server पर रहते हैं।
+- `NEXT_PUBLIC_` वाले variables में कोई secret न रखें।
+- Privacy और Terms के पन्ने draft हैं, launch से पहले वकील की समीक्षा ज़रूरी है।
+
+## स्थिति
+
+- Phase 1 (pilot): पोस्टर, कैप्शन, login, credit, WhatsApp flow, डेटा हटाना।
+- अभी बाकी: Gemini और WhatsApp का असली टेस्ट, Razorpay (Phase 2), रील।
