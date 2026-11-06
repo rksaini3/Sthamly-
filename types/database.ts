@@ -1,9 +1,7 @@
 import type { ShopCategory } from "@/types/domain";
+
 // Supabase schema के TypeScript types (migrations 0001–0009 से मेल खाते हुए)
 // अगर remote schema बदले, तो `npx supabase gen types typescript ...` से फिर से generate करें।
-
-import type { ShopCategory } from "@/types/domain";
-
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
