@@ -267,3 +267,89 @@ img {
   font-size: 0.85rem;
   white-space: nowrap;
 }
+/* ---- Onboarding, pricing और output ---- */
+
+.progress {
+  height: 6px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.check input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.file-input {
+  width: 100%;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+}
+
+.photo-count {
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.plan-price {
+  font-size: 1.7rem;
+  font-weight: 700;
+}
+
+.plan-price small {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.plan-featured {
+  border-color: var(--accent);
+}
+
+.output {
+  margin-top: 14px;
+}
+
+.output-label {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.poster-img {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+.caption-box {
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  white-space: pre-wrap;
+}
