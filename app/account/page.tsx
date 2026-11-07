@@ -1,38 +1,21 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AccountActions } from "@/components/account/AccountActions";
-import { getActivePlan, PLAN_LIMITS } from "@/lib/quota";
+import { AccountMenu } from "@/components/account/AccountMenu";
+import { currentPeriodStart, getActivePlan, PLAN_LIMITS } from "@/lib/quota";
 import { isRole, ROLE_INFO } from "@/lib/roles";
+import { DICT, LANG_COOKIE, parseLang } from "@/lib/i18n";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { Plan } from "@/types/domain";
 
 export const dynamic = "force-dynamic";
 
-const PLAN_LABEL: Record<Plan, string> = {
-  free: "मुफ़्त",
-  vip: "वीआईपी पास",
-};
-
-const box: React.CSSProperties = {
-  background: "#1b1b1b",
-  border: "1px solid #2a2a2a",
-  borderRadius: 16,
-  padding: 16,
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-};
-
-// इस महीने की शुरुआत (IST) का ISO समय
-function currentPeriodStart(): string {
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-  const istNow = new Date(Date.now() + IST_OFFSET_MS);
-  const startIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
-  return new Date(startIst - IST_OFFSET_MS).toISOString();
-}
-
 export default async function AccountPage() {
+  const cookieStore = await cookies();
+  const lang = parseLang(cookieStore.get(LANG_COOKIE)?.value);
+  const dict = DICT[lang];
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -64,49 +47,45 @@ export default async function AccountPage() {
   const reelUsed = reelRes.data ?? 0;
 
   return (
-    <main
-      style={{
-        minHeight: "100dvh",
-        padding: "24px 16px 32px",
-        background: "#0f0f0f",
-        color: "#f5f5f5",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-        boxSizing: "border-box",
-      }}
-    >
-      <p style={{ margin: 0, color: "#e8581c", fontWeight: 700, fontSize: 18 }}>Sthamly</p>
-      <h1 style={{ margin: "4px 0 8px", fontSize: 32, fontWeight: 700 }}>खाता</h1>
+    <main className="page stack">
+      <header className="row">
+        <div className="stack" style={{ gap: 4 }}>
+          <span className="brand">Sthamly</span>
+          <h1>{dict.title}</h1>
+        </div>
+        <AccountMenu dict={dict} lang={lang}>
+          <AccountActions dict={dict} />
+        </AccountMenu>
+      </header>
 
-      <div style={box}>
+      <section className="card stack" style={{ gap: 6 }}>
         <strong style={{ wordBreak: "break-all" }}>{user.email}</strong>
-        <span style={{ color: "#a3a3a3" }}>{PLAN_LABEL[plan]} प्लान</span>
-      </div>
+        <span className="muted">
+          {dict.plan}: {plan === "vip" ? dict.planVip : dict.planFree}
+        </span>
+      </section>
 
-      <div style={box}>
-        <strong>इस महीने का उपयोग</strong>
-        <span>पोस्टर: {posterUsed} / {limits.poster}</span>
-        <span>रील: {reelUsed} / {limits.reel}</span>
+      <section className="card stack" style={{ gap: 6 }}>
+        <strong>{dict.usage}</strong>
+        <span>
+          {dict.posters}: {posterUsed} / {limits.poster}
+        </span>
+        <span>
+          {dict.reels}: {reelUsed} / {limits.reel}
+        </span>
         {plan === "free" && (
-          <span style={{ color: "#a3a3a3", fontSize: 14 }}>
-            वीआईपी पास का भुगतान जल्द शुरू होगा।{" "}
-            <Link href="/pricing" style={{ color: "#e8581c" }}>प्लान देखें</Link>
+          <span className="muted">
+            {dict.paidSoon} <Link href="/pricing">{dict.seePlans}</Link>
           </span>
         )}
-      </div>
+      </section>
 
-      <div style={{ ...box, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-        <strong>भूमिका: {ROLE_INFO[role].label}</strong>
-        <Link href="/role" style={{ color: "#e8581c" }}>बदलें</Link>
-      </div>
-
-      <AccountActions />
-
-      <p style={{ margin: "12px 0 0", color: "#a3a3a3", fontSize: 13, textAlign: "center" }}>
-        <Link href="/privacy" style={{ color: "#a3a3a3" }}>गोपनीयता नीति</Link> ·{" "}
-        <Link href="/terms" style={{ color: "#a3a3a3" }}>शर्तें</Link>
-      </p>
+      <section className="card row">
+        <span>
+          <strong>{dict.role}:</strong> {ROLE_INFO[role].label}
+        </span>
+        <Link href="/role">{dict.changeRole}</Link>
+      </section>
     </main>
   );
 }
