@@ -397,23 +397,23 @@ export type Database = {
         Relationships: [];
       };
 
-      deletion_log: {
+            deletion_log: {
         Row: {
           id: string;
-          user_id: string;
-          phone_hash: string;
+          from_phone: string;
+          completed_at: string;
           created_at: string;
         };
         Insert: {
           id?: string;
-          user_id: string;
-          phone_hash: string;
+          from_phone: string;
+          completed_at?: string;
           created_at?: string;
         };
         Update: {
           id?: string;
-          user_id?: string;
-          phone_hash?: string;
+          from_phone?: string;
+          completed_at?: string;
           created_at?: string;
         };
         Relationships: [];
