@@ -46,7 +46,7 @@ export type Database = {
         Relationships: [];
       };
 
-            conversations: {
+      conversations: {
         Row: {
           id: string;
           user_id: string | null;
@@ -55,6 +55,10 @@ export type Database = {
           context: Json | null;
           pending_photo_path: string | null;
           pending_photo_at: string | null;
+          pending_offer: Json | null;
+          pending_offer_at: string | null;
+          pending_action: string | null;
+          pending_action_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -66,6 +70,10 @@ export type Database = {
           context?: Json | null;
           pending_photo_path?: string | null;
           pending_photo_at?: string | null;
+          pending_offer?: Json | null;
+          pending_offer_at?: string | null;
+          pending_action?: string | null;
+          pending_action_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -77,6 +85,10 @@ export type Database = {
           context?: Json | null;
           pending_photo_path?: string | null;
           pending_photo_at?: string | null;
+          pending_offer?: Json | null;
+          pending_offer_at?: string | null;
+          pending_action?: string | null;
+          pending_action_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -147,6 +159,9 @@ export type Database = {
           input: Json;
           attempts: number;
           error: string | null;
+          cost_paise: number | null;
+          started_at: string | null;
+          finished_at: string | null;
           created_at: string;
           updated_at: string | null;
         };
@@ -157,6 +172,9 @@ export type Database = {
           input?: Json;
           attempts?: number;
           error?: string | null;
+          cost_paise?: number | null;
+          started_at?: string | null;
+          finished_at?: string | null;
           created_at?: string;
           updated_at?: string | null;
         };
@@ -167,6 +185,9 @@ export type Database = {
           input?: Json;
           attempts?: number;
           error?: string | null;
+          cost_paise?: number | null;
+          started_at?: string | null;
+          finished_at?: string | null;
           created_at?: string;
           updated_at?: string | null;
         };
@@ -183,6 +204,7 @@ export type Database = {
           watermarked: boolean;
           published: boolean;
           published_at: string | null;
+          meta: Json | null;
           created_at: string;
         };
         Insert: {
@@ -194,6 +216,7 @@ export type Database = {
           watermarked?: boolean;
           published?: boolean;
           published_at?: string | null;
+          meta?: Json | null;
           created_at?: string;
         };
         Update: {
@@ -205,6 +228,7 @@ export type Database = {
           watermarked?: boolean;
           published?: boolean;
           published_at?: string | null;
+          meta?: Json | null;
           created_at?: string;
         };
         Relationships: [];
@@ -362,18 +386,21 @@ export type Database = {
       processed_messages: {
         Row: {
           id: string;
-          message_id: string;
-          created_at: string;
+          wa_message_id: string;
+          from_phone: string;
+          processed_at: string;
         };
         Insert: {
           id?: string;
-          message_id: string;
-          created_at?: string;
+          wa_message_id: string;
+          from_phone: string;
+          processed_at?: string;
         };
         Update: {
           id?: string;
-          message_id?: string;
-          created_at?: string;
+          wa_message_id?: string;
+          from_phone?: string;
+          processed_at?: string;
         };
         Relationships: [];
       };
@@ -382,22 +409,22 @@ export type Database = {
         Row: {
           id: string;
           user_id: string;
-          kind: string;
-          granted: boolean;
+          purpose: string;
+          revoked_at: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
-          kind: string;
-          granted: boolean;
+          purpose: string;
+          revoked_at?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
           user_id?: string;
-          kind?: string;
-          granted?: boolean;
+          purpose?: string;
+          revoked_at?: string | null;
           created_at?: string;
         };
         Relationships: [];
