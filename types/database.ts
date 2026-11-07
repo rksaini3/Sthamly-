@@ -9,11 +9,13 @@ export type Database = {
   public: {
     Tables: {
       profiles: {
+              profiles: {
         Row: {
           id: string;
           phone: string | null;
           city: string | null;
           language_pref: string;
+          role: string | null;
           created_at: string;
         };
         Insert: {
@@ -21,6 +23,7 @@ export type Database = {
           phone?: string | null;
           city?: string | null;
           language_pref?: string;
+          role?: string | null;
           created_at?: string;
         };
         Update: {
@@ -28,11 +31,11 @@ export type Database = {
           phone?: string | null;
           city?: string | null;
           language_pref?: string;
+          role?: string | null;
           created_at?: string;
         };
         Relationships: [];
       };
-
       shops: {
         Row: {
           id: string;
