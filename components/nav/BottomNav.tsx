@@ -84,11 +84,10 @@ export function BottomNav() {
 
   return (
     <>
-      {/* नीचे का बार सामग्री को न ढके, इसलिए जगह छोड़ी जाती है */}
       <div className={styles.spacer} aria-hidden />
 
       {showMic && (
-        <Link href="/voice" className={styles.fab} aria-label="बोलकर या लिखकर ऑफ़र डालें">
+        <Link href="/voice" className={styles.fab} aria-label="बोलकर पोस्टर बनाएं">
           <MicIcon />
         </Link>
       )}
