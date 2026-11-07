@@ -76,7 +76,7 @@ function TabLink({
 export function BottomNav() {
   const pathname = usePathname();
 
-  const visible = VISIBLE_ON.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const visible = VISIBLE_ON.some((p) => isActive(pathname, p));
   if (!visible) return null;
 
   // /voice पन्ने पर माइक बटन की ज़रूरत नहीं
@@ -88,7 +88,7 @@ export function BottomNav() {
       <div className={styles.spacer} aria-hidden />
 
       {showMic && (
-        <Link href="/voice" className={styles.fab} aria-label="बोलकर या लिखकर ऑफर डालें">
+        <Link href="/voice" className={styles.fab} aria-label="बोलकर या लिखकर ऑफ़र डालें">
           <MicIcon />
         </Link>
       )}
