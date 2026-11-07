@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AnnouncementComposer } from "@/components/feed/AnnouncementComposer";
 import { CommentsSection, type FeedComment } from "@/components/feed/CommentsSection";
+import { FeedHeader } from "@/components/feed/FeedHeader";
 import { ReportButton } from "@/components/feed/ReportButton";
 import { ShareText } from "@/components/feed/ShareText";
 import { formatDate } from "@/lib/format";
@@ -20,6 +21,11 @@ export default async function OutputFeedPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle()
+    : { data: null };
+  const initial = (profile?.full_name?.trim().charAt(0) || "S").toUpperCase();
 
   const { data: annData, error: annError } = await supabase
     .from("announcements")
@@ -47,39 +53,39 @@ export default async function OutputFeedPage() {
   }
 
   return (
-    <main className="page stack">
-      <span className="brand">Sthamly</span>
-      <h1 style={{ margin: 0 }}>आउटपुट</h1>
-      <p className="muted" style={{ margin: 0 }}>सभी दुकानों की घोषणाएं यहां दिखती हैं।</p>
+    <>
+      <FeedHeader initial={initial} loggedIn={Boolean(user)} />
 
-      <AnnouncementComposer loggedIn={Boolean(user)} />
+      <main className="page stack">
+        <AnnouncementComposer loggedIn={Boolean(user)} />
 
-      {announcements.length === 0 && (
-        <div className="card">
-          <p className="muted" style={{ margin: 0 }}>अभी कोई घोषणा नहीं है।</p>
-        </div>
-      )}
-
-      {announcements.map((a) => (
-        <article key={a.id} className="card stack" style={{ gap: 10 }}>
-          <div className="row">
-            <strong>{a.shop_name}</strong>
-            <span className="job-date">{formatDate(a.created_at)}</span>
+        {announcements.length === 0 && (
+          <div className="card">
+            <p className="muted" style={{ margin: 0 }}>अभी कोई घोषणा नहीं है।</p>
           </div>
-          <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{a.body}</p>
-          <ShareText text={`📢 ${a.shop_name}\n${a.body}`} />
-          <CommentsSection
-            announcementId={a.id}
-            comments={commentsByAnnouncement.get(a.id) ?? []}
-            loggedIn={Boolean(user)}
-          />
-          <ReportButton id={a.id} kind="announcement" />
-        </article>
-      ))}
+        )}
 
-      <p className="muted footer">
-        <Link href="/my-posters">मेरे पोस्टर देखें</Link>
-      </p>
-    </main>
+        {announcements.map((a) => (
+          <article key={a.id} className="card stack" style={{ gap: 10 }}>
+            <div className="row">
+              <strong>{a.shop_name}</strong>
+              <span className="job-date">{formatDate(a.created_at)}</span>
+            </div>
+            <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{a.body}</p>
+            <ShareText text={`📢 ${a.shop_name}\n${a.body}`} />
+            <CommentsSection
+              announcementId={a.id}
+              comments={commentsByAnnouncement.get(a.id) ?? []}
+              loggedIn={Boolean(user)}
+            />
+            <ReportButton id={a.id} kind="announcement" />
+          </article>
+        ))}
+
+        <p className="muted footer">
+          <Link href="/my-posters">मेरे पोस्ट देखें</Link>
+        </p>
+      </main>
+    </>
   );
 }
