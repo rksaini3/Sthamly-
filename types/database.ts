@@ -135,6 +135,8 @@ export type Database = {
           id: string;
           shop_id: string;
           status: "queued" | "running" | "done" | "failed";
+          input: Json;
+          attempts: number;
           error: string | null;
           created_at: string;
           updated_at: string | null;
@@ -143,6 +145,8 @@ export type Database = {
           id?: string;
           shop_id: string;
           status?: "queued" | "running" | "done" | "failed";
+          input?: Json;
+          attempts?: number;
           error?: string | null;
           created_at?: string;
           updated_at?: string | null;
@@ -151,6 +155,8 @@ export type Database = {
           id?: string;
           shop_id?: string;
           status?: "queued" | "running" | "done" | "failed";
+          input?: Json;
+          attempts?: number;
           error?: string | null;
           created_at?: string;
           updated_at?: string | null;
