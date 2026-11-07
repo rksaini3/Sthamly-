@@ -6,28 +6,35 @@ import type { ReactNode } from "react";
 import styles from "@/components/nav/BottomNav.module.css";
 
 // बार और माइक बटन सिर्फ इन्हीं पन्नों पर दिखेंगे
-const VISIBLE_ON = ["/dashboard", "/onboarding", "/account", "/pricing", "/voice"] as const;
+const VISIBLE_ON = [
+  "/feed",
+  "/onboarding",
+  "/my-posters",
+  "/announce",
+  "/account",
+  "/pricing",
+  "/voice",
+] as const;
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function GridIcon() {
+function OutputIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M4 5h16M4 10h16M4 15h10M4 20h7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PostIcon() {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <rect x="3" y="3" width="7" height="7" rx="2" />
       <rect x="14" y="3" width="7" height="7" rx="2" />
       <rect x="3" y="14" width="7" height="7" rx="2" />
       <rect x="14" y="14" width="7" height="7" rx="2" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-      <rect x="3" y="3" width="18" height="18" rx="4" />
-      <path d="M12 8v8M8 12h8" />
     </svg>
   );
 }
@@ -93,8 +100,8 @@ export function BottomNav() {
       )}
 
       <nav className={styles.nav} aria-label="मुख्य मेनू">
-        <TabLink href="/dashboard" label="आउटपुट" active={isActive(pathname, "/dashboard")} icon={<GridIcon />} />
-        <TabLink href="/onboarding" label="पोस्ट" active={isActive(pathname, "/onboarding")} icon={<PlusIcon />} />
+        <TabLink href="/feed" label="आउटपुट" active={isActive(pathname, "/feed")} icon={<OutputIcon />} />
+        <TabLink href="/my-posters" label="पोस्ट" active={isActive(pathname, "/my-posters")} icon={<PostIcon />} />
         <TabLink href="/account" label="खाता" active={isActive(pathname, "/account")} icon={<UserIcon />} />
       </nav>
     </>
