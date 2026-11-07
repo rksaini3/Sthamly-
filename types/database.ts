@@ -77,13 +77,14 @@ export type Database = {
         Relationships: [];
       };
 
-            shops: {
+      shops: {
         Row: {
           id: string;
           user_id: string;
           name: string;
           category: "sweets" | "salon" | "coaching_clinic";
           city: string;
+          phone: string | null;
           created_at: string;
         };
         Insert: {
@@ -92,6 +93,7 @@ export type Database = {
           name: string;
           category?: "sweets" | "salon" | "coaching_clinic";
           city: string;
+          phone?: string | null;
           created_at?: string;
         };
         Update: {
@@ -100,6 +102,7 @@ export type Database = {
           name?: string;
           category?: "sweets" | "salon" | "coaching_clinic";
           city?: string;
+          phone?: string | null;
           created_at?: string;
         };
         Relationships: [];
