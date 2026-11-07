@@ -9,7 +9,8 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export const OUTPUT_TYPES = ["reel", "poster", "caption"] as const;
 export type OutputType = (typeof OUTPUT_TYPES)[number];
 
-export const PLANS = ["free", "starter", "growth", "shop_pro"] as const;
+// मुफ़्त और वीआईपी पास। बाद में top-up credit अलग से जुड़ेगा।
+export const PLANS = ["free", "vip"] as const;
 export type Plan = (typeof PLANS)[number];
 
 export type Language = "hinglish" | "hindi" | "bhojpuri" | "awadhi";
