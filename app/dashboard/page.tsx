@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { OutputCard } from "@/components/dashboard/OutputCard";
+import { ComingSoon } from "@/components/roles/ComingSoon";
 import { formatDate } from "@/lib/format";
+import { isRole } from "@/lib/roles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { JobStatus, OutputType } from "@/types/domain";
 
@@ -38,6 +40,25 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/dashboard");
+
+  // भूमिका: न चुनी हो तो पहले चुनवाएं
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .maybeSingle();
+  const role = profile?.role;
+  if (!isRole(role)) redirect("/role");
+
+  // दुकानदार के अलावा बाकी भूमिकाएं अभी "जल्द आएगा" दिखाती हैं
+  if (role !== "shopkeeper") {
+    return (
+      <main className="page stack">
+        <h1 style={{ margin: 0 }}>आपका होम</h1>
+        <ComingSoon role={role} />
+      </main>
+    );
+  }
 
   // RLS की वजह से सिर्फ इसी यूज़र की दुकानों के jobs आएंगे
   const { data, error } = await supabase
