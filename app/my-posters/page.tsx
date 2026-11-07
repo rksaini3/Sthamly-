@@ -7,10 +7,17 @@ import { PublishToggle } from "@/components/my-posters/PublishToggle";
 import { ComingSoon } from "@/components/roles/ComingSoon";
 import { formatDate } from "@/lib/format";
 import { isRole } from "@/lib/roles";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { JobStatus, OutputType } from "@/types/domain";
 
 export const dynamic = "force-dynamic";
+
+// मुफ़्त और VIP की महीने की सीमा (lib/quota.ts से मेल खाती है)
+const LIMITS = {
+  free: { poster: 5, reel: 1 },
+  vip: { poster: 60, reel: 10 },
+} as const;
 
 const STATUS_LABEL: Record<JobStatus, string> = {
   queued: "कतार में",
@@ -36,6 +43,31 @@ interface JobRow {
   outputs: OutputRow[];
 }
 
+// भारत के समय (IST) के हिसाब से इस महीने की शुरुआत
+function monthStartIST(): string {
+  const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+  const startUTC =
+    Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1) - 5.5 * 60 * 60 * 1000;
+  return new Date(startUTC).toISOString();
+}
+
+function ChoiceLink({
+  href,
+  title,
+  desc,
+}: {
+  href: string;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <Link href={href} className="card stack" style={{ gap: 4, textDecoration: "none" }}>
+      <strong>{title}</strong>
+      <span className="muted" style={{ fontSize: "0.9rem" }}>{desc}</span>
+    </Link>
+  );
+}
+
 export default async function PostsPage() {
   const supabase = await createSupabaseServerClient();
   const {
@@ -45,9 +77,10 @@ export default async function PostsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, plan")
     .eq("id", user.id)
     .maybeSingle();
+
   const role = profile?.role;
   if (!isRole(role)) redirect("/role");
 
@@ -60,6 +93,18 @@ export default async function PostsPage() {
     );
   }
 
+  const plan: "free" | "vip" = profile?.plan === "vip" ? "vip" : "free";
+
+  // इस महीने कितना इस्तेमाल हुआ
+  const admin = createSupabaseAdminClient();
+  const since = monthStartIST();
+  const [posterUsed, reelUsed] = await Promise.all([
+    admin.rpc("credit_used", { p_user: user.id, p_kind: "poster", p_since: since }),
+    admin.rpc("credit_used", { p_user: user.id, p_kind: "reel", p_since: since }),
+  ]);
+  const posterLeft = Math.max(0, LIMITS[plan].poster - Number(posterUsed.data ?? 0));
+  const reelLeft = Math.max(0, LIMITS[plan].reel - Number(reelUsed.data ?? 0));
+
   const { data, error } = await supabase
     .from("jobs")
     .select("id, status, error, created_at, outputs(id, type, storage_path, content, watermarked, published)")
@@ -68,15 +113,9 @@ export default async function PostsPage() {
 
   if (error) {
     console.error("posts: jobs read failed", error);
-    return (
-      <main className="page stack">
-        <h1 style={{ margin: 0 }}>पोस्ट</h1>
-        <p className="alert alert-error">डेटा नहीं मिल पाया। पेज दोबारा खोलें।</p>
-      </main>
-    );
   }
 
-  const jobs = (data ?? []) as unknown as JobRow[];
+  const jobs = (error ? [] : (data ?? [])) as unknown as JobRow[];
 
   const rows = await Promise.all(
     jobs.map(async (job) => {
@@ -109,25 +148,61 @@ export default async function PostsPage() {
     <main className="page stack">
       <AutoRefresh active={hasActive} />
 
-      <div className="row">
-        <h1 style={{ margin: 0 }}>पोस्ट</h1>
-        <Link href="/onboarding" className="btn btn-primary">
-          नया पोस्टर
-        </Link>
+      <h1 style={{ margin: 0 }}>पोस्ट</h1>
+
+      {/* बनाने के विकल्प */}
+      <div className="stack" style={{ gap: 10 }}>
+        <ChoiceLink
+          href="/onboarding?kind=poster"
+          title="पोस्टर (फ़ोटो)"
+          desc="दुकान की फ़ोटो और ऑफ़र से पोस्टर और कैप्शन"
+        />
+        <ChoiceLink
+          href="/onboarding?kind=reel"
+          title="रील (वीडियो)"
+          desc="छोटी वीडियो रील बनाएं"
+        />
+        <ChoiceLink
+          href="/feed"
+          title="घोषणा (सिर्फ़ टेक्स्ट)"
+          desc="बिना फ़ोटो और वीडियो के घोषणा करें"
+        />
       </div>
-      <p className="muted" style={{ margin: 0 }}>
-        आपके सभी बने पोस्टर और रील यहां हैं।
-      </p>
+
+      {/* कोटा और चार्ज */}
+      <div className="card stack" style={{ gap: 6 }}>
+        {plan === "vip" ? (
+          <>
+            <strong>VIP प्लान</strong>
+            <p className="muted" style={{ margin: 0 }}>
+              इस महीने पोस्टर {posterLeft} बचे, रील {reelLeft} बची। अलग से कोई चार्ज नहीं।
+            </p>
+          </>
+        ) : (
+          <>
+            <strong>इस महीने मुफ़्त</strong>
+            <p className="muted" style={{ margin: 0 }}>
+              पोस्टर {posterLeft} बचे, रील {reelLeft} बची।
+            </p>
+            {(posterLeft === 0 || reelLeft === 0) && (
+              <p className="alert" style={{ margin: 0 }}>
+                मुफ़्त कोटा खत्म होने पर पोस्टर के लिए ₹2 प्रति पोस्टर (₹10 में 5 क्रेडिट) और AI रील के लिए ₹15 प्रति रील लगेगा।
+              </p>
+            )}
+            <Link href="/pricing" className="btn btn-primary btn-block">
+              रिचार्ज करें
+            </Link>
+          </>
+        )}
+      </div>
 
       {rows.length === 0 && (
-        <div className="card stack">
-          <p className="muted" style={{ margin: 0 }}>अभी कोई पोस्टर नहीं है।</p>
-          <Link href="/onboarding" className="btn btn-primary btn-block">
-            पहला पोस्टर बनवाएं
-          </Link>
+        <div className="card">
+          <p className="muted" style={{ margin: 0 }}>अभी कोई पोस्टर या रील नहीं बना है।</p>
         </div>
       )}
 
+      {/* बने हुए पोस्टर और रील */}
       {rows.map(({ job, caption, outputs }) => (
         <div key={job.id} className="card">
           <div className="row">
