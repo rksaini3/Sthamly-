@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 const STEPS = [
   { title: "दुकान की फोटो भेजें", text: "WhatsApp पर एक साफ फोटो।" },
@@ -6,7 +7,19 @@ const STEPS = [
   { title: "पोस्टर और कैप्शन पाएं", text: "कुछ ही मिनट में, हिंग्लिश कैप्शन के साथ।" },
 ];
 
-export default function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ code?: string | string[] }>;
+}) {
+  // Google/Supabase login के बाद कभी-कभी code यहीं आ जाता है।
+  // उसे सही callback रास्ते पर भेजें, ताकि session बन सके।
+  const params = await searchParams;
+  const code = Array.isArray(params.code) ? params.code[0] : params.code;
+  if (code) {
+    redirect(`/auth/callback?code=${encodeURIComponent(code)}&next=/dashboard`);
+  }
+
   return (
     <main className="page stack" style={{ paddingTop: 40 }}>
       <p className="brand">Sthamly</p>
