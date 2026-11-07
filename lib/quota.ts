@@ -1,13 +1,11 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Plan } from "@/types/domain";
 
-// प्लान की सीमाएं (docs/MVP_BRIEF.md सेक्शन 6.1 से)
-// lifetime = true का मतलब: सीमा पूरे जीवन के लिए, महीने के हिसाब से नहीं
+// प्लान की सीमाएं (हर कैलेंडर महीने, IST के हिसाब से)
+// मुफ़्त: 5 पोस्टर, रील नहीं, watermark।  वीआईपी: 60 पोस्टर, 10 रील, बिना watermark।
 export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number; lifetime: boolean }> = {
-  free: { poster: 3, reel: 1, lifetime: true },
-  starter: { poster: 10, reel: 2, lifetime: false },
-  growth: { poster: 30, reel: 6, lifetime: false },
-  shop_pro: { poster: 80, reel: 15, lifetime: false },
+  free: { poster: 5, reel: 0, lifetime: false },
+  vip: { poster: 60, reel: 10, lifetime: false },
 };
 
 export interface ReserveInput {
@@ -23,7 +21,7 @@ export interface QuotaResult {
   plan: Plan;
 }
 
-// यूज़र का सक्रिय प्लान। न मिले तो Free।
+// यूज़र का सक्रिय प्लान। न मिले तो मुफ़्त।
 export async function getActivePlan(userId: string): Promise<Plan> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
@@ -39,7 +37,7 @@ export async function getActivePlan(userId: string): Promise<Plan> {
   return (data?.plan as Plan | undefined) ?? "free";
 }
 
-// Period की शुरुआत। MVP में कैलेंडर महीना (IST)। बाद में subscription की तारीख से।
+// Period की शुरुआत: कैलेंडर महीना (IST)
 function periodStart(plan: Plan): Date {
   if (PLAN_LIMITS[plan].lifetime) return new Date(0);
 
