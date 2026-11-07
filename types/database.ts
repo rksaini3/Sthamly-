@@ -1,39 +1,43 @@
-import type { ShopCategory } from "@/types/domain";
-
-// Supabase schema के TypeScript types (migrations 0001–0009 से मेल खाते हुए)
-// अगर remote schema बदले, तो `npx supabase gen types typescript ...` से फिर से generate करें।
-
-export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
 
 export type Database = {
   public: {
     Tables: {
       profiles: {
-              profiles: {
         Row: {
           id: string;
+          role: "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator";
+          full_name: string | null;
           phone: string | null;
           city: string | null;
-          language_pref: string;
-          role: string | null;
+          language: string | null;
+          plan: "free" | "plus" | "vip";
           created_at: string;
+          deleted_at: string | null;
         };
-        Insert: {
-          id: string;
-          phone?: string | null;
-          city?: string | null;
-          language_pref?: string;
-          role?: string | null;
-          created_at?: string;
+        Insert: Partial<Database["public"]["Tables"]["profiles"]["Row"]> & { id: string };
+        Update: Partial<Database["public"]["Tables"]["profiles"]["Row"]>;
+        Relationships: [];
+      };
+      conversations: {
+        Row: {
+          phone: string;
+          pending_photo_path: string | null;
+          pending_photo_at: string | null;
+          updated_at: string;
+          pending_action: string | null;
+          pending_action_at: string | null;
+          pending_offer: Json | null;
+          pending_offer_at: string | null;
         };
-        Update: {
-          id?: string;
-          phone?: string | null;
-          city?: string | null;
-          language_pref?: string;
-          role?: string | null;
-          created_at?: string;
-        };
+        Insert: Partial<Database["public"]["Tables"]["conversations"]["Row"]> & { phone: string };
+        Update: Partial<Database["public"]["Tables"]["conversations"]["Row"]>;
         Relationships: [];
       };
       shops: {
@@ -41,43 +45,16 @@ export type Database = {
           id: string;
           user_id: string;
           name: string;
-          category: ShopCategory;
-          city: string;
+          category: string | null;
+          city: string | null;
           phone: string | null;
           logo_path: string | null;
           created_at: string;
         };
-        Insert: {
-          id?: string;
-          user_id: string;
-          name: string;
-          category: ShopCategory;
-          city: string;
-          phone?: string | null;
-          logo_path?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          name?: string;
-          category?: ShopCategory;
-          city?: string;
-          phone?: string | null;
-          logo_path?: string | null;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "shops_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
+        Insert: Partial<Database["public"]["Tables"]["shops"]["Row"]> & { user_id: string; name: string };
+        Update: Partial<Database["public"]["Tables"]["shops"]["Row"]>;
+        Relationships: [];
       };
-
       brand_kits: {
         Row: {
           shop_id: string;
@@ -87,33 +64,10 @@ export type Database = {
           tagline: string | null;
           updated_at: string;
         };
-        Insert: {
-          shop_id: string;
-          primary_color?: string | null;
-          secondary_color?: string | null;
-          font_key?: string | null;
-          tagline?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          shop_id?: string;
-          primary_color?: string | null;
-          secondary_color?: string | null;
-          font_key?: string | null;
-          tagline?: string | null;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "brand_kits_shop_id_fkey";
-            columns: ["shop_id"];
-            isOneToOne: true;
-            referencedRelation: "shops";
-            referencedColumns: ["id"];
-          },
-        ];
+        Insert: Partial<Database["public"]["Tables"]["brand_kits"]["Row"]> & { shop_id: string };
+        Update: Partial<Database["public"]["Tables"]["brand_kits"]["Row"]>;
+        Relationships: [];
       };
-
       jobs: {
         Row: {
           id: string;
@@ -124,44 +78,13 @@ export type Database = {
           cost_paise: number;
           error: string | null;
           created_at: string;
-          started_at: string | null; // migration 0008
           finished_at: string | null;
+          started_at: string | null;
         };
-        Insert: {
-          id?: string;
-          shop_id: string;
-          status?: string;
-          input?: Json;
-          attempts?: number;
-          cost_paise?: number;
-          error?: string | null;
-          created_at?: string;
-          started_at?: string | null;
-          finished_at?: string | null;
-        };
-        Update: {
-          id?: string;
-          shop_id?: string;
-          status?: string;
-          input?: Json;
-          attempts?: number;
-          cost_paise?: number;
-          error?: string | null;
-          created_at?: string;
-          started_at?: string | null;
-          finished_at?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "jobs_shop_id_fkey";
-            columns: ["shop_id"];
-            isOneToOne: false;
-            referencedRelation: "shops";
-            referencedColumns: ["id"];
-          },
-        ];
+        Insert: Partial<Database["public"]["Tables"]["jobs"]["Row"]> & { shop_id: string; input: Json };
+        Update: Partial<Database["public"]["Tables"]["jobs"]["Row"]>;
+        Relationships: [];
       };
-
       outputs: {
         Row: {
           id: string;
@@ -173,158 +96,10 @@ export type Database = {
           meta: Json;
           created_at: string;
         };
-        Insert: {
-          id?: string;
-          job_id: string;
-          type: string;
-          storage_path?: string | null;
-          content?: string | null;
-          watermarked?: boolean;
-          meta?: Json;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          job_id?: string;
-          type?: string;
-          storage_path?: string | null;
-          content?: string | null;
-          watermarked?: boolean;
-          meta?: Json;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "outputs_job_id_fkey";
-            columns: ["job_id"];
-            isOneToOne: false;
-            referencedRelation: "jobs";
-            referencedColumns: ["id"];
-          },
-        ];
+        Insert: Partial<Database["public"]["Tables"]["outputs"]["Row"]> & { job_id: string; type: string };
+        Update: Partial<Database["public"]["Tables"]["outputs"]["Row"]>;
+        Relationships: [];
       };
-
-      usage_ledger: {
-        Row: {
-          id: number;
-          user_id: string;
-          delta: number;
-          reason: string;
-          job_id: string | null;
-          created_at: string;
-          kind: string | null; // migration 0004: 'poster' | 'reel'
-        };
-        Insert: {
-          id?: number;
-          user_id: string;
-          delta: number;
-          reason: string;
-          job_id?: string | null;
-          created_at?: string;
-          kind?: string | null;
-        };
-        Update: {
-          id?: number;
-          user_id?: string;
-          delta?: number;
-          reason?: string;
-          job_id?: string | null;
-          created_at?: string;
-          kind?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "usage_ledger_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "usage_ledger_job_id_fkey";
-            columns: ["job_id"];
-            isOneToOne: false;
-            referencedRelation: "jobs";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-
-      subscriptions: {
-        Row: {
-          id: string;
-          user_id: string;
-          plan: string;
-          status: string;
-          razorpay_sub_id: string | null;
-          current_period_end: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          plan: string;
-          status?: string;
-          razorpay_sub_id?: string | null;
-          current_period_end?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          plan?: string;
-          status?: string;
-          razorpay_sub_id?: string | null;
-          current_period_end?: string | null;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "subscriptions_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-
-      consents: {
-        Row: {
-          id: number;
-          user_id: string;
-          purpose: string;
-          policy_version: string;
-          granted_at: string;
-          revoked_at: string | null;
-        };
-        Insert: {
-          id?: number;
-          user_id: string;
-          purpose: string;
-          policy_version: string;
-          granted_at?: string;
-          revoked_at?: string | null;
-        };
-        Update: {
-          id?: number;
-          user_id?: string;
-          purpose?: string;
-          policy_version?: string;
-          granted_at?: string;
-          revoked_at?: string | null;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "consents_user_id_fkey";
-            columns: ["user_id"];
-            isOneToOne: false;
-            referencedRelation: "profiles";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-
       outcomes: {
         Row: {
           id: string;
@@ -336,63 +111,10 @@ export type Database = {
           footfall_note: string | null;
           reported_at: string;
         };
-        Insert: {
-          id?: string;
-          output_id: string;
-          shop_id: string;
-          rating?: number | null;
-          calls_count?: number | null;
-          inquiries_count?: number | null;
-          footfall_note?: string | null;
-          reported_at?: string;
-        };
-        Update: {
-          id?: string;
-          output_id?: string;
-          shop_id?: string;
-          rating?: number | null;
-          calls_count?: number | null;
-          inquiries_count?: number | null;
-          footfall_note?: string | null;
-          reported_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "outcomes_output_id_fkey";
-            columns: ["output_id"];
-            isOneToOne: false;
-            referencedRelation: "outputs";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "outcomes_shop_id_fkey";
-            columns: ["shop_id"];
-            isOneToOne: false;
-            referencedRelation: "shops";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-
-      processed_messages: {
-        Row: {
-          wa_message_id: string;
-          from_phone: string;
-          processed_at: string;
-        };
-        Insert: {
-          wa_message_id: string;
-          from_phone: string;
-          processed_at?: string;
-        };
-        Update: {
-          wa_message_id?: string;
-          from_phone?: string;
-          processed_at?: string;
-        };
+        Insert: Partial<Database["public"]["Tables"]["outcomes"]["Row"]> & { output_id: string; shop_id: string };
+        Update: Partial<Database["public"]["Tables"]["outcomes"]["Row"]>;
         Relationships: [];
       };
-
       cost_events: {
         Row: {
           id: number;
@@ -404,125 +126,139 @@ export type Database = {
           meta: Json;
           created_at: string;
         };
-        Insert: {
-          id?: number;
-          job_id?: string | null;
+        Insert: Partial<Database["public"]["Tables"]["cost_events"]["Row"]> & {
           step: string;
           provider: string;
-          model?: string | null;
           cost_paise: number;
-          meta?: Json;
-          created_at?: string;
         };
-        Update: {
-          id?: number;
-          job_id?: string | null;
-          step?: string;
-          provider?: string;
-          model?: string | null;
-          cost_paise?: number;
-          meta?: Json;
-          created_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "cost_events_job_id_fkey";
-            columns: ["job_id"];
-            isOneToOne: false;
-            referencedRelation: "jobs";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
-
-      conversations: {
-              
-        Row: {
-          phone: string;
-          pending_photo_path: string | null;
-          pending_photo_at: string | null;
-          pending_action: string | null; // migration 0009
-          pending_action_at: string | null; // migration 0009
-          pending_offer: Json | null; // migration 0011
-          pending_offer_at: string | null; // migration 0011
-          updated_at: string;
-        };
-        Insert: {
-          phone: string;
-          pending_photo_path?: string | null;
-          pending_photo_at?: string | null;
-          pending_action?: string | null;
-          pending_action_at?: string | null;
-          pending_offer?: Json | null;
-          pending_offer_at?: string | null;
-          updated_at?: string;
-        };
-        Update: {
-          phone?: string;
-          pending_photo_path?: string | null;
-          pending_photo_at?: string | null;
-          pending_action?: string | null;
-          pending_action_at?: string | null;
-          pending_offer?: Json | null;
-          pending_offer_at?: string | null;
-          updated_at?: string;
-        };
+        Update: Partial<Database["public"]["Tables"]["cost_events"]["Row"]>;
         Relationships: [];
       };
-
+      usage_ledger: {
+        Row: {
+          id: number;
+          user_id: string;
+          delta: number;
+          reason: string;
+          job_id: string | null;
+          created_at: string;
+          kind: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["usage_ledger"]["Row"]> & {
+          user_id: string;
+          delta: number;
+          reason: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["usage_ledger"]["Row"]>;
+        Relationships: [];
+      };
+      subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          razorpay_subscription_id: string;
+          plan_tier: "free" | "plus" | "vip";
+          status: string;
+          current_period_end: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["subscriptions"]["Row"]> & {
+          user_id: string;
+          razorpay_subscription_id: string;
+          status: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["subscriptions"]["Row"]>;
+        Relationships: [];
+      };
+      payments: {
+        Row: {
+          id: string;
+          user_id: string;
+          purpose: string;
+          consultation_id: string | null;
+          razorpay_order_id: string | null;
+          razorpay_payment_id: string | null;
+          amount_paise: number;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["payments"]["Row"]> & {
+          user_id: string;
+          purpose: string;
+          amount_paise: number;
+          status: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["payments"]["Row"]>;
+        Relationships: [];
+      };
+      processed_messages: {
+        Row: {
+          wa_message_id: string;
+          from_phone: string;
+          processed_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["processed_messages"]["Row"]> & {
+          wa_message_id: string;
+          from_phone: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["processed_messages"]["Row"]>;
+        Relationships: [];
+      };
+      consents: {
+        Row: {
+          id: number;
+          user_id: string;
+          purpose: string;
+          policy_version: string;
+          granted_at: string;
+          revoked_at: string | null;
+        };
+        Insert: Partial<Database["public"]["Tables"]["consents"]["Row"]> & {
+          user_id: string;
+          purpose: string;
+          policy_version: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["consents"]["Row"]>;
+        Relationships: [];
+      };
       deletion_log: {
         Row: {
           id: number;
-          from_phone: string; // सिर्फ phone और समय, कोई और निजी डेटा नहीं (migration 0009)
-          completed_at: string;
-        };
-        Insert: {
-          id?: number;
           from_phone: string;
-          completed_at?: string;
+          requested_at: string;
+          completed_at: string | null;
         };
-        Update: {
-          id?: number;
-          from_phone?: string;
-          completed_at?: string;
+        Insert: Partial<Database["public"]["Tables"]["deletion_log"]["Row"]> & { from_phone: string };
+        Update: Partial<Database["public"]["Tables"]["deletion_log"]["Row"]>;
+        Relationships: [];
+      };
+      webhook_events: {
+        Row: {
+          id: string;
+          event_type: string;
+          received_at: string;
+          processed: boolean;
         };
+        Insert: Partial<Database["public"]["Tables"]["webhook_events"]["Row"]> & {
+          id: string;
+          event_type: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["webhook_events"]["Row"]>;
+        Relationships: [];
+      };
+      audit_log: {
+        Row: {
+          id: number;
+          actor_id: string | null;
+          action: string;
+          target_table: string | null;
+          target_id: string | null;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["audit_log"]["Row"]> & { action: string };
+        Update: Partial<Database["public"]["Tables"]["audit_log"]["Row"]>;
         Relationships: [];
       };
     };
-
-    Views: {
-      [_ in never]: never;
-    };
-
-    Functions: {
-      credit_used: {
-        Args: { p_user: string; p_kind: string; p_since: string };
-        Returns: number;
-      };
-      reserve_credits: {
-        Args: {
-          p_user: string;
-          p_job: string;
-          p_poster_need: number;
-          p_reel_need: number;
-          p_poster_limit: number;
-          p_reel_limit: number;
-          p_since: string;
-        };
-        Returns: Json;
-      };
-      refund_job_credits: {
-        Args: { p_job: string };
-        Returns: number;
-      };
-    };
-
-    Enums: {
-      [_ in never]: never;
-    };
-
-    CompositeTypes: {
-      [_ in never]: never;
-    };
-  };
-};
+    Views: Record
