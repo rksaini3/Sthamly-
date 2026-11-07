@@ -385,19 +385,16 @@ export type Database = {
 
       processed_messages: {
         Row: {
-          id: string;
           wa_message_id: string;
           from_phone: string;
           processed_at: string;
         };
         Insert: {
-          id?: string;
           wa_message_id: string;
           from_phone: string;
           processed_at?: string;
         };
         Update: {
-          id?: string;
           wa_message_id?: string;
           from_phone?: string;
           processed_at?: string;
@@ -410,22 +407,25 @@ export type Database = {
           id: string;
           user_id: string;
           purpose: string;
+          policy_version: string;
+          granted_at: string;
           revoked_at: string | null;
-          created_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
           purpose: string;
+          policy_version: string;
+          granted_at?: string;
           revoked_at?: string | null;
-          created_at?: string;
         };
         Update: {
           id?: string;
           user_id?: string;
           purpose?: string;
+          policy_version?: string;
+          granted_at?: string;
           revoked_at?: string | null;
-          created_at?: string;
         };
         Relationships: [];
       };
