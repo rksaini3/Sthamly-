@@ -18,14 +18,20 @@ export async function POST(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
+    return NextResponse.json(
+      { error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } },
+      { status: 401 },
+    );
   }
 
   let raw: unknown;
   try {
     raw = await req.json();
   } catch {
-    return NextResponse.json({ error: { code: "BAD_REQUEST", message: "सही JSON भेजें" } }, { status: 400 });
+    return NextResponse.json(
+      { error: { code: "BAD_REQUEST", message: "सही JSON भेजें" } },
+      { status: 400 },
+    );
   }
 
   const parsed = bodySchema.safeParse(raw);
@@ -43,11 +49,14 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   try {
-    // वेब पर फ़ोन न हो तो placeholder, ताकि deletion_log लिखा जा सके
+    // फ़ोन न हो (वेब लॉग-इन) तो placeholder, ताकि deletion_log लिखा जा सके
     await eraseUserData(user.id, profile?.phone ?? "no-phone");
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error("account delete failed", error);
-    return NextResponse.json({ error: { code: "DELETE_FAILED", message: "डेटा नहीं हट पाया" } }, { status: 500 });
+    return NextResponse.json(
+      { error: { code: "DELETE_FAILED", message: "खाता नहीं हट पाया" } },
+      { status: 500 },
+    );
   }
 }
