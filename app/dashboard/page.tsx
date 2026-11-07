@@ -114,8 +114,8 @@ export default async function DashboardPage() {
 
       <div className="row">
         <h1 style={{ margin: 0 }}>आपके पोस्टर</h1>
-        <Link href="/onboarding" className="btn btn-primary">
-          नया पोस्ट
+        <Link href="/announce" className="btn btn-primary">
+          घोषणा करें
         </Link>
       </div>
 
