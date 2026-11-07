@@ -12,6 +12,9 @@ const serverSchema = z.object({
   FAL_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_TEXT_MODEL: z.string().optional(),
+  GROQ_VOICE_MODEL: z.string().optional(),
   MAX_COST_PAISE_PER_JOB: z.coerce.number().int().positive().default(1500),
   JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
 });
