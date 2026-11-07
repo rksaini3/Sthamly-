@@ -77,12 +77,12 @@ export type Database = {
         Relationships: [];
       };
 
-      shops: {
+            shops: {
         Row: {
           id: string;
           user_id: string;
           name: string;
-          category: "sweets" | "salon" | "coaching_clinic" | null;
+          category: "sweets" | "salon" | "coaching_clinic";
           city: string;
           created_at: string;
         };
@@ -90,7 +90,7 @@ export type Database = {
           id?: string;
           user_id: string;
           name: string;
-          category?: "sweets" | "salon" | "coaching_clinic" | null;
+          category?: "sweets" | "salon" | "coaching_clinic";
           city: string;
           created_at?: string;
         };
@@ -98,7 +98,7 @@ export type Database = {
           id?: string;
           user_id?: string;
           name?: string;
-          category?: "sweets" | "salon" | "coaching_clinic" | null;
+          category?: "sweets" | "salon" | "coaching_clinic";
           city?: string;
           created_at?: string;
         };
