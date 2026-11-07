@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import styles from "@/components/nav/BottomNav.module.css";
 
 // बार और माइक बटन सिर्फ इन्हीं पन्नों पर दिखेंगे
-const VISIBLE_ON = ["/dashboard", "/onboarding", "/pricing", "/voice"] as const;
+const VISIBLE_ON = ["/dashboard", "/onboarding", "/account", "/pricing", "/voice"] as const;
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -96,7 +96,7 @@ export function BottomNav() {
       <nav className={styles.nav} aria-label="मुख्य मेनू">
         <TabLink href="/dashboard" label="आउटपुट" active={isActive(pathname, "/dashboard")} icon={<GridIcon />} />
         <TabLink href="/onboarding" label="पोस्ट" active={isActive(pathname, "/onboarding")} icon={<PlusIcon />} />
-        <TabLink href="/pricing" label="खाता" active={isActive(pathname, "/pricing")} icon={<UserIcon />} />
+        <TabLink href="/account" label="खाता" active={isActive(pathname, "/account")} icon={<UserIcon />} />
       </nav>
     </>
   );
