@@ -1,5 +1,6 @@
 import { getServerEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/types/database";
 
 // migration 0005_cost_events.sql के step values से मेल खाते हैं
 export const COST_STEPS = [
@@ -44,7 +45,8 @@ export async function logCosts(events: CostEvent[]): Promise<void> {
     provider: event.provider,
     model: event.model ?? null,
     cost_paise: event.costPaise,
-    meta: event.meta ?? {},
+    // meta सिर्फ़ JSON-सुरक्षित मान रखता है, इसलिए Json के रूप में cast किया गया है
+    meta: (event.meta ?? {}) as Json,
   }));
 
   const { error } = await admin.from("cost_events").insert(rows);
