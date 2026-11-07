@@ -1,79 +1,112 @@
-import { getServerEnv } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { Json } from "@/types/database";
+import { PLANS, type Plan } from "@/types/domain";
 
-// migration 0005_cost_events.sql के step values से मेल खाते हैं
-export const COST_STEPS = [
-  "caption",
-  "poster_base",
-  "reel",
-  "voice",
-  "whatsapp",
-  "other",
-] as const;
-export type CostStep = (typeof COST_STEPS)[number];
+// प्लान की सीमाएं (हर कैलेंडर महीने, IST के हिसाब से)
+// पोस्टर = फ़ोटो + ऑफर से बना poster
+// रील   = टेम्पलेट रील (AI वीडियो रील अलग से, सिर्फ़ भुगतान पर, इसकी सीमा यहां नहीं)
+export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number }> = {
+  free: { poster: 5, reel: 1 },
+  vip: { poster: 60, reel: 10 },
+};
 
-export interface CostEvent {
-  jobId?: string | null; // WhatsApp जैसी सेवाओं के लिए job नहीं होता
-  step: CostStep;
-  provider: string;
-  model?: string | null;
-  costPaise: number; // paise में, पूर्णांक
-  meta?: Json; // DB का jsonb टाइप
+export interface ReserveInput {
+  userId: string;
+  jobId: string;
+  poster: number; // कितने poster credit चाहिए (आम तौर पर 1)
+  reel: number; // कितने reel credit चाहिए (0 या 1)
 }
 
-function assertValid(event: CostEvent): void {
-  if (!Number.isInteger(event.costPaise) || event.costPaise < 0) {
-    throw new Error(`invalid costPaise for ${event.step}: ${event.costPaise}`);
-  }
-  if (!COST_STEPS.includes(event.step)) {
-    throw new Error(`invalid cost step: ${event.step}`);
-  }
+export interface QuotaResult {
+  allowed: boolean;
+  remaining: { poster: number; reel: number };
+  plan: Plan;
 }
 
-/**
- * एक या कई लागत entries एक साथ लिखें (एक insert, कम round-trip)।
- */
-export async function logCosts(events: CostEvent[]): Promise<void> {
-  if (events.length === 0) return;
-  events.forEach(assertValid);
-
-  const admin = createSupabaseAdminClient();
-  const rows = events.map((event) => ({
-    job_id: event.jobId ?? null,
-    step: event.step,
-    provider: event.provider,
-    model: event.model ?? null,
-    cost_paise: event.costPaise,
-    meta: event.meta ?? {},
-  }));
-
-  const { error } = await admin.from("cost_events").insert(rows);
-  if (error) throw error;
+function isPlan(value: unknown): value is Plan {
+  return typeof value === "string" && (PLANS as readonly string[]).includes(value);
 }
 
-/** एक entry लिखें। */
-export function logCost(event: CostEvent): Promise<void> {
-  return logCosts([event]);
-}
-
-/** किसी job पर अभी तक की कुल लागत (paise में)। */
-export async function getJobCostPaise(jobId: string): Promise<number> {
+// यूज़र का सक्रिय प्लान। न मिले, या मियाद खत्म हो गई हो, तो Free।
+export async function getActivePlan(userId: string): Promise<Plan> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
-    .from("cost_events")
-    .select("cost_paise")
-    .eq("job_id", jobId);
+    .from("subscriptions")
+    .select("plan, current_period_end")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw error;
-  return (data ?? []).reduce((sum, row) => sum + row.cost_paise, 0);
+  if (!data) return "free";
+
+  const plan: unknown = data.plan;
+  if (!isPlan(plan)) return "free";
+
+  const periodEnd: unknown = data.current_period_end;
+  if (
+    plan !== "free" &&
+    typeof periodEnd === "string" &&
+    new Date(periodEnd).getTime() <= Date.now()
+  ) {
+    return "free";
+  }
+
+  return plan;
+}
+
+// इस महीने की शुरुआत (IST) का ISO समय। क्रेडिट की गिनती इसी से होती है।
+export function currentPeriodStart(): string {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const startIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
+  return new Date(startIst - IST_OFFSET_MS).toISOString();
+}
+
+function isRemaining(value: unknown): value is { poster: number; reel: number } {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.poster === "number" && typeof v.reel === "number";
 }
 
 /**
- * क्या job की लागत सीमा (MAX_COST_PAISE_PER_JOB) से ऊपर गई?
- * Worker हर stage के बाद यह जांचेगा और ऊपर जाने पर रुकेगा।
+ * Job शुरू करने से पहले credit reserve करें।
+ * जांच और लिखना database function में एक साथ होता है (race नहीं होगी)।
  */
-export function isOverJobCap(totalPaise: number): boolean {
-  const { MAX_COST_PAISE_PER_JOB } = getServerEnv();
-  return totalPaise > MAX_COST_PAISE_PER_JOB;
+export async function reserveCredits(input: ReserveInput): Promise<QuotaResult> {
+  const plan = await getActivePlan(input.userId);
+  const limits = PLAN_LIMITS[plan];
+  const admin = createSupabaseAdminClient();
+
+  const { data, error } = await admin.rpc("reserve_credits", {
+    p_user: input.userId,
+    p_job: input.jobId,
+    p_poster_need: input.poster,
+    p_reel_need: input.reel,
+    p_poster_limit: limits.poster,
+    p_reel_limit: limits.reel,
+    p_since: currentPeriodStart(),
+  });
+
+  if (error) throw error;
+
+  const result = data as { allowed?: unknown; remaining?: unknown } | null;
+  if (typeof result?.allowed !== "boolean" || !isRemaining(result.remaining)) {
+    throw new Error("reserve_credits returned unexpected shape");
+  }
+
+  return { allowed: result.allowed, remaining: result.remaining, plan };
+}
+
+/**
+ * विफल job के credit वापस करें। एक job के लिए सिर्फ एक बार चलता है।
+ * लौटाता है: कितनी ledger entries बनीं (0 का मतलब पहले ही refund हो चुका)।
+ */
+export async function refundCredits(jobId: string): Promise<number> {
+  const admin = createSupabaseAdminClient();
+  const { data, error } = await admin.rpc("refund_job_credits", { p_job: jobId });
+
+  if (error) throw error;
+  return typeof data === "number" ? data : 0;
 }
