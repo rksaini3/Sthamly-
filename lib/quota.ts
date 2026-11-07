@@ -1,11 +1,12 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { Plan } from "@/types/domain";
+import { PLANS, type Plan } from "@/types/domain";
 
 // प्लान की सीमाएं (हर कैलेंडर महीने, IST के हिसाब से)
-// मुफ़्त: 5 पोस्टर, रील नहीं, watermark।  वीआईपी: 60 पोस्टर, 10 रील, बिना watermark।
-export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number; lifetime: boolean }> = {
-  free: { poster: 5, reel: 0, lifetime: false },
-  vip: { poster: 60, reel: 10, lifetime: false },
+// पोस्टर = फ़ोटो + ऑफर से बना poster
+// रील   = टेम्पलेट रील (AI वीडियो रील अलग से, सिर्फ़ भुगतान पर, इसकी सीमा यहां नहीं)
+export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number }> = {
+  free: { poster: 5, reel: 1 },
+  vip: { poster: 60, reel: 10 },
 };
 
 export interface ReserveInput {
@@ -21,30 +22,31 @@ export interface QuotaResult {
   plan: Plan;
 }
 
-// यूज़र का सक्रिय प्लान। न मिले तो मुफ़्त।
+function isPlan(value: unknown): value is Plan {
+  return typeof value === "string" && (PLANS as readonly string[]).includes(value);
+}
+
+// यूज़र का प्लान profiles.plan से। न मिले तो Free।
+// Razorpay आने पर वेबहुक यही column बदलेगा (और मियाद खत्म होने पर free करेगा)।
 export async function getActivePlan(userId: string): Promise<Plan> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
-    .from("subscriptions")
+    .from("profiles")
     .select("plan")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .eq("id", userId)
     .maybeSingle();
 
   if (error) throw error;
-  return (data?.plan as Plan | undefined) ?? "free";
+  const plan: unknown = data?.plan;
+  return isPlan(plan) ? plan : "free";
 }
 
-// Period की शुरुआत: कैलेंडर महीना (IST)
-function periodStart(plan: Plan): Date {
-  if (PLAN_LIMITS[plan].lifetime) return new Date(0);
-
+// इस महीने की शुरुआत (IST) का ISO समय। क्रेडिट की गिनती इसी से होती है।
+export function currentPeriodStart(): string {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const istNow = new Date(Date.now() + IST_OFFSET_MS);
   const startIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
-  return new Date(startIst - IST_OFFSET_MS);
+  return new Date(startIst - IST_OFFSET_MS).toISOString();
 }
 
 function isRemaining(value: unknown): value is { poster: number; reel: number } {
@@ -69,7 +71,7 @@ export async function reserveCredits(input: ReserveInput): Promise<QuotaResult> 
     p_reel_need: input.reel,
     p_poster_limit: limits.poster,
     p_reel_limit: limits.reel,
-    p_since: periodStart(plan).toISOString(),
+    p_since: currentPeriodStart(),
   });
 
   if (error) throw error;
