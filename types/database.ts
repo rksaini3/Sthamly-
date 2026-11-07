@@ -28,6 +28,7 @@ type ConversationsRow = {
   pending_offer: Json | null;
   pending_offer_at: string | null;
 };
+
 type ShopsRow = {
   id: string;
   user_id: string;
@@ -38,8 +39,6 @@ type ShopsRow = {
   logo_path: string | null;
   created_at: string;
 };
-
-  
 
 type BrandKitsRow = {
   shop_id: string;
@@ -164,6 +163,16 @@ type AuditLogRow = {
   action: string;
   target_table: string | null;
   target_id: string | null;
+  created_at: string;
+};
+
+type AnnouncementsRow = {
+  id: string;
+  user_id: string;
+  shop_name: string;
+  body: string;
+  status: "published" | "hidden";
+  reports: number;
   created_at: string;
 };
 
@@ -293,6 +302,16 @@ export type Database = {
         Update: { [K in keyof AuditLogRow]?: AuditLogRow[K] };
         Relationships: [];
       };
+      announcements: {
+        Row: AnnouncementsRow;
+        Insert: { [K in keyof AnnouncementsRow]?: AnnouncementsRow[K] } & {
+          user_id: string;
+          shop_name: string;
+          body: string;
+        };
+        Update: { [K in keyof AnnouncementsRow]?: AnnouncementsRow[K] };
+        Relationships: [];
+      };
     };
     Views: {};
     Functions: {
@@ -315,6 +334,10 @@ export type Database = {
       refund_job_credits: {
         Args: { p_job: string };
         Returns: number;
+      };
+      report_announcement: {
+        Args: { p_id: string };
+        Returns: undefined;
       };
     };
     Enums: {};
