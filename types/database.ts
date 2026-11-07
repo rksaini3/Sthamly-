@@ -33,7 +33,7 @@ type ShopsRow = {
   id: string;
   user_id: string;
   name: string;
-  category: string | null;
+    category: "sweets" | "salon" | "coaching_clinic";
   city: string | null;
   phone: string | null;
   logo_path: string | null;
