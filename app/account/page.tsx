@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountActions } from "@/components/account/AccountActions";
-import { currentPeriodStart, getActivePlan, PLAN_LIMITS } from "@/lib/quota";
+import { getActivePlan, PLAN_LIMITS } from "@/lib/quota";
 import { isRole, ROLE_INFO } from "@/lib/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -23,6 +23,14 @@ const box: React.CSSProperties = {
   flexDirection: "column",
   gap: 6,
 };
+
+// इस महीने की शुरुआत (IST) का ISO समय
+function currentPeriodStart(): string {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+  const startIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
+  return new Date(startIst - IST_OFFSET_MS).toISOString();
+}
 
 export default async function AccountPage() {
   const supabase = await createSupabaseServerClient();
@@ -82,7 +90,8 @@ export default async function AccountPage() {
         <span>रील: {reelUsed} / {limits.reel}</span>
         {plan === "free" && (
           <span style={{ color: "#a3a3a3", fontSize: 14 }}>
-            वीआईपी पास का भुगतान जल्द शुरू होगा। <Link href="/pricing" style={{ color: "#e8581c" }}>प्लान देखें</Link>
+            वीआईपी पास का भुगतान जल्द शुरू होगा।{" "}
+            <Link href="/pricing" style={{ color: "#e8581c" }}>प्लान देखें</Link>
           </span>
         )}
       </div>
