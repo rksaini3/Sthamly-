@@ -28,17 +28,18 @@ type ConversationsRow = {
   pending_offer: Json | null;
   pending_offer_at: string | null;
 };
-
 type ShopsRow = {
   id: string;
   user_id: string;
   name: string;
-    category: "sweets" | "salon" | "coaching_clinic";
-  city: string | null;
+  category: "sweets" | "salon" | "coaching_clinic";
+  city: string;
   phone: string | null;
   logo_path: string | null;
   created_at: string;
 };
+
+  
 
 type BrandKitsRow = {
   shop_id: string;
