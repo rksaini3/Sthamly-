@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountActions } from "@/components/account/AccountActions";
 import { Card } from "@/components/ui/Card";
-import { getActivePlan, PLAN_LIMITS } from "@/lib/quota";
+import { currentPeriodStart, getActivePlan, PLAN_LIMITS } from "@/lib/quota";
 import { isRole, ROLE_INFO } from "@/lib/roles";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -14,14 +14,6 @@ const PLAN_LABEL: Record<Plan, string> = {
   free: "मुफ़्त",
   vip: "वीआईपी पास",
 };
-
-// इस महीने की शुरुआत (IST), quota.ts के हिसाब से
-function monthStartIso(): string {
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-  const istNow = new Date(Date.now() + IST_OFFSET_MS);
-  const startIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
-  return new Date(startIst - IST_OFFSET_MS).toISOString();
-}
 
 export default async function AccountPage() {
   const supabase = await createSupabaseServerClient();
@@ -43,7 +35,7 @@ export default async function AccountPage() {
 
   // इस महीने कितने credit खर्च हुए (ledger से)
   const admin = createSupabaseAdminClient();
-  const since = monthStartIso();
+  const since = currentPeriodStart();
   const [posterRes, reelRes] = await Promise.all([
     admin.rpc("credit_used", { p_user: user.id, p_kind: "poster", p_since: since }),
     admin.rpc("credit_used", { p_user: user.id, p_kind: "reel", p_since: since }),
