@@ -1,17 +1,20 @@
 import { PlanCard, type PlanInfo } from "@/components/pricing/PlanCard";
 
-// प्रस्तावित प्लान (docs/MVP_BRIEF.md), pilot में टेस्ट होंगे
+// दो ही प्लान: मुफ़्त और वीआईपी पास। भुगतान Razorpay चालू होने पर शुरू होगा।
 const PLANS: PlanInfo[] = [
-  { name: "Free", price: 0, outputs: 3, note: "वॉटरमार्क के साथ, जीवन भर के लिए 3 पोस्टर" },
-  { name: "Starter", price: 99, outputs: 10 },
   {
-    name: "Growth",
-    price: 249,
-    outputs: 30,
-    note: "बिना वॉटरमार्क, ब्रांड कलर सेव",
+    name: "मुफ़्त",
+    price: 0,
+    outputs: 5,
+    note: "वॉटरमार्क के साथ। रील शामिल नहीं।",
+  },
+  {
+    name: "वीआईपी पास",
+    price: 99,
+    outputs: 60,
+    note: "बिना वॉटरमार्क, पोस्टर पर दुकान का नाम व लोगो, हर महीने 10 रील।",
     featured: true,
   },
-  { name: "Shop-Pro", price: 499, outputs: 80, note: "3 दुकानों तक" },
 ];
 
 export default function PricingPage() {
@@ -28,7 +31,7 @@ export default function PricingPage() {
       ))}
 
       <p className="muted footer">
-        ज़रूरत पड़ने पर अलग से top-up भी मिलेगा।
+        वीआईपी पास का भुगतान जल्द शुरू होगा। तब तक मुफ़्त प्लान इस्तेमाल करें।
       </p>
     </main>
   );
