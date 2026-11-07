@@ -15,7 +15,8 @@ function LoginForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string | null>(null);
 
-  function callbackUrl(): string {
+  // ईमेल लिंक के लिए: next पैरामीटर के साथ
+  function emailCallbackUrl(): string {
     const next = searchParams.get("next") ?? "/dashboard";
     return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
   }
@@ -29,7 +30,7 @@ function LoginForm() {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { emailRedirectTo: callbackUrl() },
+        options: { emailRedirectTo: emailCallbackUrl() },
       });
 
       if (error) throw error;
@@ -40,6 +41,7 @@ function LoginForm() {
     }
   }
 
+  // Google के लिए: query string नहीं, ताकि Supabase redirect URL को सही पहचाने
   async function handleGoogle() {
     setStatus("sending");
     setMessage(null);
@@ -48,10 +50,10 @@ function LoginForm() {
       const supabase = createSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: callbackUrl() },
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
       });
 
-      // सफल होने पर ब्राउज़र Google पर चला जाता है, इसलिए यहां कुछ नहीं करना
+      // सफल होने पर ब्राउज़र Google पर चला जाता है
       if (error) throw error;
     } catch (err) {
       setStatus("error");
