@@ -98,7 +98,3 @@ export default async function AccountPage() {
     </main>
   );
 }
-
-// लॉग-आउट और डेटा हटाने का हिस्सा (browser में चलता है)
-import { AccountActions as _unused } from "@/components/account/AccountActions";
-</parameter>
