@@ -46,13 +46,15 @@ export type Database = {
         Relationships: [];
       };
 
-      conversations: {
+            conversations: {
         Row: {
           id: string;
           user_id: string | null;
           phone: string;
           state: string;
           context: Json | null;
+          pending_photo_path: string | null;
+          pending_photo_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -62,6 +64,8 @@ export type Database = {
           phone: string;
           state?: string;
           context?: Json | null;
+          pending_photo_path?: string | null;
+          pending_photo_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -71,6 +75,8 @@ export type Database = {
           phone?: string;
           state?: string;
           context?: Json | null;
+          pending_photo_path?: string | null;
+          pending_photo_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
