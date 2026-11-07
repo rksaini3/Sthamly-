@@ -3,31 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { Dict } from "@/lib/i18n";
 
+// सर्वर पर यही शब्द जांचा जाता है, इसलिए दोनों भाषाओं में यही रहेगा
 const CONFIRM_TEXT = "हां हटाओ";
 
-const box: React.CSSProperties = {
-  background: "#1b1b1b",
-  border: "1px solid #2a2a2a",
-  borderRadius: 16,
-  padding: 16,
-  display: "flex",
-  flexDirection: "column",
-  gap: 10,
-};
-
-const btnBase: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 12,
-  padding: "12px 16px",
-  fontSize: 15,
-  fontWeight: 600,
-  font: "inherit",
-  cursor: "pointer",
-  border: "1px solid #2a2a2a",
-};
-
-export function AccountActions() {
+export function AccountActions({ dict }: { dict: Dict }) {
   const router = useRouter();
   const [showDelete, setShowDelete] = useState(false);
   const [typed, setTyped] = useState("");
@@ -35,13 +16,17 @@ export function AccountActions() {
   const [error, setError] = useState<string | null>(null);
 
   async function logout() {
+    setError(null);
     setBusy(true);
     try {
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
-    } finally {
       router.replace("/login");
       router.refresh();
+    } catch {
+      setError(dict.errLogout);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -55,7 +40,7 @@ export function AccountActions() {
         body: JSON.stringify({ confirm: typed.trim() }),
       });
       if (!res.ok) {
-        setError("खाता नहीं हट पाया, दोबारा कोशिश करें");
+        setError(dict.errDelete);
         return;
       }
       try {
@@ -67,77 +52,55 @@ export function AccountActions() {
       router.replace("/");
       router.refresh();
     } catch {
-      setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+      setError(dict.errNetwork);
     } finally {
       setBusy(false);
     }
   }
 
+  const canDelete = !busy && typed.trim() === CONFIRM_TEXT;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <button
-        type="button"
-        onClick={logout}
-        disabled={busy}
-        style={{ ...btnBase, background: "transparent", color: "#f5f5f5" }}
-      >
-        लॉग-आउट
+    <div className="stack" style={{ gap: 12 }}>
+      <button type="button" className="btn btn-ghost btn-block" onClick={logout} disabled={busy}>
+        {dict.logout}
       </button>
 
-      <div style={box}>
-        <strong>मेरा खाता हटाएं</strong>
-        <p style={{ margin: 0, color: "#a3a3a3", fontSize: 14, lineHeight: 1.5 }}>
-          दुकान, फ़ोटो, पोस्टर, बातचीत और खाता हमेशा के लिए हट जाएगा। यह वापस नहीं होगा।
-        </p>
+      <div className="card stack" style={{ gap: 10 }}>
+        <strong>{dict.deleteTitle}</strong>
+        <p className="muted">{dict.deleteBody}</p>
 
         {!showDelete ? (
           <button
             type="button"
+            className="btn btn-ghost btn-block"
             onClick={() => setShowDelete(true)}
-            style={{ ...btnBase, background: "transparent", color: "#f5f5f5" }}
           >
-            खाता हटाने की पुष्टि करें
+            {dict.deleteAsk}
           </button>
         ) : (
           <>
-            <p style={{ margin: 0, color: "#a3a3a3", fontSize: 14 }}>
-              पक्का करने के लिए नीचे लिखें: <strong style={{ color: "#f5f5f5" }}>{CONFIRM_TEXT}</strong>
+            <p className="muted">
+              {dict.deleteTypeHint} <strong style={{ color: "var(--ink)" }}>{CONFIRM_TEXT}</strong>
             </p>
             <input
+              className="input"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder={CONFIRM_TEXT}
-              style={{
-                width: "100%",
-                boxSizing: "border-box",
-                background: "#0f0f0f",
-                color: "#f5f5f5",
-                border: "1px solid #2a2a2a",
-                borderRadius: 12,
-                padding: "12px 14px",
-                fontSize: 15,
-                font: "inherit",
-              }}
             />
             <button
               type="button"
+              className="btn btn-danger btn-block"
+              disabled={!canDelete}
               onClick={deleteAccount}
-              disabled={busy || typed.trim() !== CONFIRM_TEXT}
-              style={{
-                ...btnBase,
-                background: typed.trim() === CONFIRM_TEXT ? "#c2410c" : "#2a2a2a",
-                color: "#fff",
-                border: "none",
-                opacity: busy ? 0.6 : 1,
-                cursor: busy || typed.trim() !== CONFIRM_TEXT ? "not-allowed" : "pointer",
-              }}
             >
-              {busy ? "हटाया जा रहा है..." : "खाता हमेशा के लिए हटाएं"}
+              {busy ? dict.deleting : dict.deleteBtn}
             </button>
           </>
         )}
 
-        {error && <p style={{ margin: 0, color: "#f87171", fontSize: 14 }}>{error}</p>}
+        {error && <p className="alert alert-error">{error}</p>}
       </div>
     </div>
   );
