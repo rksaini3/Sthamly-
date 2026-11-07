@@ -15,19 +15,21 @@ function LoginForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState<string | null>(null);
 
-  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  function callbackUrl(): string {
+    const next = searchParams.get("next") ?? "/dashboard";
+    return `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  }
+
+  async function handleEmail(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus("sending");
     setMessage(null);
 
     try {
       const supabase = createSupabaseBrowserClient();
-      const next = searchParams.get("next") ?? "/dashboard";
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
-
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { emailRedirectTo: redirectTo },
+        options: { emailRedirectTo: callbackUrl() },
       });
 
       if (error) throw error;
@@ -38,56 +40,110 @@ function LoginForm() {
     }
   }
 
+  async function handleGoogle() {
+    setStatus("sending");
+    setMessage(null);
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: callbackUrl() },
+      });
+
+      // सफल होने पर ब्राउज़र Google पर चला जाता है, इसलिए यहां कुछ नहीं करना
+      if (error) throw error;
+    } catch (err) {
+      setStatus("error");
+      setMessage(err instanceof Error ? err.message : "Google से लॉग-इन नहीं हो पाया");
+    }
+  }
+
   return (
-    <main className="page stack">
-      <div className="stack" style={{ gap: 8 }}>
-        <p className="brand">Sthamly</p>
-        <h1>लॉग-इन करें</h1>
-        <p className="muted">ईमेल पर एक लिंक आएगा। उस पर क्लिक करें, पासवर्ड की ज़रूरत नहीं।</p>
-      </div>
+    <main style={{ maxWidth: 480, margin: "0 auto", padding: "32px 20px" }}>
+      <h1 style={{ marginTop: 0 }}>लॉग-इन करें</h1>
 
       {linkFailed && (
-        <p role="alert" className="alert alert-error">
+        <p role="alert" style={{ color: "#b91c1c" }}>
           लिंक पुराना या गलत है। नया लिंक मंगाएं।
         </p>
       )}
 
       {status === "sent" ? (
-        <section className="card stack">
-          <h2>ईमेल भेज दिया गया है</h2>
+        <div>
           <p>
-            <strong>{email}</strong> पर लॉग-इन लिंक गया है।
+            <strong>{email}</strong> पर लॉग-इन लिंक भेज दिया गया है। अपना ईमेल खोलें और लिंक पर
+            क्लिक करें।
           </p>
-          <p className="muted">ईमेल न दिखे तो Spam फोल्डर देखें।</p>
-          <Button variant="ghost" block onClick={() => setStatus("idle")}>
+          <p style={{ color: "#a3a3a3", fontSize: "0.9rem" }}>
+            ईमेल न दिखे तो Spam फोल्डर देखें।
+          </p>
+          <Button type="button" onClick={() => setStatus("idle")}>
             दूसरा ईमेल डालें
           </Button>
-        </section>
+        </div>
       ) : (
-        <form className="card stack" onSubmit={handleSubmit}>
-          <label className="field">
-            ईमेल
-            <input
-              className="input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              placeholder="aap@example.com"
-            />
-          </label>
+        <>
+          <button
+            type="button"
+            onClick={handleGoogle}
+            disabled={status === "sending"}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              fontSize: "1rem",
+              fontWeight: 600,
+              borderRadius: 12,
+              border: "1px solid #2a2a2a",
+              background: "#1b1b1b",
+              color: "#f5f5f5",
+              cursor: status === "sending" ? "not-allowed" : "pointer",
+              marginBottom: 16,
+            }}
+          >
+            Google से लॉग-इन करें
+          </button>
 
-          {status === "error" && message && (
-            <p role="alert" className="alert alert-error">
-              {message}
-            </p>
-          )}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              color: "#a3a3a3",
+              fontSize: "0.9rem",
+              marginBottom: 16,
+            }}
+          >
+            <span style={{ flex: 1, height: 1, background: "#2a2a2a" }} />
+            या
+            <span style={{ flex: 1, height: 1, background: "#2a2a2a" }} />
+          </div>
 
-          <Button type="submit" block disabled={status === "sending"}>
-            {status === "sending" ? "भेजा जा रहा है…" : "लॉग-इन लिंक भेजें"}
-          </Button>
-        </form>
+          <form onSubmit={handleEmail}>
+            <label style={{ display: "block", marginBottom: 12, fontWeight: 600 }}>
+              ईमेल
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                placeholder="aap@example.com"
+                style={{ display: "block", width: "100%", padding: 10, fontSize: "1rem", marginTop: 4 }}
+              />
+            </label>
+
+            {status === "error" && message && (
+              <p role="alert" style={{ color: "#b91c1c" }}>
+                {message}
+              </p>
+            )}
+
+            <Button type="submit" disabled={status === "sending"}>
+              {status === "sending" ? "भेजा जा रहा है…" : "लॉग-इन लिंक भेजें"}
+            </Button>
+          </form>
+        </>
       )}
     </main>
   );
