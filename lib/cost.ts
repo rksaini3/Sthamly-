@@ -26,34 +26,19 @@ function isPlan(value: unknown): value is Plan {
   return typeof value === "string" && (PLANS as readonly string[]).includes(value);
 }
 
-// यूज़र का सक्रिय प्लान। न मिले, या मियाद खत्म हो गई हो, तो Free।
+// यूज़र का प्लान profiles.plan से। न मिले तो Free।
+// Razorpay आने पर वेबहुक यही column बदलेगा (और मियाद खत्म होने पर free करेगा)।
 export async function getActivePlan(userId: string): Promise<Plan> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
-    .from("subscriptions")
-    .select("plan, current_period_end")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .from("profiles")
+    .select("plan")
+    .eq("id", userId)
     .maybeSingle();
 
   if (error) throw error;
-  if (!data) return "free";
-
-  const plan: unknown = data.plan;
-  if (!isPlan(plan)) return "free";
-
-  const periodEnd: unknown = data.current_period_end;
-  if (
-    plan !== "free" &&
-    typeof periodEnd === "string" &&
-    new Date(periodEnd).getTime() <= Date.now()
-  ) {
-    return "free";
-  }
-
-  return plan;
+  const plan: unknown = data?.plan;
+  return isPlan(plan) ? plan : "free";
 }
 
 // इस महीने की शुरुआत (IST) का ISO समय। क्रेडिट की गिनती इसी से होती है।
