@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/dashboard/AutoRefresh";
 import { OutputCard } from "@/components/dashboard/OutputCard";
+import { ShareButtons } from "@/components/dashboard/ShareButtons";
 import { ComingSoon } from "@/components/roles/ComingSoon";
 import { formatDate } from "@/lib/format";
 import { isRole } from "@/lib/roles";
@@ -79,23 +80,28 @@ export default async function DashboardPage() {
 
   const jobs = (data ?? []) as unknown as JobRow[];
 
-  // हर poster की signed URL (यूज़र की अपनी session से, storage policy के अंदर)
+  // हर job का कैप्शन, और poster/reel की signed URL (1 घंटे के लिए)
   const rows = await Promise.all(
-    jobs.map(async (job) => ({
-      job,
-      outputs: await Promise.all(
+    jobs.map(async (job) => {
+      const caption =
+        job.outputs.find((o) => (o.type as string) === "caption")?.content ?? "";
+
+      const outputs = await Promise.all(
         job.outputs.map(async (output) => {
-          let url: string | null = null;
-          if (output.type === "poster" && output.storage_path) {
+          const kind = output.type as string;
+          let signedUrl: string | null = null;
+          if ((kind === "poster" || kind === "reel") && output.storage_path) {
             const { data: signed } = await supabase.storage
               .from("outputs")
               .createSignedUrl(output.storage_path, 60 * 60);
-            url = signed?.signedUrl ?? null;
+            signedUrl = signed?.signedUrl ?? null;
           }
-          return { ...output, url };
+          return { ...output, kind, signedUrl };
         }),
-      ),
-    })),
+      );
+
+      return { job, caption, outputs };
+    }),
   );
 
   const hasActive = rows.some(
@@ -124,7 +130,7 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {rows.map(({ job, outputs }) => (
+      {rows.map(({ job, caption, outputs }) => (
         <div key={job.id} className="card">
           <div className="row">
             <strong className="job-status">{STATUS_LABEL[job.status]}</strong>
@@ -144,13 +150,23 @@ export default async function DashboardPage() {
           )}
 
           {outputs.map((output) => (
-            <OutputCard
-              key={output.id}
-              type={output.type}
-              url={output.url}
-              content={output.content}
-              watermarked={output.watermarked}
-            />
+            <div key={output.id} className="stack" style={{ gap: 10, marginTop: 14 }}>
+              <OutputCard
+                type={output.type}
+                url={output.kind === "poster" ? output.signedUrl : null}
+                content={output.content}
+                watermarked={output.watermarked}
+              />
+
+              {output.signedUrl && (output.kind === "poster" || output.kind === "reel") && (
+                <ShareButtons
+                  url={output.signedUrl}
+                  caption={caption}
+                  kind={output.kind === "reel" ? "video" : "image"}
+                  fileName={`sthamly-${job.id.slice(0, 8)}.${output.kind === "reel" ? "mp4" : "png"}`}
+                />
+              )}
+            </div>
           ))}
         </div>
       ))}
