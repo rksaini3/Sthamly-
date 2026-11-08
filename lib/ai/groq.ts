@@ -3,8 +3,9 @@ import type { AIProvider, AIResult, TextRequest, TranscribeRequest } from "@/lib
 
 // Groq: text (chat) और voice (Whisper), दोनों एक ही GROQ_API_KEY से।
 // Free tier में credit card नहीं लगता। Model बदलने के लिए GROQ_TEXT_MODEL और GROQ_VOICE_MODEL।
+// llama-3.3-70b-versatile 16 अगस्त 2026 को बंद हो गया, इसलिए default अब openai/gpt-oss-120b है।
 const BASE_URL = "https://api.groq.com/openai/v1";
-const DEFAULT_TEXT_MODEL = "llama-3.3-70b-versatile";
+const DEFAULT_TEXT_MODEL = "openai/gpt-oss-120b";
 const DEFAULT_VOICE_MODEL = "whisper-large-v3";
 const TEXT_TIMEOUT_MS = 30_000;
 const VOICE_TIMEOUT_MS = 90_000;
