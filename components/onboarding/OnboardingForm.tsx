@@ -10,6 +10,15 @@ const MAX_PHOTOS = 3;
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const ALLOWED_PHOTO_TYPES = ["image/jpeg", "image/png"];
 
+// चैट (/voice) यही key भरता है: { offerText, occasion, kind }
+const OFFER_STORAGE_KEY = "sthamly:offer";
+
+interface SavedOffer {
+  offerText: string;
+  occasion: string | null;
+  kind: "poster" | "reel";
+}
+
 const CATEGORY_LABELS: Record<ShopCategory, string> = {
   sweets: "मिठाई / हलवाई",
   salon: "सैलून / पार्लर",
@@ -43,6 +52,31 @@ function displayPhone(phone: string | null): string {
   return phone.length === 12 && phone.startsWith("91") ? phone.slice(2) : phone;
 }
 
+// चैट से सेव किया हुआ ऑफ़र पढ़ें (खराब या खाली हो तो null)
+function readSavedOffer(): SavedOffer | null {
+  try {
+    const raw = sessionStorage.getItem(OFFER_STORAGE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<SavedOffer>;
+    if (typeof value.offerText !== "string" || value.offerText.trim().length < 3) return null;
+    return {
+      offerText: value.offerText,
+      occasion: typeof value.occasion === "string" ? value.occasion : null,
+      kind: value.kind === "reel" ? "reel" : "poster",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearSavedOffer(): void {
+  try {
+    sessionStorage.removeItem(OFFER_STORAGE_KEY);
+  } catch {
+    // storage बंद है तो कुछ नहीं करना
+  }
+}
+
 export function OnboardingForm() {
   const router = useRouter();
 
@@ -64,11 +98,12 @@ export function OnboardingForm() {
   // चरण 2: फोटो
   const [photoPaths, setPhotoPaths] = useState<string[]>([]);
 
-  // चरण 3: ऑफर
+  // चरण 3: ऑफर और बनने वाली चीज़
   const [offerText, setOfferText] = useState("");
   const [occasion, setOccasion] = useState("");
+  const [wantReel, setWantReel] = useState(false);
 
-  // पहली बार खुलने पर: user और उसकी दुकान देखें
+  // पहली बार खुलने पर: user, उसकी दुकान, और चैट से आया ऑफ़र देखें
   // दुकान मिल जाए तो सीधे फोटो वाले चरण पर भेजें, ताकि दुकान दोबारा न बने
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +130,17 @@ export function OnboardingForm() {
         if (shopError) throw shopError;
 
         if (cancelled) return;
+
+        // चैट से आया ऑफ़र और चुना हुआ प्रकार पहले से भरें
+        const saved = readSavedOffer();
+        const kindParam = new URLSearchParams(window.location.search).get("kind");
+        if (saved) {
+          setOfferText(saved.offerText);
+          setOccasion(saved.occasion ?? "");
+          setWantReel(saved.kind === "reel");
+        } else if (kindParam === "reel") {
+          setWantReel(true);
+        }
 
         setUserId(user.id);
         if (shop) {
@@ -218,7 +264,7 @@ export function OnboardingForm() {
           occasion: occasion.trim() || null,
           photoPaths,
           language: "hinglish",
-          wantReel: false,
+          wantReel,
         }),
       });
 
@@ -231,6 +277,8 @@ export function OnboardingForm() {
         throw new Error(body.error?.message ?? "पोस्टर का काम शुरू नहीं हो पाया");
       }
 
+      // काम शुरू हो गया, अब चैट वाला ऑफ़र हटा दें ताकि दोबारा न भरे
+      clearSavedOffer();
       router.push(`/dashboard?job=${body.jobId}`);
     } catch (err) {
       setError(messageOf(err));
@@ -390,8 +438,17 @@ export function OnboardingForm() {
             />
           </label>
 
+          <label className="field" style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={wantReel}
+              onChange={(e) => setWantReel(e.target.checked)}
+            />
+            <span>रील भी बनवाएं</span>
+          </label>
+
           <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-            {busy ? "भेजा जा रहा है…" : "पोस्टर बनवाएं"}
+            {busy ? "भेजा जा रहा है…" : wantReel ? "पोस्टर और रील बनवाएं" : "पोस्टर बनवाएं"}
           </button>
 
           <button
