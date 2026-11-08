@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import styles from "@/components/voice/VoiceAssistant.module.css";
 
 interface Offer {
@@ -10,9 +10,18 @@ interface Offer {
   occasion: string | null;
 }
 
-type Busy = "idle" | "transcribing" | "parsing";
+type Kind = "poster" | "reel";
+type Busy = "idle" | "transcribing" | "replying" | "parsing";
 
-// /onboarding पन्ना इसी key से समझा हुआ ऑफर उठा सकता है
+interface Message {
+  id: number;
+  role: "user" | "assistant";
+  text: string;
+  // अगर यह संदेश ऑफ़र का कार्ड है तो यहाँ नतीजा होगा (null = समझ नहीं आया)
+  offerCard?: { offer: Offer | null };
+}
+
+// /onboarding पन्ना इसी key से समझा हुआ ऑफ़र और चुना हुआ प्रकार उठाता है
 export const OFFER_STORAGE_KEY = "sthamly:offer";
 
 function pickMimeType(): string {
@@ -57,37 +66,83 @@ function StopIcon() {
 
 export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boolean }) {
   const router = useRouter();
-  const [recording, setRecording] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState<Busy>("idle");
+  const [recording, setRecording] = useState(false);
   const [draft, setDraft] = useState("");
-  const [heard, setHeard] = useState<string | null>(null);
-  const [offer, setOffer] = useState<Offer | null>(null);
-  const [checked, setChecked] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const idRef = useRef(0);
+  const endRef = useRef<HTMLDivElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  async function parse(input: string) {
-    setHeard(input);
-    setBusy("parsing");
+  function newId(): number {
+    idRef.current += 1;
+    return idRef.current;
+  }
+
+  // नया संदेश आने पर सबसे नीचे दिखाएं
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages.length, busy]);
+
+  // चैट से जवाब लेना। इतिहास में ऑफ़र कार्ड शामिल नहीं होते, सिर्फ़ बात-चीत।
+  async function sendText(raw: string) {
+    const text = raw.trim();
+    if (text.length < 2) {
+      setError("कुछ बोलें या लिखें");
+      return;
+    }
     setError(null);
-    setChecked(false);
-    setOffer(null);
+
+    const userMsg: Message = { id: newId(), role: "user", text };
+    const history = [...messages, userMsg]
+      .filter((m) => !m.offerCard && m.text.trim().length > 0)
+      .slice(-12)
+      .map((m) => ({ role: m.role, content: m.text.slice(0, 1000) }));
+
+    setMessages((prev) => [...prev, userMsg]);
+    setBusy("replying");
+    try {
+      const res = await fetch("/api/voice/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history }),
+      });
+      if (!res.ok) {
+        setError(await readError(res));
+        return;
+      }
+      const data = (await res.json()) as { reply: string };
+      setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: data.reply }]);
+    } catch {
+      setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  // किसी एक संदेश से ऑफ़र समझना
+  async function makeOffer(text: string) {
+    setError(null);
+    setBusy("parsing");
     try {
       const res = await fetch("/api/voice/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: input }),
+        body: JSON.stringify({ text }),
       });
       if (!res.ok) {
         setError(await readError(res));
         return;
       }
       const data = (await res.json()) as { offer: Offer | null };
-      setOffer(data.offer);
-      setChecked(true);
+      setMessages((prev) => [
+        ...prev,
+        { id: newId(), role: "assistant", text: "", offerCard: { offer: data.offer } },
+      ]);
     } catch {
       setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
     } finally {
@@ -105,23 +160,22 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
       const res = await fetch("/api/voice/transcribe", { method: "POST", body: form });
       if (!res.ok) {
         setError(await readError(res));
-        setBusy("idle");
         return;
       }
       const data = (await res.json()) as { text: string };
       said = data.text.trim();
     } catch {
       setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
-      setBusy("idle");
       return;
+    } finally {
+      setBusy("idle");
     }
 
     if (said.length < 3) {
       setError("आवाज़ साफ़ सुनाई नहीं दी। दोबारा बोलें।");
-      setBusy("idle");
       return;
     }
-    await parse(said);
+    await sendText(said);
   }
 
   async function startRecording() {
@@ -165,33 +219,39 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
   function onSend(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const value = draft.trim();
-    if (value.length < 3) {
-      setError("कम से कम 3 अक्षर लिखें");
+    if (value.length < 2) {
+      setError("कुछ लिखें");
       return;
     }
     setDraft("");
-    void parse(value);
+    void sendText(value);
   }
 
-  function applyOffer() {
-    if (!offer) return;
+  // ऑफ़र चुने हुए प्रकार (पोस्टर या रील) के साथ onboarding पर भेजें
+  function useOffer(offer: Offer, kind: Kind) {
+    if (!loggedIn) {
+      router.push("/login?next=/voice");
+      return;
+    }
     try {
-      sessionStorage.setItem(OFFER_STORAGE_KEY, JSON.stringify(offer));
+      sessionStorage.setItem(OFFER_STORAGE_KEY, JSON.stringify({ ...offer, kind }));
     } catch {
       // browser ने storage बंद कर रखा है, फिर भी आगे बढ़ें
     }
-    router.push("/onboarding");
+    router.push(`/onboarding?kind=${kind}`);
   }
 
+  const isEmpty = messages.length === 0;
   const hasDraft = draft.trim().length > 0;
-  const showOrb = heard === null || busy !== "idle" || recording;
   const status = recording
     ? "सुन रहा हूं… बोलना खत्म हो तो बटन दबाएं"
     : busy === "transcribing"
       ? "आवाज़ को लिखा जा रहा है…"
-      : busy === "parsing"
-        ? "ऑफर समझ रहा हूं…"
-        : "";
+      : busy === "replying"
+        ? "जवाब लिख रहा हूं…"
+        : busy === "parsing"
+          ? "ऑफ़र समझ रहा हूं…"
+          : "";
 
   return (
     <div className={styles.page}>
@@ -201,63 +261,76 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
         </Link>
         <div>
           <div className={styles.title}>Sthamly असिस्टेंट</div>
-          <div className={styles.subtitle}>बोलकर या लिखकर ऑफर दें</div>
+          <div className={styles.subtitle}>बोलकर या लिखकर बात करें</div>
         </div>
       </header>
 
-      <section className={`${styles.stage} ${heard === null ? styles.stageEmpty : ""}`}>
-        {showOrb && (
-          <div
-            aria-hidden
-            className={`${styles.orb} ${recording ? styles.orbListening : ""} ${busy !== "idle" ? styles.orbBusy : ""}`}
-          />
-        )}
-
-        {heard === null && (
+      <section className={`${styles.stage} ${isEmpty ? styles.stageEmpty : ""}`}>
+        {isEmpty && (
           <>
+            <div
+              aria-hidden
+              className={`${styles.orb} ${recording ? styles.orbListening : ""} ${busy !== "idle" ? styles.orbBusy : ""}`}
+            />
             <h1 className={styles.greeting}>नमस्ते, {name}</h1>
             <p className={styles.hint}>
               {loggedIn
-                ? "अपनी दुकान का ऑफर बोलें या लिखें। हम उसे साफ़ करके दिखाएंगे।"
-                : "ऑफर समझने के लिए पहले लॉग-इन करें।"}
+                ? "अपनी दुकान की बात बोलें या लिखें। ऑफ़र बनाने के लिए संदेश के नीचे बटन दबाएं।"
+                : "बातचीत के लिए पहले लॉग-इन करें।"}
             </p>
           </>
         )}
 
-        {heard !== null && <div className={styles.bubbleUser}>{heard}</div>}
+        {messages.map((m) => {
+          if (m.role === "user") {
+            return (
+              <div key={m.id} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                <div className={styles.bubbleUser}>{m.text}</div>
+                <button
+                  type="button"
+                  className={styles.btnGhost}
+                  onClick={() => void makeOffer(m.text)}
+                  disabled={busy !== "idle"}
+                >
+                  ऑफ़र बनाएं
+                </button>
+              </div>
+            );
+          }
 
-        {heard !== null && (busy === "parsing" || checked) && (
-          <div className={styles.bubbleBot}>
-            {busy === "parsing" && <p className={styles.muted}>ऑफर समझ रहा हूं…</p>}
+          if (m.offerCard) {
+            const { offer } = m.offerCard;
+            return (
+              <div key={m.id} className={styles.bubbleBot}>
+                {offer ? (
+                  <>
+                    <p className={styles.label}>मैंने यह ऑफ़र समझा:</p>
+                    <p className={styles.offerText}>{offer.offerText}</p>
+                    {offer.occasion && <p className={styles.muted}>मौका: {offer.occasion}</p>}
+                    <div className={styles.btnRow}>
+                      <button type="button" className={styles.btnPrimary} onClick={() => useOffer(offer, "poster")}>
+                        पोस्टर बनाएं
+                      </button>
+                      <button type="button" className={styles.btnGhost} onClick={() => useOffer(offer, "reel")}>
+                        रील बनाएं
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className={styles.muted}>ऑफ़र समझ नहीं आया। साफ़ शब्दों में दोबारा लिखें।</p>
+                )}
+              </div>
+            );
+          }
 
-            {checked && offer && (
-              <>
-                <p className={styles.label}>मैंने यह समझा:</p>
-                <p className={styles.offerText}>{offer.offerText}</p>
-                {offer.occasion && <p className={styles.muted}>मौका: {offer.occasion}</p>}
-                <div className={styles.btnRow}>
-                  <button type="button" className={styles.btnPrimary} onClick={applyOffer}>
-                    लागू करें
-                  </button>
-                  <button type="button" className={styles.btnGhost} onClick={startRecording} disabled={busy !== "idle"}>
-                    फिर से बोलें
-                  </button>
-                </div>
-              </>
-            )}
+          return (
+            <div key={m.id} className={styles.bubbleBot}>
+              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.text}</p>
+            </div>
+          );
+        })}
 
-            {checked && !offer && (
-              <>
-                <p className={styles.muted}>ऑफर समझ नहीं आया। साफ़ शब्दों में दोबारा बोलें या लिखें।</p>
-                <div className={styles.btnRow}>
-                  <button type="button" className={styles.btnGhost} onClick={startRecording} disabled={busy !== "idle"}>
-                    फिर से बोलें
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        <div ref={endRef} />
       </section>
 
       <div className={styles.composer}>
@@ -270,9 +343,9 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="संदेश लिखें…"
-            maxLength={300}
+            maxLength={1000}
             disabled={recording || busy !== "idle"}
-            aria-label="ऑफर लिखें"
+            aria-label="संदेश लिखें"
           />
 
           {hasDraft ? (
