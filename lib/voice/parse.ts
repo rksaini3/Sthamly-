@@ -3,11 +3,14 @@ import { getAIProvider } from "@/lib/ai";
 import { logCost } from "@/lib/cost";
 
 const offerSchema = z.object({
-  offerText: z.string().trim().min(3).max(300),
+  offerText: z.string().trim().max(300),
   occasion: z.string().trim().max(60).nullable(),
 });
 
 export type ParsedOffer = z.infer<typeof offerSchema>;
+
+// Reasoning model पहले सोचता है, इसलिए जवाब के लिए काफ़ी जगह दें
+const MAX_TOKENS = 1000;
 
 function buildPrompt(text: string): string {
   return [
@@ -17,32 +20,41 @@ function buildPrompt(text: string): string {
     "",
     "नियम:",
     "- offerText में वस्तु, कीमत और छूट बिल्कुल वैसी लिखें जैसी कही गई। 10% को 10% ही रखें, कुछ न जोड़ें, कुछ न घटाएं।",
+    "- अगर वाक्य में कीमत या छूट नहीं है, तो भी वस्तु और मात्रा offerText में लिखें।",
     "- occasion में त्योहार या मौका लिखें (जैसे दिवाली)। न हो तो null।",
     "- 'पोस्टर बना दो' जैसे निर्देश offerText में न जोड़ें।",
-    "- ऑफर समझ न आए तो offerText खाली string रखें।",
     "",
     `Text: """${text}"""`,
   ].join("\n");
 }
 
-// Model कभी-कभी JSON के आगे-पीछे शब्द लिख देता है, इसलिए पहला { से आखिरी } तक लें
-function extractJson(raw: string): unknown {
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  try {
-    return JSON.parse(raw.slice(start, end + 1));
-  } catch {
-    return null;
+// मॉडल की सोच में भी {} हो सकते हैं, इसलिए सबसे आखिरी ऐसा JSON लें जिसमें offerText हो
+function extractJson(raw: string): Record<string, unknown> | null {
+  const candidates = raw.match(/\{[^{}]*\}/g);
+  if (!candidates) return null;
+
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const candidate = candidates[i] ?? "";
+    try {
+      const value: unknown = JSON.parse(candidate);
+      if (typeof value === "object" && value !== null && "offerText" in value) {
+        return value as Record<string, unknown>;
+      }
+    } catch {
+      // यह candidate JSON नहीं है, अगला देखें
+    }
   }
+  return null;
 }
 
 /**
- * Text से ऑफर और मौका निकालें। समझ न आए तो null।
+ * Text से ऑफर और मौका निकालें।
+ * मॉडल ऑफर न निकाले, तो बोली गई बात ही ऑफर मानी जाती है।
+ * दुकानदार "लागू करें" दबाकर पक्का करेगा, इसलिए गलत हो तो वहीं रुक जाएगा।
  */
 export async function parseOfferFromText(text: string): Promise<ParsedOffer | null> {
   const provider = getAIProvider();
-  const result = await provider.generateText({ prompt: buildPrompt(text), maxTokens: 200 });
+  const result = await provider.generateText({ prompt: buildPrompt(text), maxTokens: MAX_TOKENS });
 
   await logCost({
     step: "voice",
@@ -51,11 +63,20 @@ export async function parseOfferFromText(text: string): Promise<ParsedOffer | nu
     costPaise: result.costPaise,
   });
 
-  const json = extractJson(result.text ?? "");
-  if (!json) return null;
+  const raw = result.text ?? "";
+  const json = extractJson(raw);
+  const parsed = json ? offerSchema.safeParse(json) : null;
 
-  const parsed = offerSchema.safeParse(json);
-  if (!parsed.success) return null;
+  if (parsed?.success && parsed.data.offerText.length >= 3) {
+    return parsed.data;
+  }
 
-  return parsed.data;
+  const fallback = text.trim();
+  if (fallback.length >= 3) {
+    console.warn("voice parse: मॉडल से ऑफर नहीं मिला, बोली गई बात इस्तेमाल हुई", raw.slice(0, 200));
+    return { offerText: fallback.slice(0, 300), occasion: null };
+  }
+
+  console.error("voice parse: JSON नहीं मिला", raw.slice(0, 300));
+  return null;
 }
