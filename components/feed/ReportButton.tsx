@@ -1,14 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { FlagIcon } from "@/components/feed/icons";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function ReportButton({
   id,
   kind = "announcement",
+  compact = false,
+  className,
 }: {
   id: string;
   kind?: "announcement" | "comment";
+  compact?: boolean;
+  className?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
@@ -34,6 +39,27 @@ export function ReportButton({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (compact) {
+    if (done) {
+      return <span style={{ fontSize: 12.5, color: "var(--muted)", padding: "0 8px" }}>रिपोर्ट हुआ</span>;
+    }
+    return (
+      <>
+        <button
+          type="button"
+          className={className}
+          onClick={report}
+          disabled={busy}
+          aria-label="रिपोर्ट करें"
+          title="रिपोर्ट करें"
+        >
+          <FlagIcon />
+        </button>
+        {err && <span style={{ fontSize: 12.5, color: "var(--accent)" }}>{err}</span>}
+      </>
+    );
   }
 
   if (done) {
