@@ -12,6 +12,13 @@ const VOICE_TIMEOUT_MS = 90_000;
 const AUDIO_DOWNLOAD_TIMEOUT_MS = 30_000;
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
+// Whisper को दुकान वाले शब्द पहले से बताएं, ताकि वे सही पहचाने जाएं।
+// Whisper prompt में सिर्फ़ शब्द डालें, कोई निर्देश नहीं।
+const VOICE_PROMPT =
+  "दुकान का ऑफर। मिठाई, सैलून, कोचिंग, क्लिनिक, हेयर कट, फेशियल, छूट, प्रतिशत, रुपये, किलो, ग्राम, " +
+  "दिवाली, रक्षाबंधन, होली, ईद, नया स्टॉक, आज ही, सिर्फ़ आज, एक के साथ एक फ्री, दो आलू लीशु पहने, " +
+  "दस प्रतिशत छूट, पचास रुपये।";
+
 function apiKey(): string {
   const { GROQ_API_KEY } = getServerEnv();
   if (!GROQ_API_KEY) {
@@ -100,6 +107,7 @@ export const groqProvider: AIProvider = {
     form.append("file", audio, `voice.${extensionFor(audio.type)}`);
     form.append("model", GROQ_VOICE_MODEL ?? DEFAULT_VOICE_MODEL);
     form.append("language", req.language);
+    form.append("prompt", VOICE_PROMPT);
     form.append("response_format", "json");
     form.append("temperature", "0");
 
