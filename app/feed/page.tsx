@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { AnnouncementComposer } from "@/components/feed/AnnouncementComposer";
-import { CommentsSection, type FeedComment } from "@/components/feed/CommentsSection";
+import { type FeedComment } from "@/components/feed/CommentsSection";
+import { FeedCard } from "@/components/feed/FeedCard";
 import { FeedHeader } from "@/components/feed/FeedHeader";
-import { ReportButton } from "@/components/feed/ReportButton";
-import { ShareText } from "@/components/feed/ShareText";
+import feedStyles from "@/components/feed/FeedCard.module.css";
 import { formatDate } from "@/lib/format";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -65,22 +65,21 @@ export default async function OutputFeedPage() {
           </div>
         )}
 
-        {announcements.map((a) => (
-          <article key={a.id} className="card stack" style={{ gap: 10 }}>
-            <div className="row">
-              <strong>{a.shop_name}</strong>
-              <span className="job-date">{formatDate(a.created_at)}</span>
-            </div>
-            <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{a.body}</p>
-            <ShareText text={`📢 ${a.shop_name}\n${a.body}`} />
-            <CommentsSection
-              announcementId={a.id}
-              comments={commentsByAnnouncement.get(a.id) ?? []}
-              loggedIn={Boolean(user)}
-            />
-            <ReportButton id={a.id} kind="announcement" />
-          </article>
-        ))}
+        {announcements.length > 0 && (
+          <section className={feedStyles.list}>
+            {announcements.map((a) => (
+              <FeedCard
+                key={a.id}
+                id={a.id}
+                shopName={a.shop_name}
+                body={a.body}
+                time={formatDate(a.created_at)}
+                comments={commentsByAnnouncement.get(a.id) ?? []}
+                loggedIn={Boolean(user)}
+              />
+            ))}
+          </section>
+        )}
 
         <p className="muted footer">
           <Link href="/my-posters">मेरे पोस्ट देखें</Link>
