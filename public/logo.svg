@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sthamly logo">
+  <rect width="512" height="512" rx="112" fill="#e0561a"/>
+
+  <!-- दुकान का छज्जा -->
+  <path d="M120 150 H392 L412 218 H100 Z" fill="#ffffff"/>
+  <!-- छज्जे की झालर -->
+  <path d="M100 218 a39 39 0 0 0 78 0 a39 39 0 0 0 78 0 a39 39 0 0 0 78 0 a39 39 0 0 0 78 0 Z" fill="#ffffff"/>
+
+  <!-- दुकान का ढांचा -->
+  <rect x="130" y="250" width="252" height="150" rx="8" fill="#ffffff"/>
+  <!-- खिड़की -->
+  <rect x="158" y="278" width="66" height="54" rx="6" fill="#e0561a"/>
+  <!-- दरवाज़ा -->
+  <rect x="268" y="278" width="58" height="122" rx="6" fill="#e0561a"/>
+
+  <!-- चमक: नया ऑफ़र -->
+  <path d="M400 56 Q406 90 440 96 Q406 102 400 136 Q394 102 360 96 Q394 90 400 56 Z" fill="#ffffff"/>
+</svg>
