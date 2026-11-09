@@ -28,6 +28,16 @@ export default async function OutputFeedPage() {
     : { data: null };
   const initial = (profile?.full_name?.trim().charAt(0) || "S").toUpperCase();
 
+  let unread = 0;
+  if (user) {
+    const { count } = await supabase
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("read_at", null);
+    unread = count ?? 0;
+  }
+
   const { data: annData, error: annError } = await supabase
     .from("announcements")
     .select("id, user_id, shop_name, body, created_at")
@@ -55,7 +65,7 @@ export default async function OutputFeedPage() {
 
   return (
     <>
-      <FeedHeader initial={initial} loggedIn={Boolean(user)} />
+      <FeedHeader initial={initial} loggedIn={Boolean(user)} unread={unread} />
 
       <main className="page stack">
         <AnnouncementComposer loggedIn={Boolean(user)} />
