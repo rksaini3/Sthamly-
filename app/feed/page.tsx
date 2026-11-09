@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 
 interface AnnouncementItem {
   id: string;
+  user_id: string;
   shop_name: string;
   body: string;
   created_at: string;
@@ -29,7 +30,7 @@ export default async function OutputFeedPage() {
 
   const { data: annData, error: annError } = await supabase
     .from("announcements")
-    .select("id, shop_name, body, created_at")
+    .select("id, user_id, shop_name, body, created_at")
     .eq("status", "published")
     .order("created_at", { ascending: false })
     .limit(50);
@@ -76,6 +77,7 @@ export default async function OutputFeedPage() {
                 time={formatDate(a.created_at)}
                 comments={commentsByAnnouncement.get(a.id) ?? []}
                 loggedIn={Boolean(user)}
+                isOwner={Boolean(user) && a.user_id === user?.id}
               />
             ))}
           </section>
