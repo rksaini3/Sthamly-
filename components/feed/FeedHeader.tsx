@@ -36,22 +36,16 @@ export function FeedHeader({
   return (
     <header className={styles.wrap}>
       <div className={styles.top}>
-        {loggedIn ? (
-          <Link href="/account" className={styles.avatar} aria-label="खाता खोलें">
-            {initial}
-          </Link>
-        ) : (
-          <Link href="/login?next=/feed" className={styles.avatarGuest} aria-label="लॉग-इन करें">
-            ?
-          </Link>
-        )}
-
-        <Link href="/feed" aria-label="Sthamly फ़ीड" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", color: "inherit" }}>
-          <Image src="/logo.png" alt="Sthamly" width={32} height={32} priority style={{ borderRadius: 9 }} />
+        <Link
+          href="/feed"
+          aria-label="Sthamly फ़ीड"
+          style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", color: "inherit" }}
+        >
+          <Image src="/logo.png" alt="Sthamly" width={36} height={36} priority style={{ borderRadius: 10 }} />
           <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.01em" }}>Sthamly</span>
         </Link>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 36, justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {loggedIn && (
             <Link href="/notifications" style={iconButton} aria-label="सूचनाएं देखें">
               <BellIcon />
@@ -76,6 +70,16 @@ export function FeedHeader({
                   {unread > 9 ? "9+" : unread}
                 </span>
               )}
+            </Link>
+          )}
+
+          {loggedIn ? (
+            <Link href="/account" className={styles.avatar} aria-label="खाता खोलें">
+              {initial}
+            </Link>
+          ) : (
+            <Link href="/login?next=/feed" className={styles.avatarGuest} aria-label="लॉग-इन करें">
+              ?
             </Link>
           )}
         </div>
