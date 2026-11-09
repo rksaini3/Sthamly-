@@ -64,6 +64,13 @@ function StopIcon() {
   );
 }
 
+// मॉडल का जवाब **बोल्ड** में आ सकता है; उसे <strong> में बदलें, ताकि स्टार न दिखें
+function renderBold(text: string) {
+  return text.split(/\*\*([\s\S]+?)\*\*/g).map((part, i) =>
+    i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>,
+  );
+}
+
 export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boolean }) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -325,7 +332,7 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
 
           return (
             <div key={m.id} className={styles.bubbleBot}>
-              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.text}</p>
+              <p className={styles.botText}>{renderBold(m.text)}</p>
             </div>
           );
         })}
