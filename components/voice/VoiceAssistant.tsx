@@ -228,7 +228,7 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
   }
 
   // ऑफ़र चुने हुए प्रकार (पोस्टर या रील) के साथ onboarding पर भेजें
-  function useOffer(offer: Offer, kind: Kind) {
+  function chooseOffer(offer: Offer, kind: Kind) {
     if (!loggedIn) {
       router.push("/login?next=/voice");
       return;
@@ -308,10 +308,10 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
                     <p className={styles.offerText}>{offer.offerText}</p>
                     {offer.occasion && <p className={styles.muted}>मौका: {offer.occasion}</p>}
                     <div className={styles.btnRow}>
-                      <button type="button" className={styles.btnPrimary} onClick={() => useOffer(offer, "poster")}>
+                      <button type="button" className={styles.btnPrimary} onClick={() => chooseOffer(offer, "poster")}>
                         पोस्टर बनाएं
                       </button>
-                      <button type="button" className={styles.btnGhost} onClick={() => useOffer(offer, "reel")}>
+                      <button type="button" className={styles.btnGhost} onClick={() => chooseOffer(offer, "reel")}>
                         रील बनाएं
                       </button>
                     </div>
