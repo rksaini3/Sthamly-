@@ -13,12 +13,19 @@ interface Offer {
 type Kind = "poster" | "reel";
 type Busy = "idle" | "transcribing" | "replying" | "parsing";
 
+type Extra =
+  | { kind: "poster"; url: string; offer: Offer }
+  | { kind: "quota" }
+  | { kind: "setup" };
+
 interface Message {
   id: number;
   role: "user" | "assistant";
   text: string;
   // अगर यह संदेश ऑफ़र का कार्ड है तो यहाँ नतीजा होगा (null = समझ नहीं आया)
   offerCard?: { offer: Offer | null };
+  // चैट के अंदर बना पोस्टर, या क्रेडिट/सेटअप की जानकारी
+  extra?: Extra;
 }
 
 // /onboarding पन्ना इसी key से समझा हुआ ऑफ़र और चुना हुआ प्रकार उठाता है
@@ -104,6 +111,31 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
     }
     setError(null);
 
+    // "पोस्टर बना दो" जैसी माँग सीधे ऑफ़र बनाने में जाए, चैट में DIY स्टेप न आएं
+    const wantsCreation =
+      /(पोस्टर|पोस्ट|रील|poster|reel)/i.test(text) &&
+      /(बना|बनाओ|बनाएं|बनाइए|बना दो|बना दें|बनवा|बनाने|चाहिए)/.test(text);
+    if (wantsCreation) {
+      setMessages((prev) => [...prev, { id: newId(), role: "user", text }]);
+      setBusy("parsing");
+      try {
+        const offer = await parseOffer(text);
+        if (!offer) {
+          setMessages((prev) => [
+            ...prev,
+            { id: newId(), role: "assistant", text: "ऑफ़र समझ नहीं आया। साफ़ शब्दों में दोबारा लिखें।" },
+          ]);
+          return;
+        }
+        await makePoster(offer);
+      } catch {
+        setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+      } finally {
+        setBusy("idle");
+      }
+      return;
+    }
+
     const userMsg: Message = { id: newId(), role: "user", text };
     const history = [...messages, userMsg]
       .filter((m) => !m.offerCard && m.text.trim().length > 0)
@@ -124,6 +156,52 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
       }
       const data = (await res.json()) as { reply: string };
       setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: data.reply }]);
+    } catch {
+      setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+    } finally {
+      setBusy("idle");
+    }
+  }
+
+  // सिर्फ़ ऑफ़र समझना (कोई कार्ड नहीं बनता)
+  async function parseOffer(text: string): Promise<Offer | null> {
+    const res = await fetch("/api/voice/parse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    const data = (await res.json()) as { offer: Offer | null };
+    return data.offer;
+  }
+
+  // पोस्टर सीधे चैट में बनाएं: फ़ॉर्म नहीं, कोई अलग पन्ना नहीं
+  async function makePoster(offer: Offer) {
+    setError(null);
+    setBusy("replying");
+    try {
+      const res = await fetch("/api/voice/poster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offerText: offer.offerText, occasion: offer.occasion }),
+      });
+      if (res.status === 402) {
+        setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: "", extra: { kind: "quota" } }]);
+        return;
+      }
+      if (res.status === 409) {
+        setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: "", extra: { kind: "setup" } }]);
+        return;
+      }
+      if (!res.ok) {
+        setError(await readError(res));
+        return;
+      }
+      const data = (await res.json()) as { posterUrl: string };
+      setMessages((prev) => [
+        ...prev,
+        { id: newId(), role: "assistant", text: "", extra: { kind: "poster", url: data.posterUrl, offer } },
+      ]);
     } catch {
       setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
     } finally {
@@ -305,6 +383,46 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
             );
           }
 
+          if (m.extra) {
+            const x = m.extra;
+            return (
+              <div key={m.id} className={styles.bubbleBot}>
+                {x.kind === "poster" && (
+                  <>
+                    <p className={styles.label}>आपका पोस्टर तैयार है</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={x.url} alt="पोस्टर" style={{ width: "100%", borderRadius: 12 }} />
+                    <div className={styles.btnRow}>
+                      <a className={styles.btnPrimary} href={x.url} download="Sthamly-poster.png" target="_blank" rel="noreferrer">
+                        डाउनलोड करें
+                      </a>
+                      <button type="button" className={styles.btnGhost} onClick={() => chooseOffer(x.offer, "reel")}>
+                        रील बनाएं
+                      </button>
+                    </div>
+                  </>
+                )}
+                {x.kind === "quota" && (
+                  <>
+                    <p className={styles.label}>इस महीने के पोस्टर खत्म हो गए हैं।</p>
+                    <p className={styles.muted}>रिचार्ज करते ही पोस्टर इसी चैट में बन जाएगा।</p>
+                    <div className={styles.btnRow}>
+                      <Link href="/pricing" className={styles.btnPrimary}>रिचार्ज करें</Link>
+                    </div>
+                  </>
+                )}
+                {x.kind === "setup" && (
+                  <>
+                    <p className={styles.label}>पहले दुकान का नाम और शहर एक बार बता दीजिए।</p>
+                    <div className={styles.btnRow}>
+                      <Link href="/onboarding" className={styles.btnPrimary}>दुकान की जानकारी भरें</Link>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          }
+
           if (m.offerCard) {
             const { offer } = m.offerCard;
             return (
@@ -315,7 +433,7 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
                     <p className={styles.offerText}>{offer.offerText}</p>
                     {offer.occasion && <p className={styles.muted}>मौका: {offer.occasion}</p>}
                     <div className={styles.btnRow}>
-                      <button type="button" className={styles.btnPrimary} onClick={() => chooseOffer(offer, "poster")}>
+                      <button type="button" className={styles.btnPrimary} onClick={() => void makePoster(offer)}>
                         पोस्टर बनाएं
                       </button>
                       <button type="button" className={styles.btnGhost} onClick={() => chooseOffer(offer, "reel")}>
