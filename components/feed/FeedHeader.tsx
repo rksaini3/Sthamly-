@@ -25,11 +25,10 @@ const iconButton: CSSProperties = {
 };
 
 export function FeedHeader({
-  initial,
   loggedIn,
   unread = 0,
 }: {
-  initial: string;
+  initial?: string;
   loggedIn: boolean;
   unread?: number;
 }) {
@@ -45,44 +44,32 @@ export function FeedHeader({
           <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.01em" }}>Sthamly</span>
         </Link>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {loggedIn && (
-            <Link href="/notifications" style={iconButton} aria-label="सूचनाएं देखें">
-              <BellIcon />
-              {unread > 0 && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    right: 0,
-                    minWidth: 17,
-                    height: 17,
-                    padding: "0 4px",
-                    borderRadius: 999,
-                    background: "var(--accent, #e0561a)",
-                    color: "#fff",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    lineHeight: "17px",
-                    textAlign: "center",
-                  }}
-                >
-                  {unread > 9 ? "9+" : unread}
-                </span>
-              )}
-            </Link>
-          )}
-
-          {loggedIn ? (
-            <Link href="/account" className={styles.avatar} aria-label="खाता खोलें">
-              {initial}
-            </Link>
-          ) : (
-            <Link href="/login?next=/feed" className={styles.avatarGuest} aria-label="लॉग-इन करें">
-              ?
-            </Link>
-          )}
-        </div>
+        {loggedIn && (
+          <Link href="/notifications" style={iconButton} aria-label="सूचनाएं देखें">
+            <BellIcon />
+            {unread > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  minWidth: 17,
+                  height: 17,
+                  padding: "0 4px",
+                  borderRadius: 999,
+                  background: "var(--accent, #e0561a)",
+                  color: "#fff",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  lineHeight: "17px",
+                  textAlign: "center",
+                }}
+              >
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
+          </Link>
+        )}
       </div>
 
       <nav className={styles.tabs} aria-label="फ़ीड टैब">
