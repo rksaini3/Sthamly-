@@ -23,7 +23,7 @@ export async function getActivePlan(userId: string): Promise<Plan> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
     .from("subscriptions")
-    .select("plan")
+    .select("plan_tier")
     .eq("user_id", userId)
     .eq("status", "active")
     .order("created_at", { ascending: false })
@@ -31,7 +31,7 @@ export async function getActivePlan(userId: string): Promise<Plan> {
     .maybeSingle();
 
   if (error) throw error;
-  return (data?.plan as Plan | undefined) ?? "free";
+  return (data?.plan_tier as Plan | undefined) ?? "free";
 }
 
 /**
