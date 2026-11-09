@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import styles from "@/components/feed/FeedHeader.module.css";
@@ -45,7 +46,10 @@ export function FeedHeader({
           </Link>
         )}
 
-        <span className={styles.logo}>Sthamly</span>
+        <Link href="/feed" aria-label="Sthamly फ़ीड" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none", color: "inherit" }}>
+          <Image src="/logo.png" alt="Sthamly" width={32} height={32} priority style={{ borderRadius: 9 }} />
+          <span style={{ fontWeight: 800, fontSize: 18, letterSpacing: "-0.01em" }}>Sthamly</span>
+        </Link>
 
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 36, justifyContent: "flex-end" }}>
           {loggedIn && (
