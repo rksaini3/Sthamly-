@@ -1,14 +1,14 @@
 {
-  "id": "/",
+  "id": "/feed",
   "name": "Sthamly",
   "short_name": "Sthamly",
   "description": "दुकान की फोटो भेजें, रील और पोस्टर पाएं।",
-  "start_url": "/dashboard",
+  "start_url": "/feed",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f7f5f2",
-  "theme_color": "#e0561a",
+  "background_color": "#1f2937",
+  "theme_color": "#1f2937",
   "lang": "hi",
   "categories": ["business", "productivity"],
   "icons": [
