@@ -109,3 +109,17 @@ export async function refundCredits(jobId: string): Promise<number> {
 
   return typeof data === "number" ? data : 0;
 }
+
+// ---- पुराने कोड के लिए सहायक exports (app/account/page.tsx) ----
+// नए नियमों से ही गणना। पुराने "lifetime" वाले नियम अब नहीं हैं।
+export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number; lifetime: boolean }> = {
+  free: { poster: PLAN_ALLOWANCES.free.poster.limit, reel: PLAN_ALLOWANCES.free.reel.limit, lifetime: false },
+  starter: { poster: PLAN_ALLOWANCES.starter.poster.limit, reel: PLAN_ALLOWANCES.starter.reel.limit, lifetime: false },
+  premium: { poster: PLAN_ALLOWANCES.premium.poster.limit, reel: PLAN_ALLOWANCES.premium.reel.limit, lifetime: false },
+  business: { poster: PLAN_ALLOWANCES.business.poster.limit, reel: PLAN_ALLOWANCES.business.reel.limit, lifetime: false },
+};
+
+// इस प्लान के कोटे का चालू समय-चक्र कब से शुरू हुआ
+export function currentPeriodStart(plan: Plan): Date {
+  return windowStart(PLAN_ALLOWANCES[plan].poster.window);
+}
