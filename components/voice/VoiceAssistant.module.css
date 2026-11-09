@@ -258,3 +258,17 @@
     animation: none;
   }
 }
+/* बॉट के जवाब दुकानदार के फ़ोन की चौड़ाई में ही रहें, बाहर न भागें */
+.bubbleBot {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.botText {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
