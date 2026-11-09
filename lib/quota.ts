@@ -1,18 +1,12 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { PLANS, type Plan } from "@/types/domain";
-
-// प्लान की सीमाएं (हर कैलेंडर महीने, IST के हिसाब से)
-// पोस्टर = फ़ोटो + ऑफर से बना poster
-// रील   = टेम्पलेट रील (AI वीडियो रील अलग से, सिर्फ़ भुगतान पर, इसकी सीमा यहां नहीं)
-export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number }> = {
-  free: { poster: 5, reel: 1 },
-  vip: { poster: 60, reel: 10 },
-};
+import { PLAN_ALLOWANCES, type QuotaWindow } from "@/lib/pricing";
+import { refundWalletForJob } from "@/lib/wallet";
+import type { Plan } from "@/types/domain";
 
 export interface ReserveInput {
   userId: string;
   jobId: string;
-  poster: number; // कितने poster credit चाहिए (आम तौर पर 1)
+  poster: number; // कितने poster credit चाहिए (आम तौर पर 1 या 0)
   reel: number; // कितने reel credit चाहिए (0 या 1)
 }
 
@@ -22,31 +16,44 @@ export interface QuotaResult {
   plan: Plan;
 }
 
-function isPlan(value: unknown): value is Plan {
-  return typeof value === "string" && (PLANS as readonly string[]).includes(value);
-}
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
-// यूज़र का प्लान profiles.plan से। न मिले तो Free।
-// Razorpay आने पर वेबहुक यही column बदलेगा (और मियाद खत्म होने पर free करेगा)।
+// यूज़र का सक्रिय प्लान। न मिले तो Free।
 export async function getActivePlan(userId: string): Promise<Plan> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin
-    .from("profiles")
+    .from("subscriptions")
     .select("plan")
-    .eq("id", userId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) throw error;
-  const plan: unknown = data?.plan;
-  return isPlan(plan) ? plan : "free";
+  return (data?.plan as Plan | undefined) ?? "free";
 }
 
-// इस महीने की शुरुआत (IST) का ISO समय। क्रेडिट की गिनती इसी से होती है।
-export function currentPeriodStart(): string {
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-  const istNow = new Date(Date.now() + IST_OFFSET_MS);
+/**
+ * विंडो की शुरुआत।
+ *  - day:   आज का IST 00:00
+ *  - week:  पिछले 7 दिन (rolling)
+ *  - month: IST कैलेंडर महीने की पहली तारीख 00:00
+ * MVP में महीना कैलेंडर से है। बाद में Razorpay की billing तारीख से होगा।
+ */
+export function windowStart(window: QuotaWindow, now: Date = new Date()): Date {
+  if (window === "week") {
+    return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  }
+
+  const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+  if (window === "day") {
+    const startIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
+    return new Date(startIst - IST_OFFSET_MS);
+  }
+
   const startIst = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
-  return new Date(startIst - IST_OFFSET_MS).toISOString();
+  return new Date(startIst - IST_OFFSET_MS);
 }
 
 function isRemaining(value: unknown): value is { poster: number; reel: number } {
@@ -56,42 +63,49 @@ function isRemaining(value: unknown): value is { poster: number; reel: number } 
 }
 
 /**
- * Job शुरू करने से पहले credit reserve करें।
+ * Job शुरू करने से पहले कोटा reserve करें।
  * जांच और लिखना database function में एक साथ होता है (race नहीं होगी)।
  */
 export async function reserveCredits(input: ReserveInput): Promise<QuotaResult> {
   const plan = await getActivePlan(input.userId);
-  const limits = PLAN_LIMITS[plan];
+  const allowances = PLAN_ALLOWANCES[plan];
   const admin = createSupabaseAdminClient();
+  const now = new Date();
 
-  const { data, error } = await admin.rpc("reserve_credits", {
+  const { data, error } = await admin.rpc("reserve_credits_v2", {
     p_user: input.userId,
     p_job: input.jobId,
     p_poster_need: input.poster,
     p_reel_need: input.reel,
-    p_poster_limit: limits.poster,
-    p_reel_limit: limits.reel,
-    p_since: currentPeriodStart(),
+    p_poster_limit: allowances.poster.limit,
+    p_reel_limit: allowances.reel.limit,
+    p_poster_since: windowStart(allowances.poster.window, now).toISOString(),
+    p_reel_since: windowStart(allowances.reel.window, now).toISOString(),
   });
 
   if (error) throw error;
 
   const result = data as { allowed?: unknown; remaining?: unknown } | null;
   if (typeof result?.allowed !== "boolean" || !isRemaining(result.remaining)) {
-    throw new Error("reserve_credits returned unexpected shape");
+    throw new Error("reserve_credits_v2 returned unexpected shape");
   }
 
   return { allowed: result.allowed, remaining: result.remaining, plan };
 }
 
 /**
- * विफल job के credit वापस करें। एक job के लिए सिर्फ एक बार चलता है।
- * लौटाता है: कितनी ledger entries बनीं (0 का मतलब पहले ही refund हो चुका)।
+ * विफल job के कोटा और वॉलेट कटौती, दोनों वापस करें।
+ * एक job के लिए हर एक बार ही चलता है।
+ * लौटाता है: कोटा की कितनी entries वापस हुईं (वॉलेट रिफ़ंड अलग से जुड़ा है)।
  */
 export async function refundCredits(jobId: string): Promise<number> {
   const admin = createSupabaseAdminClient();
   const { data, error } = await admin.rpc("refund_job_credits", { p_job: jobId });
 
   if (error) throw error;
+
+  // वॉलेट से भरा गया हिस्सा भी वापस (अगर कोई हो)
+  await refundWalletForJob(jobId);
+
   return typeof data === "number" ? data : 0;
 }
