@@ -148,6 +148,12 @@ export function AccountMenu({ dict, lang, children }: Props) {
             </section>
 
             <section className="drawer-section">
+              <Link href="/pricing" className="drawer-link">
+                {dict.plan}
+              </Link>
+              <Link href="/settings" className="drawer-link">
+                सेटिंग्स
+              </Link>
               <Link href="/role" className="drawer-link">
                 {dict.changeRole}
               </Link>
