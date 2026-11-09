@@ -6,6 +6,7 @@ import { buildCaptionPrompt } from "@/lib/prompts";
 import { getActivePlan, refundCredits } from "@/lib/quota";
 import { renderPoster } from "@/lib/render/poster";
 import { applyWatermark } from "@/lib/render/watermark";
+import { notifyUser } from "@/lib/notifications";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sendJobFailed, sendOutputReady } from "@/lib/whatsapp/outbound";
 import type { JobInput } from "@/types/domain";
@@ -251,6 +252,14 @@ async function runJob(admin: Admin, jobId: string, shopId: string, input: Stored
     })
     .eq("id", jobId);
   if (doneError) throw new Error(`job done update failed: ${doneError.message}`);
+
+  // ---- 6b. ऐप में सूचना (विफल हो तो भी job पूरा रहता है) ----
+  await notifyUser(shop.user_id, {
+    kind: "job_done",
+    title: "आपका पोस्टर तैयार है",
+    body: shop.name,
+    link: "/my-posters",
+  });
 
   // ---- 7. WhatsApp पर भेजें (विफल हो तो job पूरा रहता है, डेटा dashboard पर है) ----
   if (recipient) {
