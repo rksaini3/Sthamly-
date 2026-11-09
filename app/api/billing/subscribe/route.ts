@@ -57,9 +57,9 @@ export async function POST(req: NextRequest) {
 
     const { error: insertError } = await admin.from("subscriptions").insert({
       user_id: user.id,
-      plan: parsed.data.plan,
+      plan_tier: parsed.data.plan,
       status: "pending",
-      razorpay_sub_id: sub.id,
+      razorpay_subscription_id: sub.id,
     });
 
     if (insertError) {
