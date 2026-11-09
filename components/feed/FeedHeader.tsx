@@ -24,6 +24,14 @@ const iconButton: CSSProperties = {
   textDecoration: "none",
 };
 
+// .top पहले grid (1fr auto 1fr) था, इसलिए बेल बीच में आ रही थी।
+// यहाँ flex से बाएँ लोगो और दाएँ बेल को किनारों पर रखा है।
+const topRow: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+
 export function FeedHeader({
   loggedIn,
   unread = 0,
@@ -34,7 +42,7 @@ export function FeedHeader({
 }) {
   return (
     <header className={styles.wrap}>
-      <div className={styles.top}>
+      <div className={styles.top} style={topRow}>
         <Link
           href="/feed"
           aria-label="Sthamly फ़ीड"
