@@ -119,7 +119,7 @@ async function handleSubscriptionActive(sub: SubscriptionEntity | undefined): Pr
   const { data: updated, error: updateError } = await admin
     .from("subscriptions")
     .update({ status: "active", current_period_end: periodEnd })
-    .eq("razorpay_sub_id", sub.id)
+    .eq("razorpay_subscription_id", sub.id)
     .select("id")
     .maybeSingle();
 
@@ -136,9 +136,9 @@ async function handleSubscriptionActive(sub: SubscriptionEntity | undefined): Pr
 
   const { error: insertError } = await admin.from("subscriptions").insert({
     user_id: userId,
-    plan,
+    plan_tier: plan,
     status: "active",
-    razorpay_sub_id: sub.id,
+    razorpay_subscription_id: sub.id,
     current_period_end: periodEnd,
   });
   if (insertError) throw insertError;
@@ -153,7 +153,7 @@ async function handleSubscriptionEnded(eventName: string, sub: SubscriptionEntit
   const { error } = await admin
     .from("subscriptions")
     .update({ status })
-    .eq("razorpay_sub_id", sub.id);
+    .eq("razorpay_subscription_id", sub.id);
 
   if (error) throw error;
 }
