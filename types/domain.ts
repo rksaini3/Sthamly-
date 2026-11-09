@@ -9,13 +9,8 @@ export type JobStatus = (typeof JOB_STATUSES)[number];
 export const OUTPUT_TYPES = ["reel", "poster", "caption"] as const;
 export type OutputType = (typeof OUTPUT_TYPES)[number];
 
-// मुफ़्त और वीआईपी पास। बाद में top-up credit अलग से जुड़ेगा।
-export const PLANS = ["free", "vip"] as const;
+export const PLANS = ["free", "starter", "premium", "business"] as const;
 export type Plan = (typeof PLANS)[number];
-
-// यूज़र की भूमिका। गिरगिट मोड: हर भूमिका का अलग home और टेम्पलेट।
-export const ROLES = ["shopkeeper", "student", "creator"] as const;
-export type Role = (typeof ROLES)[number];
 
 export type Language = "hinglish" | "hindi" | "bhojpuri" | "awadhi";
 
