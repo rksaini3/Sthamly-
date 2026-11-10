@@ -1,10 +1,11 @@
-import type { Plan } from "@/types/domain";
-
 // सारी रकम paise में (₹1 = 100 paise)। पूर्णांक रखने से float की गलती नहीं होती।
 // यह फ़ाइल कीमतों का एकमात्र स्रोत है। कीमत बदलनी हो तो सिर्फ़ यहीं बदलें।
 //
 // ध्यान: ये कीमतें GST सहित (ग्राहक को दिखने वाली) हैं।
-// लागत और मार्जिन का हिसाब इस फ़ाइल में नहीं है, वह अलग विश्लेषण में है।
+// लागत और मार्जिन का हिसाब इस फ़ाइल में नहीं है।
+
+// प्लान के नाम (कोटा और कीमत के लिए)। types/domain.ts का Plan अभी पुराना है, इसलिए यहाँ अलग।
+export type PricingPlan = "free" | "starter" | "premium" | "business";
 
 // ---- 1. वॉलेट के माइक्रो-आइटम (खुद खरीदने पर) ----
 export const PRICE_PAISE = {
@@ -36,13 +37,6 @@ export const PLAN_PRICE_PAISE = {
 
 export type PaidPlan = keyof typeof PLAN_PRICE_PAISE;
 
-// प्लान के नाम दुकानदार की भाषा में
-export const PLAN_LABEL: Record<PaidPlan, string> = {
-  starter: "स्टार्टर",
-  premium: "प्रीमियम",
-  business: "बिज़नेस",
-};
-
 // ---- 4. हर प्लान में क्या शामिल है (कोटा) ----
 // window: "day" = आज (IST), "week" = पिछले 7 दिन, "month" = IST कैलेंडर महीना
 export type QuotaWindow = "day" | "week" | "month";
@@ -57,10 +51,10 @@ export interface PlanAllowances {
   reel: Allowance;
   logins: number; // एक दुकान पर कितने लॉगिन
   whatsappAutoPostPerMonth: number; // WhatsApp पर ऑटो-पोस्ट (0 = सिर्फ़ मैन्युअल Share)
-  libraryPerDay: number | null; // null = रोज़ की सीमा नहीं (सिर्फ़ रोज़ की सुरक्षा सीमा)
+  libraryPerDay: number | null;
 }
 
-export const PLAN_ALLOWANCES: Record<Plan, PlanAllowances> = {
+export const PLAN_ALLOWANCES: Record<PricingPlan, PlanAllowances> = {
   free: {
     poster: { limit: 3, window: "day" },
     reel: { limit: 1, window: "week" },
