@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/format";
 
 export interface FeedComment {
   id: string;
+  user_id: string;
   author_name: string;
   body: string;
   created_at: string;
@@ -19,10 +20,12 @@ export function CommentsSection({
   announcementId,
   comments,
   loggedIn,
+  currentUserId,
 }: {
   announcementId: string;
   comments: FeedComment[];
   loggedIn: boolean;
+  currentUserId: string | null;
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -57,22 +60,60 @@ export function CommentsSection({
     }
   }
 
+  // सिर्फ़ अपना कमेंट हटाया जा सकता है
+  async function remove(commentId: string) {
+    if (!window.confirm("क्या आप यह कमेंट हटाना चाहते हैं?")) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        setErr(json?.error?.message ?? "कमेंट नहीं हट पाया, दोबारा कोशिश करें");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setErr("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="stack" style={{ gap: 10 }}>
       {comments.length === 0 && (
         <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>अभी कोई कमेंट नहीं है।</p>
       )}
 
-      {comments.map((c) => (
-        <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <div className="row" style={{ gap: 8 }}>
-            <strong style={{ fontSize: "0.9rem" }}>{c.author_name}</strong>
-            <span className="job-date">{formatDate(c.created_at)}</span>
+      {comments.map((c) => {
+        const isOwn = currentUserId !== null && c.user_id === currentUserId;
+        return (
+          <div key={c.id} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <div className="row" style={{ gap: 8 }}>
+              <strong style={{ fontSize: "0.9rem" }}>{c.author_name}</strong>
+              <span className="job-date">{formatDate(c.created_at)}</span>
+            </div>
+            <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.95rem" }}>{c.body}</p>
+
+            {isOwn ? (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ alignSelf: "flex-start", fontSize: "0.8rem", padding: "2px 8px" }}
+                onClick={() => remove(c.id)}
+                disabled={busy}
+              >
+                हटाएं
+              </button>
+            ) : (
+              <ReportButton id={c.id} kind="comment" />
+            )}
           </div>
-          <p style={{ margin: 0, whiteSpace: "pre-wrap", fontSize: "0.95rem" }}>{c.body}</p>
-          <ReportButton id={c.id} kind="comment" />
-        </div>
-      ))}
+        );
+      })}
+
+      {err && <p className="alert alert-error" style={{ margin: 0 }}>{err}</p>}
 
       {loggedIn ? (
         <div className="stack" style={{ gap: 6 }}>
@@ -85,7 +126,6 @@ export function CommentsSection({
             placeholder="कमेंट लिखें"
             disabled={busy}
           />
-          {err && <p className="alert alert-error" style={{ margin: 0 }}>{err}</p>}
           <div className="row">
             <span className="muted" style={{ fontSize: "0.8rem" }}>
               {text.length}/{MAX}
