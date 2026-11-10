@@ -1,7 +1,7 @@
-/* नीचे का बार: तीन बराबर टैब। माइक बटन दाएं किनारे पर तैरता है। */
+/* नीचे का बार: चार बराबर हिस्से। तीसरे हिस्से में माइक, बार के ऊपर उभरा हुआ। */
 
 .spacer {
-  height: 80px;
+  height: 84px;
 }
 
 .nav {
@@ -11,8 +11,8 @@
   bottom: 0;
   z-index: 50;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  align-items: center;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: end;
   padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
   background: var(--bg, #f7f5f2);
   border-top: 1px solid var(--border, rgba(127, 127, 127, 0.25));
@@ -34,23 +34,41 @@
   font-weight: 600;
 }
 
-/* माइक: दाएं किनारे पर, bar के ठीक ऊपर */
-.fab {
-  position: fixed;
-  right: 14px;
-  bottom: calc(84px + env(safe-area-inset-bottom));
-  z-index: 60;
+/* माइक का खाना: बटन और नीचे का लेबल एक कॉलम में */
+.micSlot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 6px;
+}
+
+.mic {
+  position: relative;
+  top: -22px; /* बार की ऊपरी रेखा से ऊपर उभरा */
+  margin-bottom: -22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   border-radius: 999px;
   background: var(--accent, #e0561a);
+  color: #fff;
   box-shadow: 0 6px 16px rgba(224, 86, 26, 0.35);
   text-decoration: none;
+  transition: transform 0.12s ease;
 }
 
-.fab:active {
+.mic:active {
   transform: scale(0.94);
+}
+
+.micActive {
+  box-shadow: 0 0 0 4px rgba(224, 86, 26, 0.25), 0 6px 16px rgba(224, 86, 26, 0.35);
+}
+
+.micLabel {
+  color: var(--muted, #78716c);
+  font-size: 0.8rem;
 }
