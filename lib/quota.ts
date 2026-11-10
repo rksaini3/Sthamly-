@@ -119,8 +119,9 @@ export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number; lifetime:
   business: { poster: PLAN_ALLOWANCES.business.poster.limit, reel: PLAN_ALLOWANCES.business.reel.limit, lifetime: false },
 };
 
-// इस प्लान के कोटे का चालू समय-चक्र कब से शुरू हुआ
-export function currentPeriodStart(_plan?: Plan): Date {
-  // पुराना व्यवहार: IST कैलेंडर महीने की शुरुआत (सभी प्लान के लिए)
-  return windowStart("month");
+// इस प्लान के कोटे का चालू समय-चक्र कब से शुरू हुआ, ISO string में।
+// account page इसे सीधे `p_since` में भेजता है, इसलिए string ही लौटता है।
+export function currentPeriodStart(plan?: Plan): string {
+  void plan; // सभी प्लान के लिए IST कैलेंडर महीना
+  return windowStart("month").toISOString();
 }
