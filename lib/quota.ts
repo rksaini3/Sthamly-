@@ -1,6 +1,6 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PLAN_ALLOWANCES, type QuotaWindow } from "@/lib/pricing";
-import { refundWalletForJob } from "@/lib/wallet";
+import { getWalletBalance, refundWalletForJob } from "@/lib/wallet";
 import type { Plan } from "@/types/domain";
 
 export interface ReserveInput {
@@ -14,6 +14,15 @@ export interface QuotaResult {
   allowed: boolean;
   remaining: { poster: number; reel: number };
   plan: Plan;
+}
+
+// पेज और असिस्टेंट के लिए कोटे की स्थिति
+export interface QuotaStatus {
+  plan: Plan;
+  posterLeft: number;
+  reelLeft: number;
+  posterWindow: QuotaWindow;
+  walletPaise: number;
 }
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -108,6 +117,43 @@ export async function refundCredits(jobId: string): Promise<number> {
   await refundWalletForJob(jobId);
 
   return typeof data === "number" ? data : 0;
+}
+
+// विंडो के अंदर कोटा कितना खर्च हुआ।
+// मान्यता: खर्च usage_ledger में नकारात्मक delta है, और रिफ़ंड सकारात्मक।
+async function usedInWindow(userId: string, kind: "poster" | "reel", window: QuotaWindow): Promise<number> {
+  const admin = createSupabaseAdminClient();
+  const since = windowStart(window, new Date()).toISOString();
+  const { data, error } = await admin
+    .from("usage_ledger")
+    .select("delta")
+    .eq("user_id", userId)
+    .eq("kind", kind)
+    .gte("created_at", since);
+
+  if (error) throw error;
+  const net = (data ?? []).reduce((sum, row) => sum + row.delta, 0);
+  return Math.max(0, -net);
+}
+
+// पोस्टर और रील का बचा कोटा, और वॉलेट का बैलेंस।
+export async function getQuotaStatus(userId: string): Promise<QuotaStatus> {
+  const plan = await getActivePlan(userId);
+  const allowances = PLAN_ALLOWANCES[plan];
+
+  const [posterUsed, reelUsed, walletPaise] = await Promise.all([
+    usedInWindow(userId, "poster", allowances.poster.window),
+    usedInWindow(userId, "reel", allowances.reel.window),
+    getWalletBalance(userId),
+  ]);
+
+  return {
+    plan,
+    posterLeft: Math.max(0, allowances.poster.limit - posterUsed),
+    reelLeft: Math.max(0, allowances.reel.limit - reelUsed),
+    posterWindow: allowances.poster.window,
+    walletPaise,
+  };
 }
 
 // ---- पुराने कोड के लिए सहायक exports (app/account/page.tsx) ----
