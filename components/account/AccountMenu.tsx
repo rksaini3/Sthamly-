@@ -87,7 +87,7 @@ export function AccountMenu({ dict, lang, children }: Props) {
         aria-expanded={open}
         onClick={() => setOpen(true)}
       >
-        <span aria-hidden>☰</span>
+        <span aria-hidden>⋮</span>
       </button>
 
       {open && (
