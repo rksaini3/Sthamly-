@@ -41,12 +41,6 @@ const STATUS_FOR_EVENT: Record<string, string> = {
   "subscription.paused": "paused",
 };
 
-// notes से आया प्लान तभी मानें जब वह हमारे चार्ज होने वाले प्लानों में से हो
-function asPaidPlan(value: string | undefined): PaidPlan | null {
-  if (!value) return null;
-  return value in PLAN_PRICE_PAISE ? (value as PaidPlan) : null;
-}
-
 export async function POST(req: NextRequest) {
   // raw body चाहिए, ताकि signature की जाँच सही हो
   const rawBody = await req.text();
@@ -96,6 +90,12 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+// notes से आई plan की वैल्यू पर भरोसा न करें, सिर्फ़ जानी-पहचानी प्लान ही मानें
+function asPaidPlan(value: string | undefined): PaidPlan | null {
+  if (!value) return null;
+  return Object.prototype.hasOwnProperty.call(PLAN_PRICE_PAISE, value) ? (value as PaidPlan) : null;
 }
 
 async function handleCapturedPayment(payment: PaymentEntity | undefined): Promise<void> {
