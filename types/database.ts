@@ -17,7 +17,7 @@ export type Database = {
           phone: string | null;
           city: string | null;
           language: string | null;
-          plan: "free" | "plus" | "vip";
+          plan: "free" | "plus" | "vip" | "starter" | "premium" | "business";
           created_at: string;
           deleted_at: string | null;
         };
@@ -28,7 +28,7 @@ export type Database = {
           phone?: string | null;
           city?: string | null;
           language?: string | null;
-          plan?: "free" | "plus" | "vip";
+          plan?: "free" | "plus" | "vip" | "starter" | "premium" | "business";
           created_at?: string;
           deleted_at?: string | null;
         };
@@ -39,7 +39,7 @@ export type Database = {
           phone?: string | null;
           city?: string | null;
           language?: string | null;
-          plan?: "free" | "plus" | "vip";
+          plan?: "free" | "plus" | "vip" | "starter" | "premium" | "business";
           created_at?: string;
           deleted_at?: string | null;
         };
@@ -668,19 +668,6 @@ export type Database = {
           p_reel_need: number;
           p_poster_limit: number;
           p_reel_limit: number;
-        };
-        Returns: Json;
-      };
-      reserve_credits_v2: {
-        Args: {
-          p_user: string;
-          p_job: string;
-          p_poster_need: number;
-          p_reel_need: number;
-          p_poster_limit: number;
-          p_reel_limit: number;
-          p_poster_since: string;
-          p_reel_since: string;
         };
         Returns: Json;
       };
