@@ -186,3 +186,8 @@ export default async function MyPostsPage() {
               </div>
             );
           })}
+        </div>
+      ))}
+    </main>
+  );
+}
