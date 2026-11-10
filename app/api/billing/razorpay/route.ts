@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifyWebhookSignature } from "@/lib/billing/razorpay";
+import { PLAN_PRICE_PAISE, type PaidPlan } from "@/lib/pricing";
 import { creditWallet } from "@/lib/wallet";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -39,6 +40,12 @@ const STATUS_FOR_EVENT: Record<string, string> = {
   "subscription.completed": "completed",
   "subscription.paused": "paused",
 };
+
+// notes से आया प्लान तभी मानें जब वह हमारे चार्ज होने वाले प्लानों में से हो
+function asPaidPlan(value: string | undefined): PaidPlan | null {
+  if (!value) return null;
+  return value in PLAN_PRICE_PAISE ? (value as PaidPlan) : null;
+}
 
 export async function POST(req: NextRequest) {
   // raw body चाहिए, ताकि signature की जाँच सही हो
@@ -128,9 +135,9 @@ async function handleSubscriptionActive(sub: SubscriptionEntity | undefined): Pr
 
   // पंक्ति नहीं मिली (जैसे सीधे Razorpay से बना सब्सक्रिप्शन): notes से बनाएँ
   const userId = sub.notes?.user_id;
-  const plan = sub.notes?.plan;
+  const plan = asPaidPlan(sub.notes?.plan);
   if (!userId || !plan) {
-    console.error("razorpay: subscription without user/plan notes", sub.id);
+    console.error("razorpay: subscription without valid user/plan notes", sub.id);
     return;
   }
 
