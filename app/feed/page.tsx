@@ -5,6 +5,7 @@ import { FeedCard } from "@/components/feed/FeedCard";
 import { FeedHeader } from "@/components/feed/FeedHeader";
 import feedStyles from "@/components/feed/FeedCard.module.css";
 import { formatDate } from "@/lib/format";
+import { getActivePlan } from "@/lib/quota";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,10 @@ export default async function OutputFeedPage() {
     ? await supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle()
     : { data: null };
   const initial = (profile?.full_name?.trim().charAt(0) || "S").toUpperCase();
+
+  // एडिट सिर्फ़ प्रीमियम और बिज़नेस में। प्लान न पढ़ा जाए तो मुफ़्त मानें।
+  const plan = user ? await getActivePlan(user.id).catch(() => "free" as const) : "free";
+  const canEdit = plan === "premium" || plan === "business";
 
   let unread = 0;
   if (user) {
@@ -51,14 +56,20 @@ export default async function OutputFeedPage() {
   if (announcements.length > 0) {
     const { data: cdata, error: cerror } = await supabase
       .from("announcement_comments")
-      .select("id, announcement_id, author_name, body, created_at")
+      .select("id, announcement_id, user_id, author_name, body, created_at")
       .in("announcement_id", announcements.map((a) => a.id))
       .eq("status", "published")
       .order("created_at", { ascending: true });
     if (cerror) console.error("output comments read failed", cerror.message);
     for (const c of cdata ?? []) {
       const list = commentsByAnnouncement.get(c.announcement_id) ?? [];
-      list.push({ id: c.id, author_name: c.author_name, body: c.body, created_at: c.created_at });
+      list.push({
+        id: c.id,
+        user_id: c.user_id,
+        author_name: c.author_name,
+        body: c.body,
+        created_at: c.created_at,
+      });
       commentsByAnnouncement.set(c.announcement_id, list);
     }
   }
@@ -87,14 +98,16 @@ export default async function OutputFeedPage() {
                 time={formatDate(a.created_at)}
                 comments={commentsByAnnouncement.get(a.id) ?? []}
                 loggedIn={Boolean(user)}
+                currentUserId={user?.id ?? null}
                 isOwner={Boolean(user) && a.user_id === user?.id}
+                canEdit={canEdit}
               />
             ))}
           </section>
         )}
 
         <p className="muted footer">
-          <Link href="/my-posters">मेरे पोस्ट देखें</Link>
+          <Link href="/my-posters">मेरे बनाए देखें</Link>
         </p>
       </main>
     </>
