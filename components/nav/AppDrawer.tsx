@@ -5,21 +5,20 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import styles from "@/components/nav/AppDrawer.module.css";
 
-// ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन, शुरुआती सेटअप, कानूनी पन्ने)
-const HIDDEN_PREFIXES = ["/login", "/auth", "/onboarding", "/privacy", "/terms"] as const;
+// ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन और कानूनी पन्ने)
+const HIDDEN_PREFIXES = ["/login", "/auth", "/privacy", "/terms"] as const;
 
 interface DrawerItem {
-  href?: string; // न हो तो "जल्द" वाला, बिना लिंक का
+  href: string;
   label: string;
 }
 
-// ड्रॉअर की सूची: यही पूरे ऐप का मुख्य रास्ता है
+// ड्रॉअर की सूची। घंटी (सूचनाएं) नीचे अलग से है।
 const ITEMS: DrawerItem[] = [
   { href: "/voice", label: "नया काम" },
   { href: "/my-posters", label: "मेरे बनाए" },
   { href: "/batch", label: "बैच" },
   { href: "/feed", label: "घोषणा" },
-  { href: "/notifications", label: "सूचनाएं" },
   { href: "/account", label: "दुकान की जानकारी" },
 ];
 
@@ -81,28 +80,41 @@ export function AppDrawer() {
             </div>
 
             <nav className={styles.list} aria-label="मुख्य सूची">
-              {ITEMS.map((item) =>
-                item.href ? (
+              {ITEMS.map((item) => {
+                const active = matches(pathname, item.href);
+                return (
                   <Link
                     key={item.label}
                     href={item.href}
-                    className={`${styles.link} ${matches(pathname, item.href) ? styles.active : ""}`}
-                    aria-current={matches(pathname, item.href) ? "page" : undefined}
+                    className={`${styles.link} ${active ? styles.active : ""}`}
+                    aria-current={active ? "page" : undefined}
                     onClick={() => setOpen(false)}
                   >
                     {item.label}
                   </Link>
-                ) : (
-                  <span key={item.label} className={`${styles.link} ${styles.soon}`}>
-                    {item.label} <small>जल्द</small>
-                  </span>
-                ),
-              )}
+                );
+              })}
             </nav>
 
-            <Link href="/account" className={styles.profile} onClick={() => setOpen(false)}>
-              खाता, वॉलेट और प्लान
-            </Link>
+            <div style={{ marginTop: "auto", display: "flex", gap: 10, alignItems: "stretch" }}>
+              <Link
+                href="/account"
+                className={styles.profile}
+                style={{ flex: 1, marginTop: 0 }}
+                onClick={() => setOpen(false)}
+              >
+                खाता, वॉलेट और प्लान
+              </Link>
+              <Link
+                href="/notifications"
+                className={styles.profile}
+                style={{ width: 52, marginTop: 0, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+                aria-label="सूचनाएं"
+                onClick={() => setOpen(false)}
+              >
+                <span aria-hidden>🔔</span>
+              </Link>
+            </div>
           </aside>
         </div>
       )}
