@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
 
 const MAX_BATCH = 10;
 
+// बैच रुकने पर जो कारण मिल सकता है (createJob की गड़बड़ियों में से)
+type BatchStopCode = Extract<CreateJobResult, { ok: false }>["code"];
+
 const bodySchema = z.object({
   shopId: z.string().uuid(),
   offerText: z.string().trim().min(3).max(300),
@@ -22,7 +25,7 @@ function errorResponse(code: string, message: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
-function statusFor(code: CreateJobResult extends { ok: false; code: infer C } ? C : never): number {
+function statusFor(code: BatchStopCode): number {
   switch (code) {
     case "FORBIDDEN":
       return 403;
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     // हर फ़ोटो के लिए एक अलग पोस्टर। कोटा या वॉलेट खत्म हो तो बाकी रुक जाते हैं।
     const jobIds: string[] = [];
-    let stoppedCode: CreateJobResult extends { ok: false; code: infer C } ? C : never | null = null;
+    let stoppedCode: BatchStopCode | null = null;
 
     for (const path of photoPaths) {
       const result = await createJob({
