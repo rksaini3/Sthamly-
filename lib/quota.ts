@@ -81,7 +81,13 @@ export async function reserveCredits(input: ReserveInput): Promise<QuotaResult> 
   const admin = createSupabaseAdminClient();
   const now = new Date();
 
-  const { data, error } = await admin.rpc("reserve_credits_v2", {
+  // TODO: types/database.ts में अभी सिर्फ़ पुराना reserve_credits है। Supabase में v2 का नाम और
+  // arguments पक्के होने पर database types दोबारा बनाएं और यह cast हटा दें।
+  const rpc = (admin.rpc as unknown as (
+    fn: "reserve_credits_v2",
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: unknown }>).bind(admin);
+  const { data, error } = await rpc("reserve_credits_v2", {
     p_user: input.userId,
     p_job: input.jobId,
     p_poster_need: input.poster,
