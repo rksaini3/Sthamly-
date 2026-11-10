@@ -4,6 +4,27 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import styles from "@/components/voice/VoiceAssistant.module.css";
+import { formatRupees } from "@/lib/pricing";
+
+export interface AssistantQuota {
+  posterLeft: number;
+  posterWindow: "day" | "week" | "month";
+  walletPaise: number;
+}
+
+const WINDOW_LABEL: Record<AssistantQuota["posterWindow"], string> = {
+  day: "आज",
+  week: "इस हफ़्ते",
+  month: "इस महीने",
+};
+
+// खाली स्क्रीन के सुझाव: कार्ड दबाने पर वाक्य लिखने की जगह में भर जाता है
+const SUGGESTIONS: { label: string; prompt: string }[] = [
+  { label: "दीवाली सेल का पोस्टर", prompt: "दीवाली सेल का पोस्टर बनाना है, ऑफ़र है " },
+  { label: "प्रोडक्ट की फ़ोटो से कार्ड", prompt: "मेरे प्रोडक्ट की फ़ोटो से कार्ड बनाना है" },
+  { label: "कल का मेन्यू", prompt: "कल का मेन्यू पोस्टर बनाना है" },
+  { label: "कैंप या बैच का पोस्टर", prompt: "कैंप या बैच का पोस्टर बनाना है" },
+];
 
 interface Offer {
   offerText: string;
@@ -13,19 +34,12 @@ interface Offer {
 type Kind = "poster" | "reel";
 type Busy = "idle" | "transcribing" | "replying" | "parsing";
 
-type Extra =
-  | { kind: "poster"; url: string; offer: Offer }
-  | { kind: "quota" }
-  | { kind: "setup" };
-
 interface Message {
   id: number;
   role: "user" | "assistant";
   text: string;
   // अगर यह संदेश ऑफ़र का कार्ड है तो यहाँ नतीजा होगा (null = समझ नहीं आया)
   offerCard?: { offer: Offer | null };
-  // चैट के अंदर बना पोस्टर, या क्रेडिट/सेटअप की जानकारी
-  extra?: Extra;
 }
 
 // /onboarding पन्ना इसी key से समझा हुआ ऑफ़र और चुना हुआ प्रकार उठाता है
@@ -71,14 +85,15 @@ function StopIcon() {
   );
 }
 
-// मॉडल का जवाब **बोल्ड** में आ सकता है; उसे <strong> में बदलें, ताकि स्टार न दिखें
-function renderBold(text: string) {
-  return text.split(/\*\*([\s\S]+?)\*\*/g).map((part, i) =>
-    i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>,
-  );
-}
-
-export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boolean }) {
+export function VoiceAssistant({
+  name,
+  loggedIn,
+  quota,
+}: {
+  name: string;
+  loggedIn: boolean;
+  quota: AssistantQuota | null;
+}) {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [busy, setBusy] = useState<Busy>("idle");
@@ -111,31 +126,6 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
     }
     setError(null);
 
-    // "पोस्टर बना दो" जैसी माँग सीधे ऑफ़र बनाने में जाए, चैट में DIY स्टेप न आएं
-    const wantsCreation =
-      /(पोस्टर|पोस्ट|रील|poster|reel)/i.test(text) &&
-      /(बना|बनाओ|बनाएं|बनाइए|बना दो|बना दें|बनवा|बनाने|चाहिए)/.test(text);
-    if (wantsCreation) {
-      setMessages((prev) => [...prev, { id: newId(), role: "user", text }]);
-      setBusy("parsing");
-      try {
-        const offer = await parseOffer(text);
-        if (!offer) {
-          setMessages((prev) => [
-            ...prev,
-            { id: newId(), role: "assistant", text: "ऑफ़र समझ नहीं आया। साफ़ शब्दों में दोबारा लिखें।" },
-          ]);
-          return;
-        }
-        await makePoster(offer);
-      } catch {
-        setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
-      } finally {
-        setBusy("idle");
-      }
-      return;
-    }
-
     const userMsg: Message = { id: newId(), role: "user", text };
     const history = [...messages, userMsg]
       .filter((m) => !m.offerCard && m.text.trim().length > 0)
@@ -156,52 +146,6 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
       }
       const data = (await res.json()) as { reply: string };
       setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: data.reply }]);
-    } catch {
-      setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
-    } finally {
-      setBusy("idle");
-    }
-  }
-
-  // सिर्फ़ ऑफ़र समझना (कोई कार्ड नहीं बनता)
-  async function parseOffer(text: string): Promise<Offer | null> {
-    const res = await fetch("/api/voice/parse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) throw new Error(await readError(res));
-    const data = (await res.json()) as { offer: Offer | null };
-    return data.offer;
-  }
-
-  // पोस्टर सीधे चैट में बनाएं: फ़ॉर्म नहीं, कोई अलग पन्ना नहीं
-  async function makePoster(offer: Offer) {
-    setError(null);
-    setBusy("replying");
-    try {
-      const res = await fetch("/api/voice/poster", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ offerText: offer.offerText, occasion: offer.occasion }),
-      });
-      if (res.status === 402) {
-        setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: "", extra: { kind: "quota" } }]);
-        return;
-      }
-      if (res.status === 409) {
-        setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: "", extra: { kind: "setup" } }]);
-        return;
-      }
-      if (!res.ok) {
-        setError(await readError(res));
-        return;
-      }
-      const data = (await res.json()) as { posterUrl: string };
-      setMessages((prev) => [
-        ...prev,
-        { id: newId(), role: "assistant", text: "", extra: { kind: "poster", url: data.posterUrl, offer } },
-      ]);
     } catch {
       setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
     } finally {
@@ -341,14 +285,20 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <Link href="/feed" className={styles.back} aria-label="वापस जाएं">
-          ←
-        </Link>
         <div>
           <div className={styles.title}>Sthamly असिस्टेंट</div>
           <div className={styles.subtitle}>बोलकर या लिखकर बात करें</div>
         </div>
       </header>
+
+      {quota && (
+        <div className={styles.quota} aria-live="polite">
+          <span>
+            {WINDOW_LABEL[quota.posterWindow]} बचे पोस्टर: {quota.posterLeft}
+          </span>
+          <span>वॉलेट: {formatRupees(quota.walletPaise)}</span>
+        </div>
+      )}
 
       <section className={`${styles.stage} ${isEmpty ? styles.stageEmpty : ""}`}>
         {isEmpty && (
@@ -363,6 +313,21 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
                 ? "अपनी दुकान की बात बोलें या लिखें। ऑफ़र बनाने के लिए संदेश के नीचे बटन दबाएं।"
                 : "बातचीत के लिए पहले लॉग-इन करें।"}
             </p>
+
+            {loggedIn && (
+              <div className={styles.suggestions}>
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s.label}
+                    type="button"
+                    className={styles.suggestion}
+                    onClick={() => setDraft(s.prompt)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -383,46 +348,6 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
             );
           }
 
-          if (m.extra) {
-            const x = m.extra;
-            return (
-              <div key={m.id} className={styles.bubbleBot}>
-                {x.kind === "poster" && (
-                  <>
-                    <p className={styles.label}>आपका पोस्टर तैयार है</p>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={x.url} alt="पोस्टर" style={{ width: "100%", borderRadius: 12 }} />
-                    <div className={styles.btnRow}>
-                      <a className={styles.btnPrimary} href={x.url} download="Sthamly-poster.png" target="_blank" rel="noreferrer">
-                        डाउनलोड करें
-                      </a>
-                      <button type="button" className={styles.btnGhost} onClick={() => chooseOffer(x.offer, "reel")}>
-                        रील बनाएं
-                      </button>
-                    </div>
-                  </>
-                )}
-                {x.kind === "quota" && (
-                  <>
-                    <p className={styles.label}>इस महीने के पोस्टर खत्म हो गए हैं।</p>
-                    <p className={styles.muted}>रिचार्ज करते ही पोस्टर इसी चैट में बन जाएगा।</p>
-                    <div className={styles.btnRow}>
-                      <Link href="/pricing" className={styles.btnPrimary}>रिचार्ज करें</Link>
-                    </div>
-                  </>
-                )}
-                {x.kind === "setup" && (
-                  <>
-                    <p className={styles.label}>पहले दुकान का नाम और शहर एक बार बता दीजिए।</p>
-                    <div className={styles.btnRow}>
-                      <Link href="/onboarding" className={styles.btnPrimary}>दुकान की जानकारी भरें</Link>
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          }
-
           if (m.offerCard) {
             const { offer } = m.offerCard;
             return (
@@ -433,7 +358,7 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
                     <p className={styles.offerText}>{offer.offerText}</p>
                     {offer.occasion && <p className={styles.muted}>मौका: {offer.occasion}</p>}
                     <div className={styles.btnRow}>
-                      <button type="button" className={styles.btnPrimary} onClick={() => void makePoster(offer)}>
+                      <button type="button" className={styles.btnPrimary} onClick={() => chooseOffer(offer, "poster")}>
                         पोस्टर बनाएं
                       </button>
                       <button type="button" className={styles.btnGhost} onClick={() => chooseOffer(offer, "reel")}>
@@ -450,7 +375,7 @@ export function VoiceAssistant({ name, loggedIn }: { name: string; loggedIn: boo
 
           return (
             <div key={m.id} className={styles.bubbleBot}>
-              <p className={styles.botText}>{renderBold(m.text)}</p>
+              <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{m.text}</p>
             </div>
           );
         })}
