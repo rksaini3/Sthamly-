@@ -1,12 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { getActivePlan } from "@/lib/quota";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const idSchema = z.string().uuid();
 
 const bodySchema = z.object({
   body: z
@@ -16,29 +13,14 @@ const bodySchema = z.object({
     .max(280, "280 अक्षर से ज़्यादा नहीं लिख सकते"),
 });
 
-type RouteContext = { params: Promise<{ id: string }> };
-
-// सिर्फ़ अपनी घोषणा बदल सकते हैं, और सिर्फ़ प्रीमियम/बिज़नेस प्लान में
-export async function PATCH(req: NextRequest, { params }: RouteContext) {
-  const { id } = await params;
-  if (!idSchema.safeParse(id).success) {
-    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
-  }
-
+// नई घोषणा बनाएं। लॉग-इन ज़रूरी है। बदलना और हटाना [id]/route.ts में है।
+export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
-  }
-
-  const plan = await getActivePlan(user.id).catch(() => "free" as const);
-  if (plan !== "premium" && plan !== "business") {
-    return NextResponse.json(
-      { error: { code: "PLAN_REQUIRED", message: "घोषणा बदलने के लिए प्रीमियम प्लान चाहिए" } },
-      { status: 403 },
-    );
   }
 
   let raw: unknown;
@@ -56,55 +38,24 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const { data, error } = await supabase
-    .from("announcements")
-    .update({ body: parsed.data.body })
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select("id")
+  // दुकान का नाम: अभी profile का नाम (Step 6 में दुकान की जानकारी से आएगा)
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name")
+    .eq("id", user.id)
     .maybeSingle();
-
-  if (error) {
-    console.error("announcement update failed", error.message);
-    return NextResponse.json({ error: { code: "SAVE_FAILED", message: "बदलाव सेव नहीं हो पाया" } }, { status: 500 });
-  }
-  if (!data) {
-    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
-  }
-
-  return NextResponse.json({ ok: true });
-}
-
-// सिर्फ़ अपनी घोषणा हटा सकते हैं (सबके लिए उपलब्ध)
-export async function DELETE(_req: NextRequest, { params }: RouteContext) {
-  const { id } = await params;
-  if (!idSchema.safeParse(id).success) {
-    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
-  }
-
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
-  }
+  const shopName = profile?.full_name?.trim() || "दुकान";
 
   const { data, error } = await supabase
     .from("announcements")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id)
+    .insert({ user_id: user.id, shop_name: shopName, body: parsed.data.body })
     .select("id")
-    .maybeSingle();
+    .single();
 
-  if (error) {
-    console.error("announcement delete failed", error.message);
-    return NextResponse.json({ error: { code: "DELETE_FAILED", message: "घोषणा हट नहीं पाई" } }, { status: 500 });
-  }
-  if (!data) {
-    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
+  if (error || !data) {
+    console.error("announcement insert failed", error?.message);
+    return NextResponse.json({ error: { code: "SAVE_FAILED", message: "घोषणा सेव नहीं हो पाई" } }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, id: data.id }, { status: 201 });
 }
