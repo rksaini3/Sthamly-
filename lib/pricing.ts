@@ -36,6 +36,13 @@ export const PLAN_PRICE_PAISE = {
 
 export type PaidPlan = keyof typeof PLAN_PRICE_PAISE;
 
+// प्लान के नाम दुकानदार की भाषा में
+export const PLAN_LABEL: Record<PaidPlan, string> = {
+  starter: "स्टार्टर",
+  premium: "प्रीमियम",
+  business: "बिज़नेस",
+};
+
 // ---- 4. हर प्लान में क्या शामिल है (कोटा) ----
 // window: "day" = आज (IST), "week" = पिछले 7 दिन, "month" = IST कैलेंडर महीना
 export type QuotaWindow = "day" | "week" | "month";
