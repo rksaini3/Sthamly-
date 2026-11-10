@@ -120,6 +120,7 @@ export const PLAN_LIMITS: Record<Plan, { poster: number; reel: number; lifetime:
 };
 
 // इस प्लान के कोटे का चालू समय-चक्र कब से शुरू हुआ
-export function currentPeriodStart(plan: Plan): Date {
-  return windowStart(PLAN_ALLOWANCES[plan].poster.window);
+export function currentPeriodStart(_plan?: Plan): Date {
+  // पुराना व्यवहार: IST कैलेंडर महीने की शुरुआत (सभी प्लान के लिए)
+  return windowStart("month");
 }
