@@ -1,7 +1,7 @@
 import { PRICE_PAISE } from "@/lib/pricing";
-import { reserveCredits, refundCredits } from "@/lib/quota";
-import { debitWallet } from "@/lib/wallet";
+import { refundCredits, reserveCredits } from "@/lib/quota";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { debitWallet } from "@/lib/wallet";
 import type { Language } from "@/types/domain";
 
 export interface CreateJobInput {
@@ -12,10 +12,12 @@ export interface CreateJobInput {
   photoPaths: string[];
   language: Language;
   wantReel: boolean;
+  // बैच का हिस्सा हो तो उसकी ID, नहीं तो खाली
+  batchId?: string | null;
 }
 
 export type CreateJobResult =
-  | { ok: true; jobId: string; remaining: { poster: number; reel: number }; paidFromWalletPaise: number }
+  | { ok: true; jobId: string; remaining: { poster: number; reel: number } }
   | { ok: false; code: "FORBIDDEN" | "SHOP_NOT_FOUND" | "QUOTA_EXCEEDED" | "INTERNAL" };
 
 async function markFailed(jobId: string, reason: string): Promise<void> {
@@ -27,8 +29,7 @@ async function markFailed(jobId: string, reason: string): Promise<void> {
 }
 
 /**
- * Job बनाएं। पहले कोटा से reserve करें। कोटा खत्म हो तो बाकी हिस्सा वॉलेट से (माइक्रो-कीमत पर)।
- * वेब (/api/generate), WhatsApp और चैट (/api/voice/poster), तीनों यही इस्तेमाल करते हैं।
+ * Job बनाएं और credit reserve करें। असिस्टेंट और बैच, दोनों यही इस्तेमाल करते हैं।
  * Job queued रहता है, worker उसे बाद में उठाता है।
  */
 export async function createJob(input: CreateJobInput): Promise<CreateJobResult> {
@@ -58,6 +59,7 @@ export async function createJob(input: CreateJobInput): Promise<CreateJobResult>
     .from("jobs")
     .insert({
       shop_id: shop.id,
+      batch_id: input.batchId ?? null,
       status: "queued",
       input: {
         // category और नाम DB से लिए, क्लाइंट से नहीं
@@ -79,82 +81,73 @@ export async function createJob(input: CreateJobInput): Promise<CreateJobResult>
     return { ok: false, code: "INTERNAL" };
   }
 
-  const posterNeed = 1;
-  const reelNeed = input.wantReel ? 1 : 0;
-
   try {
-    // 1. पूरा कोटा
-    const full = await reserveCredits({
+    const quota = await reserveCredits({
       userId: input.userId,
       jobId: job.id,
-      poster: posterNeed,
-      reel: reelNeed,
+      poster: 1,
+      reel: input.wantReel ? 1 : 0,
     });
 
-    if (full.allowed) {
-      return { ok: true, jobId: job.id, remaining: full.remaining, paidFromWalletPaise: 0 };
+    if (quota.allowed) {
+      return { ok: true, jobId: job.id, remaining: quota.remaining };
     }
 
-    // 2. कोटा में जितना बचा है, उतना reserve करें
-    const coverPoster = full.remaining.poster >= posterNeed ? 1 : 0;
-    const coverReel = reelNeed > 0 && full.remaining.reel >= reelNeed ? 1 : 0;
+    // कोटा कम पड़ा: जो हिस्सा कोटे में है वह कोटे से, बाकी वॉलेट से।
+    // remaining वही बचा हुआ कोटा है जो इस job से पहले था।
+    const posterFromWallet = quota.remaining.poster < 1;
+    const reelFromWallet = input.wantReel && quota.remaining.reel < 1;
 
-    let coveredPoster = 0;
-    let coveredReel = 0;
-    if (coverPoster + coverReel > 0) {
+    if (!posterFromWallet && !reelFromWallet) {
+      // दोनों कोटे में दिख रहे हैं, फिर भी मना: दूसरे job से टकराव
+      await markFailed(job.id, "quota_exceeded");
+      return { ok: false, code: "QUOTA_EXCEEDED" };
+    }
+
+    const coveredPoster = posterFromWallet ? 0 : 1;
+    const coveredReel = reelFromWallet ? 0 : input.wantReel ? 1 : 0;
+    let remaining = quota.remaining;
+
+    if (coveredPoster + coveredReel > 0) {
       const partial = await reserveCredits({
         userId: input.userId,
         jobId: job.id,
-        poster: coverPoster,
-        reel: coverReel,
+        poster: coveredPoster,
+        reel: coveredReel,
       });
-      if (partial.allowed) {
-        coveredPoster = coverPoster;
-        coveredReel = coverReel;
+      if (!partial.allowed) {
+        await markFailed(job.id, "quota_exceeded");
+        return { ok: false, code: "QUOTA_EXCEEDED" };
       }
+      remaining = partial.remaining;
     }
 
-    // 3. बाकी हिस्सा वॉलेट से
-    const walletPoster = posterNeed - coveredPoster;
-    const walletReel = reelNeed - coveredReel;
-    const items: string[] = [];
-    let amountPaise = 0;
-    if (walletPoster > 0) {
-      items.push("ai_poster");
-      amountPaise += PRICE_PAISE.ai_poster;
-    }
-    if (walletReel > 0) {
-      items.push("slide_reel");
-      amountPaise += PRICE_PAISE.slide_reel;
-    }
+    const charges: Array<{ item: string; amountPaise: number }> = [];
+    if (posterFromWallet) charges.push({ item: "ai_poster", amountPaise: PRICE_PAISE.ai_poster });
+    if (reelFromWallet) charges.push({ item: "slide_reel", amountPaise: PRICE_PAISE.slide_reel });
 
-    if (amountPaise > 0) {
+    for (const charge of charges) {
       const debit = await debitWallet({
         userId: input.userId,
         jobId: job.id,
-        item: items.join("+"),
-        amountPaise,
+        item: charge.item,
+        amountPaise: charge.amountPaise,
       });
-
       if (!debit.ok) {
-        // वॉलेट में पैसे नहीं: कोटे से जो reserve हुआ था, वह भी लौटाएँ
+        // बैलेंस कम: जो रिज़र्व हुआ और जो कटा, सब वापस
         await refundCredits(job.id);
-        await markFailed(job.id, "quota_and_wallet_insufficient");
+        await markFailed(job.id, "quota_exceeded");
         return { ok: false, code: "QUOTA_EXCEEDED" };
       }
     }
 
-    return {
-      ok: true,
-      jobId: job.id,
-      remaining: { poster: 0, reel: 0 },
-      paidFromWalletPaise: amountPaise,
-    };
+    return { ok: true, jobId: job.id, remaining };
   } catch (error) {
-    console.error("createJob: reserve or wallet step failed", job.id, error);
-    await refundCredits(job.id).catch((refundError) => {
-      console.error("createJob: refund after failure also failed", job.id, refundError);
-    });
+    console.error("createJob: credit reserve failed", job.id, error);
+    // बीच में कुछ रिज़र्व या कटा हो सकता है, इसलिए वापस करने की कोशिश
+    await refundCredits(job.id).catch((refundError) =>
+      console.error("createJob: refund after failure also failed", job.id, refundError),
+    );
     await markFailed(job.id, "credit_reserve_failed");
     return { ok: false, code: "INTERNAL" };
   }
