@@ -6,18 +6,13 @@ import { ShareButtons } from "@/components/dashboard/ShareButtons";
 import { PublishToggle } from "@/components/my-posters/PublishToggle";
 import { ComingSoon } from "@/components/roles/ComingSoon";
 import { formatDate } from "@/lib/format";
+import { PLAN_LABEL, PRICE_PAISE, formatRupees } from "@/lib/pricing";
+import { getQuotaStatus } from "@/lib/quota";
 import { isRole } from "@/lib/roles";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { JobStatus, OutputType } from "@/types/domain";
 
 export const dynamic = "force-dynamic";
-
-// मुफ़्त और VIP की महीने की सीमा (lib/quota.ts से मेल खाती है)
-const LIMITS = {
-  free: { poster: 5, reel: 1 },
-  vip: { poster: 60, reel: 10 },
-} as const;
 
 const STATUS_LABEL: Record<JobStatus, string> = {
   queued: "कतार में",
@@ -25,6 +20,8 @@ const STATUS_LABEL: Record<JobStatus, string> = {
   done: "तैयार",
   failed: "नहीं बन पाया",
 };
+
+const WINDOW_TEXT = { day: "आज", week: "इस हफ़्ते", month: "इस महीने" } as const;
 
 interface OutputRow {
   id: string;
@@ -43,32 +40,7 @@ interface JobRow {
   outputs: OutputRow[];
 }
 
-// भारत के समय (IST) के हिसाब से इस महीने की शुरुआत
-function monthStartIST(): string {
-  const nowIST = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
-  const startUTC =
-    Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1) - 5.5 * 60 * 60 * 1000;
-  return new Date(startUTC).toISOString();
-}
-
-function ChoiceLink({
-  href,
-  title,
-  desc,
-}: {
-  href: string;
-  title: string;
-  desc: string;
-}) {
-  return (
-    <Link href={href} className="card stack" style={{ gap: 4, textDecoration: "none" }}>
-      <strong>{title}</strong>
-      <span className="muted" style={{ fontSize: "0.9rem" }}>{desc}</span>
-    </Link>
-  );
-}
-
-export default async function PostsPage() {
+export default async function MyPostsPage() {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -77,7 +49,7 @@ export default async function PostsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("role, plan")
+    .select("role")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -87,23 +59,17 @@ export default async function PostsPage() {
   if (role !== "shopkeeper") {
     return (
       <main className="page stack">
-        <h1 style={{ margin: 0 }}>पोस्ट</h1>
+        <h1 style={{ margin: 0 }}>मेरे बनाए</h1>
         <ComingSoon role={role} />
       </main>
     );
   }
 
-  const plan: "free" | "vip" = profile?.plan === "vip" ? "vip" : "free";
-
-  // इस महीने कितना इस्तेमाल हुआ
-  const admin = createSupabaseAdminClient();
-  const since = monthStartIST();
-  const [posterUsed, reelUsed] = await Promise.all([
-    admin.rpc("credit_used", { p_user: user.id, p_kind: "poster", p_since: since }),
-    admin.rpc("credit_used", { p_user: user.id, p_kind: "reel", p_since: since }),
-  ]);
-  const posterLeft = Math.max(0, LIMITS[plan].poster - Number(posterUsed.data ?? 0));
-  const reelLeft = Math.max(0, LIMITS[plan].reel - Number(reelUsed.data ?? 0));
+  // कोटा और वॉलेट वही स्रोत जो असिस्टेंट की चिप और बनाने का नियम इस्तेमाल करते हैं
+  const status = await getQuotaStatus(user.id).catch((error) => {
+    console.error("my-posters: quota status failed", error);
+    return null;
+  });
 
   const { data, error } = await supabase
     .from("jobs")
@@ -112,7 +78,7 @@ export default async function PostsPage() {
     .limit(30);
 
   if (error) {
-    console.error("posts: jobs read failed", error);
+    console.error("my-posters: jobs read failed", error);
   }
 
   const jobs = (error ? [] : (data ?? [])) as unknown as JobRow[];
@@ -148,57 +114,31 @@ export default async function PostsPage() {
     <main className="page stack">
       <AutoRefresh active={hasActive} />
 
-      <h1 style={{ margin: 0 }}>पोस्ट</h1>
+      <h1 style={{ margin: 0 }}>मेरे बनाए</h1>
 
-      {/* बनाने के विकल्प */}
-      <div className="stack" style={{ gap: 10 }}>
-        <ChoiceLink
-          href="/onboarding?kind=poster"
-          title="पोस्टर (फ़ोटो)"
-          desc="दुकान की फ़ोटो और ऑफ़र से पोस्टर और कैप्शन"
-        />
-        <ChoiceLink
-          href="/onboarding?kind=reel"
-          title="रील (वीडियो)"
-          desc="छोटी वीडियो रील बनाएं"
-        />
-        <ChoiceLink
-          href="/feed"
-          title="घोषणा (सिर्फ़ टेक्स्ट)"
-          desc="बिना फ़ोटो और वीडियो के घोषणा करें"
-        />
-      </div>
-
-      {/* कोटा और चार्ज */}
-      <div className="card stack" style={{ gap: 6 }}>
-        {plan === "vip" ? (
-          <>
-            <strong>VIP प्लान</strong>
-            <p className="muted" style={{ margin: 0 }}>
-              इस महीने पोस्टर {posterLeft} बचे, रील {reelLeft} बची। अलग से कोई चार्ज नहीं।
-            </p>
-          </>
-        ) : (
-          <>
-            <strong>इस महीने मुफ़्त</strong>
-            <p className="muted" style={{ margin: 0 }}>
-              पोस्टर {posterLeft} बचे, रील {reelLeft} बची।
-            </p>
-            {(posterLeft === 0 || reelLeft === 0) && (
-              <p className="alert" style={{ margin: 0 }}>
-                मुफ़्त कोटा खत्म होने पर पोस्टर के लिए ₹2 प्रति पोस्टर (₹10 में 5 क्रेडिट) और AI रील के लिए ₹15 प्रति रील लगेगा।
-              </p>
-            )}
-            <Link href="/pricing" className="btn btn-primary btn-block">
-              रिचार्ज करें
-            </Link>
-          </>
-        )}
-      </div>
+      {/* कोटा, वॉलेट और नियम */}
+      {status && (
+        <div className="card stack" style={{ gap: 6 }}>
+          <strong>{PLAN_LABEL[status.plan]} प्लान</strong>
+          <p className="muted" style={{ margin: 0 }}>
+            {WINDOW_TEXT[status.posterWindow]} पोस्टर {status.posterLeft} बचे, रील {status.reelLeft} बची।
+            वॉलेट: {formatRupees(status.walletPaise)}
+          </p>
+          <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+            कोटा खत्म होने पर पोस्टर {formatRupees(PRICE_PAISE.ai_poster)} और रील{" "}
+            {formatRupees(PRICE_PAISE.slide_reel)} वॉलेट से कटेंगे।
+          </p>
+          <Link href="/pricing" className="btn btn-primary btn-block">
+            वॉलेट में पैसे डालें
+          </Link>
+        </div>
+      )}
 
       {rows.length === 0 && (
         <div className="card">
-          <p className="muted" style={{ margin: 0 }}>अभी कोई पोस्टर या रील नहीं बना है।</p>
+          <p className="muted" style={{ margin: 0 }}>
+            अभी कोई पोस्टर या रील नहीं बना है। असिस्टेंट से नया काम शुरू करें।
+          </p>
         </div>
       )}
 
@@ -212,7 +152,7 @@ export default async function PostsPage() {
 
           {job.status === "failed" && (
             <p className="alert alert-error" style={{ marginTop: 8 }}>
-              इस बार बन नहीं पाया। आपका credit वापस कर दिया गया है।
+              इस बार बन नहीं पाया। कोटा या वॉलेट का पैसा वापस कर दिया गया है।
             </p>
           )}
 
@@ -246,8 +186,3 @@ export default async function PostsPage() {
               </div>
             );
           })}
-        </div>
-      ))}
-    </main>
-  );
-}
