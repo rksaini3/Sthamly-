@@ -4,10 +4,6 @@ import { z } from "zod";
 // इससे build के समय missing keys से crash नहीं होगा।
 const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1),
-  WHATSAPP_ACCESS_TOKEN: z.string().min(1),
-  WHATSAPP_VERIFY_TOKEN: z.string().min(1),
-  WHATSAPP_APP_SECRET: z.string().min(1),
   CRON_SECRET: z.string().min(16),
   FAL_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
