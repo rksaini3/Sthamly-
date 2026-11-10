@@ -99,7 +99,15 @@ export const FREE_TIER = {
 // डिलीवर हो चुका काम: रिफ़ंड नहीं।
 export const REFUND_POLICY = "failed_only" as const;
 
-// ---- 7. सहायक फ़ंक्शन ----
+// ---- 7. प्लान के नाम (स्क्रीन पर दिखाने के लिए) ----
+export const PLAN_LABEL: Record<PricingPlan, string> = {
+  free: "मुफ़्त",
+  starter: "स्टार्टर",
+  premium: "प्रीमियम",
+  business: "बिज़नेस",
+};
+
+// ---- 8. सहायक फ़ंक्शन ----
 export function formatRupees(paise: number): string {
   return `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
