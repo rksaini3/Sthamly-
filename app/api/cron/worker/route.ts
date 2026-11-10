@@ -8,7 +8,6 @@ import { renderPoster } from "@/lib/render/poster";
 import { applyWatermark } from "@/lib/render/watermark";
 import { notifyUser } from "@/lib/notifications";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { sendJobFailed, sendOutputReady } from "@/lib/whatsapp/outbound";
 import type { JobInput } from "@/types/domain";
 import type { Json } from "@/types/database";
 
@@ -18,7 +17,6 @@ export const maxDuration = 300;
 const BATCH_SIZE = 3;
 const PHOTO_BUCKET = "shop-photos"; // private, दुकानदार की अपलोड की गई फोटो
 const OUTPUT_BUCKET = "outputs"; // private, बने हुए poster
-const SIGNED_URL_SECONDS = 60 * 60 * 24;
 
 type Admin = ReturnType<typeof createSupabaseAdminClient>;
 type StoredInput = JobInput & { wantReel?: boolean };
@@ -129,7 +127,6 @@ async function processJob(admin: Admin, jobId: string, maxAttempts: number): Pro
       console.error("worker: REFUND FAILED", jobId, messageOf(refundError));
     }
 
-    await notifyFailure(admin, job.shop_id);
     return "failed";
   }
 }
@@ -260,11 +257,6 @@ async function runJob(admin: Admin, jobId: string, shopId: string, input: Stored
     body: shop.name,
     link: "/my-posters",
   });
-
-  // ---- 7. WhatsApp पर भेजें (विफल हो तो job पूरा रहता है, डेटा dashboard पर है) ----
-  if (recipient) {
-    await deliver(admin, recipient, posterPath, captionText, input.wantReel);
-  }
 }
 
 // ---- Helpers ----
@@ -284,51 +276,4 @@ async function loadPhotoBackground(
   // Satori सिर्फ PNG और JPEG लेता है
   if (data.type !== "image/png" && data.type !== "image/jpeg") return null;
   return { data: Buffer.from(await data.arrayBuffer()), mimeType: data.type };
-}
-
-async function deliver(
-  admin: Admin,
-  recipient: string,
-  posterPath: string,
-  captionText: string,
-  wantReel: boolean | undefined,
-) {
-  try {
-    const { data: signed, error } = await admin.storage
-      .from(OUTPUT_BUCKET)
-      .createSignedUrl(posterPath, SIGNED_URL_SECONDS);
-    if (error || !signed) throw new Error(error?.message ?? "no signed url");
-
-    await sendOutputReady(recipient, {
-      posterUrl: signed.signedUrl,
-      captionText,
-      extraNote: wantReel
-        ? "रील अभी तैयार नहीं हो पाई। उसका credit आपके खाते में वापस कर दिया गया है।"
-        : null,
-    });
-  } catch (error) {
-    console.error("worker: delivery failed", recipient, messageOf(error));
-  }
-}
-
-async function notifyFailure(admin: Admin, shopId: string) {
-  try {
-    const { data: shop } = await admin
-      .from("shops")
-      .select("user_id")
-      .eq("id", shopId)
-      .maybeSingle();
-    if (!shop) return;
-
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("phone")
-      .eq("id", shop.user_id)
-      .maybeSingle();
-    if (!profile?.phone) return;
-
-    await sendJobFailed(profile.phone);
-  } catch (error) {
-    console.error("worker: failure notice failed", messageOf(error));
-  }
 }
