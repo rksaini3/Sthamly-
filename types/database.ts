@@ -328,7 +328,7 @@ export type Database = {
         Row: {
           id: string;
           user_id: string;
-          plan_tier: "free" | "plus" | "vip";
+          plan_tier: "free" | "plus" | "vip" | "starter" | "premium" | "business";
           razorpay_subscription_id: string;
           status: string;
           current_period_end: string | null;
@@ -337,7 +337,7 @@ export type Database = {
         Insert: {
           id?: string;
           user_id: string;
-          plan_tier: "free" | "plus" | "vip";
+          plan_tier: "free" | "plus" | "vip" | "starter" | "premium" | "business";
           razorpay_subscription_id: string;
           status: string;
           current_period_end?: string | null;
@@ -346,10 +346,63 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string;
-          plan_tier?: "free" | "plus" | "vip";
+          plan_tier?: "free" | "plus" | "vip" | "starter" | "premium" | "business";
           razorpay_subscription_id?: string;
           status?: string;
           current_period_end?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
+      wallets: {
+        Row: {
+          user_id: string;
+          balance_paise: number;
+          topup_bonus_used: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          balance_paise?: number;
+          topup_bonus_used?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          balance_paise?: number;
+          topup_bonus_used?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
+      wallet_ledger: {
+        Row: {
+          id: number;
+          user_id: string;
+          delta_paise: number;
+          reason: "topup" | "bonus" | "debit" | "refund" | "admin";
+          ref: string | null;
+          job_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          user_id: string;
+          delta_paise: number;
+          reason: "topup" | "bonus" | "debit" | "refund" | "admin";
+          ref?: string | null;
+          job_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          user_id?: string;
+          delta_paise?: number;
+          reason?: "topup" | "bonus" | "debit" | "refund" | "admin";
+          ref?: string | null;
+          job_id?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -618,9 +671,40 @@ export type Database = {
         };
         Returns: Json;
       };
+      reserve_credits_v2: {
+        Args: {
+          p_user: string;
+          p_job: string;
+          p_poster_need: number;
+          p_reel_need: number;
+          p_poster_limit: number;
+          p_reel_limit: number;
+          p_poster_since: string;
+          p_reel_since: string;
+        };
+        Returns: Json;
+      };
       refund_job_credits: {
         Args: { p_job: string };
         Returns: undefined;
+      };
+      wallet_credit: {
+        Args: {
+          p_user: string;
+          p_amount: number;
+          p_ref: string;
+          p_bonus_percent: number;
+          p_bonus_min: number;
+        };
+        Returns: Json;
+      };
+      wallet_debit: {
+        Args: { p_user: string; p_amount: number; p_item: string; p_job: string };
+        Returns: Json;
+      };
+      wallet_refund_job: {
+        Args: { p_job: string };
+        Returns: number;
       };
       report_announcement: {
         Args: { p_id: string };
