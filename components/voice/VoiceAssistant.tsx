@@ -244,4 +244,336 @@ export function VoiceAssistant({
       setBusy("idle");
     }
 
-    if (said.length
+    if (said.length < 3) {
+      setError("आवाज़ साफ़ सुनाई नहीं दी। दोबारा बोलें।");
+      return;
+    }
+    await sendText(said);
+  }
+
+  async function startRecording() {
+    setError(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("इस browser में voice recording नहीं चलती। Chrome में खोलें, या नीचे लिखकर भेजें।");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mime = pickMimeType();
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      chunksRef.current = [];
+
+      rec.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      rec.onstop = () => {
+        const type = (rec.mimeType || "audio/webm").split(";")[0] ?? "audio/webm";
+        const blob = new Blob(chunksRef.current, { type });
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        void transcribe(blob);
+      };
+
+      rec.start();
+      recorderRef.current = rec;
+      setRecording(true);
+    } catch {
+      setError("माइक्रोफोन की अनुमति नहीं मिली। Browser की settings में mic allow करें।");
+    }
+  }
+
+  function stopRecording() {
+    setRecording(false);
+    recorderRef.current?.stop();
+  }
+
+  // फ़ोटो या कैमरा से चुनी फ़ोटो
+  function onPickPhoto(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    // एक ही फ़ोटो दोबारा चुनी जा सके, इसलिए input खाली कर दें
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("सिर्फ़ फ़ोटो चुनें");
+      return;
+    }
+    if (file.size > MAX_PHOTO_BYTES) {
+      setError("फ़ोटो 10 MB से छोटी होनी चाहिए");
+      return;
+    }
+    setError(null);
+    setPhoto(file);
+  }
+
+  function onSend(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const value = draft.trim();
+    if (value.length < 2) {
+      setError("कुछ लिखें");
+      return;
+    }
+    setDraft("");
+    void sendText(value);
+  }
+
+  // ऑफ़र चुने हुए प्रकार (पोस्टर या रील) के साथ onboarding पर भेजें
+  function chooseOffer(offer: Offer, kind: Kind) {
+    if (!loggedIn) {
+      router.push("/login?next=/voice");
+      return;
+    }
+    try {
+      sessionStorage.setItem(OFFER_STORAGE_KEY, JSON.stringify({ ...offer, kind }));
+    } catch {
+      // browser ने storage बंद कर रखा है, फिर भी आगे बढ़ें
+    }
+    router.push(`/onboarding?kind=${kind}`);
+  }
+
+  const isEmpty = messages.length === 0;
+  const hasDraft = draft.trim().length > 0;
+  const status = recording
+    ? "सुन रहा हूं… बोलना खत्म हो तो बटन दबाएं"
+    : busy === "transcribing"
+      ? "आवाज़ को लिखा जा रहा है…"
+      : busy === "replying"
+        ? "जवाब लिख रहा हूं…"
+        : busy === "parsing"
+          ? "ऑफ़र समझ रहा हूं…"
+          : "";
+
+  return (
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <div className={styles.headerTitle}>
+          <div className={styles.title}>Sthamly असिस्टेंट</div>
+          <div className={styles.subtitle}>बोलकर या लिखकर बात करें</div>
+        </div>
+
+        {loggedIn && (
+          <div className={styles.topActions}>
+            <Link href="/my-posters" className={styles.iconBtn} aria-label="मेरे बनाए काम">
+              <ClockIcon />
+            </Link>
+            <div className={styles.menuWrap}>
+              <button
+                type="button"
+                className={styles.iconBtn}
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-label="और विकल्प"
+                aria-expanded={menuOpen}
+              >
+                <DotsIcon />
+              </button>
+              {menuOpen && (
+                <div className={styles.menu} role="menu">
+                  <Link
+                    href="/account"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    दुकान की जानकारी
+                  </Link>
+                  <Link
+                    href="/settings"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    सेटिंग्स
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </header>
+
+      {quota && (
+        <div className={styles.quota} aria-live="polite">
+          <span>
+            {WINDOW_LABEL[quota.posterWindow]} बचे पोस्टर: {quota.posterLeft}
+          </span>
+          <span>वॉलेट: {formatRupees(quota.walletPaise)}</span>
+        </div>
+      )}
+
+      <section className={`${styles.stage} ${isEmpty ? styles.stageEmpty : ""}`}>
+        {isEmpty && (
+          <>
+            <div
+              aria-hidden
+              className={`${styles.orb} ${recording ? styles.orbListening : ""} ${busy !== "idle" ? styles.orbBusy : ""}`}
+            />
+            <h1 className={styles.greeting}>नमस्ते, {name}</h1>
+            <p className={styles.question}>आज क्या बनाएं?</p>
+            <p className={styles.hint}>
+              {loggedIn
+                ? "बोलकर या लिखकर बताएं। फिर ऑफ़र बनाने के लिए संदेश के नीचे का बटन दबाएं।"
+                : "बातचीत के लिए पहले लॉग-इन करें।"}
+            </p>
+
+            {loggedIn && (
+              <div className={styles.suggestions}>
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s.label}
+                    type="button"
+                    className={styles.suggestion}
+                    onClick={() => setDraft(s.prompt)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {messages.map((m) => {
+          if (m.role === "user") {
+            return (
+              <div key={m.id} className={styles.userWrap}>
+                <div className={styles.bubbleUser}>{m.text}</div>
+                <button
+                  type="button"
+                  className={styles.btnGhost}
+                  onClick={() => void makeOffer(m.text)}
+                  disabled={busy !== "idle"}
+                >
+                  ऑफ़र बनाएं
+                </button>
+              </div>
+            );
+          }
+
+          if (m.offerCard) {
+            const { offer } = m.offerCard;
+            return (
+              <div key={m.id} className={styles.bubbleBot}>
+                {offer ? (
+                  <>
+                    <p className={styles.label}>मैंने यह ऑफ़र समझा:</p>
+                    <p className={styles.offerText}>{offer.offerText}</p>
+                    {offer.occasion && <p className={styles.muted}>मौका: {offer.occasion}</p>}
+                    <div className={styles.btnRow}>
+                      <button type="button" className={styles.btnPrimary} onClick={() => chooseOffer(offer, "poster")}>
+                        पोस्टर बनाएं
+                      </button>
+                      <button type="button" className={styles.btnGhost} onClick={() => chooseOffer(offer, "reel")}>
+                        रील बनाएं
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className={styles.muted}>ऑफ़र समझ नहीं आया। साफ़ शब्दों में दोबारा लिखें।</p>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <div key={m.id} className={styles.bubbleBot}>
+              <p className={styles.botText}>{m.text}</p>
+            </div>
+          );
+        })}
+
+        <div ref={endRef} />
+      </section>
+
+      <div className={styles.composer}>
+        {error && <p className={styles.error}>{error}</p>}
+        {status && <p className={styles.status}>{status}</p>}
+
+        {photo && (
+          <div className={styles.photoChip}>
+            <span className={styles.photoName}>📷 {photo.name}</span>
+            <button
+              type="button"
+              className={styles.photoRemove}
+              onClick={() => setPhoto(null)}
+              aria-label="फ़ोटो हटाएं"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <form className={styles.row} onSubmit={onSend}>
+          <div className={styles.pill}>
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={() => photoInputRef.current?.click()}
+              disabled={recording || busy !== "idle"}
+              aria-label="फ़ोटो चुनें"
+            >
+              <ClipIcon />
+            </button>
+
+            <input
+              className={styles.input}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="संदेश लिखें…"
+              maxLength={1000}
+              disabled={recording || busy !== "idle"}
+              aria-label="संदेश लिखें"
+            />
+
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={recording || busy !== "idle"}
+              aria-label="कैमरे से फ़ोटो लें"
+            >
+              <CameraIcon />
+            </button>
+          </div>
+
+          {hasDraft ? (
+            <button
+              type="submit"
+              className={`${styles.micBig} ${styles.circleSend}`}
+              disabled={busy !== "idle"}
+              aria-label="भेजें"
+            >
+              <SendIcon />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={recording ? stopRecording : startRecording}
+              disabled={busy !== "idle"}
+              className={`${styles.micBig} ${recording ? styles.circleStop : ""}`}
+              aria-label={recording ? "रिकॉर्डिंग रोकें" : "बोलें"}
+            >
+              {recording ? <StopIcon /> : <MicIcon />}
+            </button>
+          )}
+        </form>
+
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          onChange={onPickPhoto}
+          hidden
+        />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={onPickPhoto}
+          hidden
+        />
+      </div>
+    </div>
+  );
+}
