@@ -13,7 +13,9 @@ interface DrawerItem {
   label: string;
 }
 
-// ड्रॉअर की सूची। घंटी (सूचनाएं) नीचे अलग से है।
+// ड्रॉअर की सूची (डिज़ाइन ड्राफ़्ट के हिसाब से)।
+// "खोज" v1 में नहीं है, इसलिए यहां नहीं।
+// "दुकान की जानकारी" और "पिछली बातचीत" के पन्ने अभी बने नहीं हैं।
 const ITEMS: DrawerItem[] = [
   { href: "/voice", label: "नया काम" },
   { href: "/my-posters", label: "मेरे बनाए" },
@@ -96,19 +98,19 @@ export function AppDrawer() {
               })}
             </nav>
 
-            <div style={{ marginTop: "auto", display: "flex", gap: 10, alignItems: "stretch" }}>
+            {/* नीचे: खाता (प्रोफ़ाइल का गोला) और घंटी */}
+            <div className={styles.footer}>
               <Link
                 href="/account"
-                className={styles.profile}
-                style={{ flex: 1, marginTop: 0 }}
+                className={styles.avatar}
+                aria-label="खाता"
                 onClick={() => setOpen(false)}
               >
-                खाता, वॉलेट और प्लान
+                <span aria-hidden>👤</span>
               </Link>
               <Link
                 href="/notifications"
-                className={styles.profile}
-                style={{ width: 52, marginTop: 0, padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+                className={styles.bell}
                 aria-label="सूचनाएं"
                 onClick={() => setOpen(false)}
               >
