@@ -1,9 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
+import { getActivePlan } from "@/lib/quota";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const idSchema = z.string().uuid();
 
 const bodySchema = z.object({
   body: z
@@ -13,15 +16,28 @@ const bodySchema = z.object({
     .max(280, "280 अक्षर से ज़्यादा नहीं लिख सकते"),
 });
 
-export async function POST(req: NextRequest) {
+type RouteContext = { params: Promise<{ id: string }> };
+
+// सिर्फ़ अपनी घोषणा बदल सकते हैं, और सिर्फ़ प्रीमियम/बिज़नेस प्लान में
+export async function PATCH(req: NextRequest, { params }: RouteContext) {
+  const { id } = await params;
+  if (!idSchema.safeParse(id).success) {
+    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
+    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
+  }
+
+  const plan = await getActivePlan(user.id).catch(() => "free" as const);
+  if (plan !== "premium" && plan !== "business") {
     return NextResponse.json(
-      { error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } },
-      { status: 401 },
+      { error: { code: "PLAN_REQUIRED", message: "घोषणा बदलने के लिए प्रीमियम प्लान चाहिए" } },
+      { status: 403 },
     );
   }
 
@@ -29,10 +45,7 @@ export async function POST(req: NextRequest) {
   try {
     raw = await req.json();
   } catch {
-    return NextResponse.json(
-      { error: { code: "BAD_REQUEST", message: "सही जानकारी भेजें" } },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: { code: "BAD_REQUEST", message: "सही जानकारी भेजें" } }, { status: 400 });
   }
 
   const parsed = bodySchema.safeParse(raw);
@@ -43,33 +56,55 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // घोषणा पर दुकान का नाम दिखेगा, इसलिए दुकान ज़रूरी है
-  const { data: shop } = await supabase
-    .from("shops")
-    .select("name")
+  const { data, error } = await supabase
+    .from("announcements")
+    .update({ body: parsed.data.body })
+    .eq("id", id)
     .eq("user_id", user.id)
-    .limit(1)
+    .select("id")
     .maybeSingle();
-  if (!shop) {
-    return NextResponse.json(
-      { error: { code: "NO_SHOP", message: "पहले अपनी दुकान की जानकारी भरें" } },
-      { status: 400 },
-    );
+
+  if (error) {
+    console.error("announcement update failed", error.message);
+    return NextResponse.json({ error: { code: "SAVE_FAILED", message: "बदलाव सेव नहीं हो पाया" } }, { status: 500 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+// सिर्फ़ अपनी घोषणा हटा सकते हैं (सबके लिए उपलब्ध)
+export async function DELETE(_req: NextRequest, { params }: RouteContext) {
+  const { id } = await params;
+  if (!idSchema.safeParse(id).success) {
+    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
+  }
+
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
   }
 
   const { data, error } = await supabase
     .from("announcements")
-    .insert({ user_id: user.id, shop_name: shop.name, body: parsed.data.body })
+    .delete()
+    .eq("id", id)
+    .eq("user_id", user.id)
     .select("id")
-    .single();
+    .maybeSingle();
 
   if (error) {
-    console.error("announcement insert failed", error.message);
-    return NextResponse.json(
-      { error: { code: "SAVE_FAILED", message: "घोषणा सेव नहीं हो पाई" } },
-      { status: 500 },
-    );
+    console.error("announcement delete failed", error.message);
+    return NextResponse.json({ error: { code: "DELETE_FAILED", message: "घोषणा हट नहीं पाई" } }, { status: 500 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: { code: "NOT_FOUND", message: "घोषणा नहीं मिली" } }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, id: data.id });
+  return NextResponse.json({ ok: true });
 }
