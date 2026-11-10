@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const MIN = 5;
-const MAX = 500;
+const MAX = 280;
 
 type RecognitionEvent = {
   resultIndex: number;
