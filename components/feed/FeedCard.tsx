@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CommentsSection, type FeedComment } from "@/components/feed/CommentsSection";
@@ -8,7 +9,7 @@ import { CommentIcon, CopyIcon, SendIcon, ShareIcon } from "@/components/feed/ic
 import styles from "@/components/feed/FeedCard.module.css";
 
 const FEED_URL = "https://sthamly.com/feed";
-const MAX = 500;
+const MAX = 280;
 
 function PencilIcon({ size = 18 }: { size?: number }) {
   return (
@@ -67,11 +68,25 @@ export interface FeedCardProps {
   time: string;
   comments: FeedComment[];
   loggedIn: boolean;
+  // लॉग-इन यूज़र की ID (कमेंट पहचानने के लिए), लॉग-इन नहीं है तो null
+  currentUserId: string | null;
   // घोषणा इसी user ने बनाई है तो बदलने और हटाने के बटन दिखेंगे
   isOwner: boolean;
+  // एडिट सिर्फ़ प्रीमियम/बिज़नेस प्लान में
+  canEdit: boolean;
 }
 
-export function FeedCard({ id, shopName, body, time, comments, loggedIn, isOwner }: FeedCardProps) {
+export function FeedCard({
+  id,
+  shopName,
+  body,
+  time,
+  comments,
+  loggedIn,
+  currentUserId,
+  isOwner,
+  canEdit,
+}: FeedCardProps) {
   const router = useRouter();
   const [showComments, setShowComments] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -114,6 +129,7 @@ export function FeedCard({ id, shopName, body, time, comments, loggedIn, isOwner
   }
 
   function startEdit() {
+    if (!canEdit) return;
     setEditText(body);
     setErr(null);
     setEditing(true);
@@ -194,6 +210,9 @@ export function FeedCard({ id, shopName, body, time, comments, loggedIn, isOwner
               disabled={busy}
               aria-label="घोषणा बदलें"
             />
+            <span className="muted" style={{ fontSize: "0.8rem" }}>
+              {editText.length}/{MAX}
+            </span>
             {err && <p className="alert alert-error" style={{ margin: 0 }}>{err}</p>}
             <div className="row" style={{ gap: 8, justifyContent: "flex-end" }}>
               <button
@@ -247,16 +266,28 @@ export function FeedCard({ id, shopName, body, time, comments, loggedIn, isOwner
 
             {isOwner ? (
               <>
-                <button
-                  type="button"
-                  className={styles.action}
-                  onClick={startEdit}
-                  disabled={busy}
-                  aria-label="घोषणा बदलें"
-                  title="बदलें"
-                >
-                  <PencilIcon />
-                </button>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className={styles.action}
+                    onClick={startEdit}
+                    disabled={busy}
+                    aria-label="घोषणा बदलें"
+                    title="बदलें"
+                  >
+                    <PencilIcon />
+                  </button>
+                ) : (
+                  <Link
+                    href="/pricing"
+                    className={styles.action}
+                    aria-label="बदलने के लिए प्रीमियम प्लान देखें"
+                    title="बदलने के लिए प्रीमियम"
+                    style={{ fontSize: "0.75rem" }}
+                  >
+                    प्रीमियम
+                  </Link>
+                )}
                 <button
                   type="button"
                   className={styles.action}
@@ -279,7 +310,12 @@ export function FeedCard({ id, shopName, body, time, comments, loggedIn, isOwner
 
         {showComments && !editing && (
           <div className={styles.comments}>
-            <CommentsSection announcementId={id} comments={comments} loggedIn={loggedIn} />
+            <CommentsSection
+              announcementId={id}
+              comments={comments}
+              loggedIn={loggedIn}
+              currentUserId={currentUserId}
+            />
           </div>
         )}
       </div>
