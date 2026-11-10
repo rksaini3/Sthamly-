@@ -35,7 +35,7 @@ export default async function SettingsPage() {
       <SettingRow
         href="/onboarding"
         title="दुकान की जानकारी"
-        desc="दुकान का नाम, प्रकार, शहर और WhatsApp नंबर बदलें"
+        desc="दुकान का नाम, प्रकार और शहर बदलें"
       />
       <SettingRow
         href="/notifications"
@@ -50,7 +50,7 @@ export default async function SettingsPage() {
       <SettingRow
         href="/pricing"
         title="प्लान और रिचार्ज"
-        desc="मुफ़्त कोटा, रिचार्ज और VIP प्लान"
+        desc="मुफ़्त कोटा, रिचार्ज और प्रीमियम प्लान"
       />
       <SettingRow
         href="/account"
