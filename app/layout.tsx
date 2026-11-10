@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
-import { BottomNav } from "@/components/nav/BottomNav";
+import { AppDrawer } from "@/components/nav/AppDrawer";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { LANG_COOKIE, parseLang } from "@/lib/i18n";
 import "./globals.css";
@@ -42,8 +42,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
+        {/* नीचे कोई बार नहीं। ☰ हर पन्ने पर, ऊपर बाईं ओर */}
+        <AppDrawer />
         {children}
-        <BottomNav />
         <ServiceWorkerRegister />
       </body>
     </html>
