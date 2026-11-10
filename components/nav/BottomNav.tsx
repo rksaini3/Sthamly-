@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import styles from "@/components/nav/BottomNav.module.css";
 
-// बार और माइक बटन सिर्फ इन्हीं पन्नों पर दिखेंगे
+// बार सिर्फ इन्हीं पन्नों पर दिखेगा
 const VISIBLE_ON = [
   "/feed",
   "/onboarding",
@@ -86,22 +86,29 @@ export function BottomNav() {
   const visible = VISIBLE_ON.some((p) => isActive(pathname, p));
   if (!visible) return null;
 
-  // /voice पन्ने पर माइक बटन की ज़रूरत नहीं, वहां input बार में माइक है
-  const showMic = !isActive(pathname, "/voice");
+  const onVoice = isActive(pathname, "/voice");
 
   return (
     <>
       <div className={styles.spacer} aria-hidden />
 
-      {showMic && (
-        <Link href="/voice" className={styles.fab} aria-label="बोलकर पोस्टर बनाएं">
-          <MicIcon />
-        </Link>
-      )}
-
       <nav className={styles.nav} aria-label="मुख्य मेनू">
         <TabLink href="/feed" label="आउटपुट" active={isActive(pathname, "/feed")} icon={<OutputIcon />} />
         <TabLink href="/my-posters" label="पोस्ट" active={isActive(pathname, "/my-posters")} icon={<PostIcon />} />
+
+        {/* बीच में माइक: बार का हिस्सा है, अलग से तैरता नहीं */}
+        <div className={styles.micSlot}>
+          <Link
+            href="/voice"
+            className={`${styles.mic} ${onVoice ? styles.micActive : ""}`}
+            aria-label="बोलकर पोस्टर बनाएं"
+            aria-current={onVoice ? "page" : undefined}
+          >
+            <MicIcon />
+          </Link>
+          <span className={`${styles.micLabel} ${onVoice ? styles.itemActive : ""}`}>बोलें</span>
+        </div>
+
         <TabLink href="/account" label="खाता" active={isActive(pathname, "/account")} icon={<UserIcon />} />
       </nav>
     </>
