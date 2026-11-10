@@ -10,7 +10,7 @@ const bodySchema = z.object({
     .string()
     .trim()
     .min(5, "कम से कम 5 अक्षर लिखें")
-    .max(500, "500 अक्षर से ज़्यादा नहीं लिख सकते"),
+    .max(280, "280 अक्षर से ज़्यादा नहीं लिख सकते"),
 });
 
 export async function POST(req: NextRequest) {
