@@ -11,7 +11,8 @@ export interface CreateJobInput {
   occasion?: string | null;
   photoPaths: string[];
   language: Language;
-  wantReel: boolean;
+  // v1 में रील नहीं है। पुराने callers के लिए बचा है, इसका कोई असर नहीं।
+  wantReel?: boolean;
   // बैच का हिस्सा हो तो उसकी ID, नहीं तो खाली
   batchId?: string | null;
 }
@@ -70,7 +71,7 @@ export async function createJob(input: CreateJobInput): Promise<CreateJobResult>
         occasion: input.occasion ?? null,
         photoPaths: input.photoPaths,
         language: input.language,
-        wantReel: input.wantReel,
+        wantReel: false,
       },
     })
     .select("id")
@@ -86,62 +87,36 @@ export async function createJob(input: CreateJobInput): Promise<CreateJobResult>
       userId: input.userId,
       jobId: job.id,
       poster: 1,
-      reel: input.wantReel ? 1 : 0,
+      reel: 0,
     });
 
     if (quota.allowed) {
       return { ok: true, jobId: job.id, remaining: quota.remaining };
     }
 
-    // कोटा कम पड़ा: जो हिस्सा कोटे में है वह कोटे से, बाकी वॉलेट से।
+    // कोटा कम पड़ा: पोस्टर का पैसा वॉलेट से कटेगा।
     // remaining वही बचा हुआ कोटा है जो इस job से पहले था।
-    const posterFromWallet = quota.remaining.poster < 1;
-    const reelFromWallet = input.wantReel && quota.remaining.reel < 1;
-
-    if (!posterFromWallet && !reelFromWallet) {
-      // दोनों कोटे में दिख रहे हैं, फिर भी मना: दूसरे job से टकराव
+    if (quota.remaining.poster >= 1) {
+      // कोटे में दिख रहा है, फिर भी मना: दूसरे job से टकराव
       await markFailed(job.id, "quota_exceeded");
       return { ok: false, code: "QUOTA_EXCEEDED" };
     }
 
-    const coveredPoster = posterFromWallet ? 0 : 1;
-    const coveredReel = reelFromWallet ? 0 : input.wantReel ? 1 : 0;
-    let remaining = quota.remaining;
+    const debit = await debitWallet({
+      userId: input.userId,
+      jobId: job.id,
+      item: "ai_poster",
+      amountPaise: PRICE_PAISE.ai_poster,
+    });
 
-    if (coveredPoster + coveredReel > 0) {
-      const partial = await reserveCredits({
-        userId: input.userId,
-        jobId: job.id,
-        poster: coveredPoster,
-        reel: coveredReel,
-      });
-      if (!partial.allowed) {
-        await markFailed(job.id, "quota_exceeded");
-        return { ok: false, code: "QUOTA_EXCEEDED" };
-      }
-      remaining = partial.remaining;
+    if (!debit.ok) {
+      // बैलेंस कम: जो रिज़र्व हुआ और जो कटा, सब वापस
+      await refundCredits(job.id);
+      await markFailed(job.id, "quota_exceeded");
+      return { ok: false, code: "QUOTA_EXCEEDED" };
     }
 
-    const charges: Array<{ item: string; amountPaise: number }> = [];
-    if (posterFromWallet) charges.push({ item: "ai_poster", amountPaise: PRICE_PAISE.ai_poster });
-    if (reelFromWallet) charges.push({ item: "slide_reel", amountPaise: PRICE_PAISE.slide_reel });
-
-    for (const charge of charges) {
-      const debit = await debitWallet({
-        userId: input.userId,
-        jobId: job.id,
-        item: charge.item,
-        amountPaise: charge.amountPaise,
-      });
-      if (!debit.ok) {
-        // बैलेंस कम: जो रिज़र्व हुआ और जो कटा, सब वापस
-        await refundCredits(job.id);
-        await markFailed(job.id, "quota_exceeded");
-        return { ok: false, code: "QUOTA_EXCEEDED" };
-      }
-    }
-
-    return { ok: true, jobId: job.id, remaining };
+    return { ok: true, jobId: job.id, remaining: quota.remaining };
   } catch (error) {
     console.error("createJob: credit reserve failed", job.id, error);
     // बीच में कुछ रिज़र्व या कटा हो सकता है, इसलिए वापस करने की कोशिश
