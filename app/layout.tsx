@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Noto_Sans_Devanagari } from "next/font/google";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { AppDrawer } from "@/components/nav/AppDrawer";
@@ -6,6 +7,14 @@ import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 import { LANG_COOKIE, parseLang } from "@/lib/i18n";
 import "./globals.css";
 import "./theme.css";
+
+// हिंदी और अंग्रेज़ी दोनों के लिए एक ही साफ़ फ़ॉन्ट
+const notoSans = Noto_Sans_Devanagari({
+  subsets: ["devanagari", "latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-noto",
+});
 
 export const metadata: Metadata = {
   title: "Sthamly",
@@ -26,7 +35,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#e0561a",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#212121" },
+  ],
 };
 
 // पेज दिखने से पहले थीम तय करता है, ताकि रंग अचानक न बदले
@@ -37,7 +49,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const lang = parseLang(cookieStore.get(LANG_COOKIE)?.value);
 
   return (
-    <html lang={lang} suppressHydrationWarning>
+    <html lang={lang} className={notoSans.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
