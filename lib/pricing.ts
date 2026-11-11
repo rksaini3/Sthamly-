@@ -109,3 +109,60 @@ export function formatRupees(paise: number): string {
   const text = fixed.endsWith("00") ? fixed.slice(0, -3) : fixed.endsWith("0") ? fixed.slice(0, -1) : fixed;
   return `₹${text}`;
 }
+
+// ---------------------------------------------------------------------------
+// पुराने नामों वाला हिस्सा (compat)
+// पुराने पन्ने और routes (pricing, account, my-posters, billing, quota) इन्हीं नामों से
+// import करते हैं। नंबर सब ऊपर के नए नियमों से ही निकलते हैं, यहाँ कोई नई कीमत नहीं।
+// जब सारे पन्ने नए नामों पर आ जाएं, यह हिस्सा हटा दें।
+// ---------------------------------------------------------------------------
+
+export type PricingPlan = Plan;
+export type PaidPlan = Exclude<Plan, "free">;
+export type QuotaWindow = "day" | "week" | "month";
+
+export interface QuotaAllowance {
+  limit: number;
+  window: QuotaWindow;
+}
+
+export interface PlanAllowances {
+  poster: QuotaAllowance;
+  reel: QuotaAllowance; // v1 में रील नहीं, इसलिए हमेशा 0
+}
+
+const NO_REEL: QuotaAllowance = { limit: 0, window: "month" };
+
+function paidAllowance(plan: PaidPlan): PlanAllowances {
+  // monthlyPosters अभी null (खुला फ़ैसला) = प्लान का कोई कोटा नहीं, पोस्टर वॉलेट से कटते हैं
+  return { poster: { limit: PLANS[plan].monthlyPosters ?? 0, window: "month" }, reel: NO_REEL };
+}
+
+export const PLAN_ALLOWANCES: Record<Plan, PlanAllowances> = {
+  free: { poster: { limit: FREE_POSTERS_PER_DAY, window: "day" }, reel: NO_REEL },
+  starter: paidAllowance("starter"),
+  premium: paidAllowance("premium"),
+  business: paidAllowance("business"),
+};
+
+export const PLAN_LABEL: Record<Plan, string> = {
+  free: "मुफ़्त",
+  starter: "Starter",
+  premium: "Premium",
+  business: "Business",
+};
+
+export const PLAN_PRICE_PAISE: Record<PaidPlan, number> = {
+  starter: PLANS.starter.monthlyPricePaise,
+  premium: PLANS.premium.monthlyPricePaise,
+  business: PLANS.business.monthlyPricePaise,
+};
+
+export const PRICE_PAISE = {
+  ai_poster: POSTER_PRICE_PAISE,
+  watermark_removal: WATERMARK_REMOVAL_PAISE,
+} as const;
+
+export const TOPUP_PRESETS_PAISE = RECHARGE_OPTIONS_PAISE;
+export const FIRST_TOPUP_BONUS_MIN_PAISE = FIRST_RECHARGE_BONUS_MIN_PAISE;
+export const FIRST_TOPUP_BONUS_PERCENT = FIRST_RECHARGE_BONUS_PERCENT;
