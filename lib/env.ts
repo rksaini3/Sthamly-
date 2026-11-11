@@ -11,6 +11,8 @@ const serverSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   GROQ_TEXT_MODEL: z.string().optional(),
   GROQ_VOICE_MODEL: z.string().optional(),
+  // एडमिन के Supabase user id (UUID), कॉमा से अलग। केवल Vercel में सेट करें।
+  ADMIN_USER_IDS: z.string().optional(),
   MAX_COST_PAISE_PER_JOB: z.coerce.number().int().positive().default(1500),
   JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().default(2),
 });
