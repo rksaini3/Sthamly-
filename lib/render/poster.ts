@@ -21,9 +21,13 @@ interface Theme {
 
 // कैटेगरी के हिसाब से रंग (brand kit इसे बदल सकता है)
 const THEMES: Record<ShopCategory, Theme> = {
-  sweets: { background: "#fff3e0", accent: "#c2410c", text: "#1c1917" },
+  general: { background: "#f5f5f5", accent: "#171717", text: "#0d0d0d" },
+  kirana: { background: "#fff7ed", accent: "#c2410c", text: "#1c1917" },
+  clothing: { background: "#faf5ff", accent: "#7e22ce", text: "#1c1917" },
+  mobile: { background: "#ecfeff", accent: "#0e7490", text: "#0f172a" },
   salon: { background: "#fdf2f8", accent: "#be185d", text: "#1c1917" },
-  coaching_clinic: { background: "#eff6ff", accent: "#1d4ed8", text: "#0f172a" },
+  clinic: { background: "#f0fdf4", accent: "#15803d", text: "#0f172a" },
+  coaching: { background: "#eff6ff", accent: "#1d4ed8", text: "#0f172a" },
 };
 
 export interface PosterInput {
