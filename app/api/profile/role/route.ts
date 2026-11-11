@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
+import { isAdminUser } from "@/lib/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ROLES } from "@/types/domain";
 
@@ -29,6 +30,11 @@ export async function POST(req: NextRequest) {
   const parsed = bodySchema.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json({ error: { code: "VALIDATION_FAILED", message: "भूमिका सही नहीं है" } }, { status: 400 });
+  }
+
+  // फ़ाइनेंस भूमिका सिर्फ़ एडमिन के लिए (UI के अलावा server पर भी रोक)
+  if (parsed.data.role === "finance" && !isAdminUser(user.id)) {
+    return NextResponse.json({ error: { code: "FORBIDDEN", message: "यह भूमिका उपलब्ध नहीं है" } }, { status: 403 });
   }
 
   const { error } = await supabase
