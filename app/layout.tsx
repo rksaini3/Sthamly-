@@ -9,7 +9,7 @@ import "./theme.css";
 
 export const metadata: Metadata = {
   title: "Sthamly",
-  description: "दुकान की फोटो भेजें, रील और पोस्टर पाएं।",
+  description: "दुकान का ऑफ़र बताएं, पोस्टर और कैप्शन पाएं।",
   manifest: "/manifest.webmanifest",
   applicationName: "Sthamly",
   appleWebApp: {
@@ -42,7 +42,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
-        {/* नीचे कोई बार नहीं। ☰ हर पन्ने पर, ऊपर बाईं ओर */}
+        {/* ☰ मेन्यू हर पन्ने पर, ऊपर बाईं ओर। नीचे कोई बार नहीं। */}
         <AppDrawer />
         {children}
         <ServiceWorkerRegister />
