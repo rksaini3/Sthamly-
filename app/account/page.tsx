@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AccountActions } from "@/components/account/AccountActions";
 import { AccountMenu } from "@/components/account/AccountMenu";
-import { getActivePlan, periodStarts } from "@/lib/quota";
+import { getActivePlan, windowStart } from "@/lib/quota";
 import { formatRupees, PLAN_ALLOWANCES, PLAN_LABEL } from "@/lib/pricing";
 import { isRole, ROLE_INFO } from "@/lib/roles";
 import { getWalletBalance } from "@/lib/wallet";
@@ -43,8 +43,8 @@ export default async function AccountPage() {
 
   // पोस्टर का खर्च उसकी विंडो से (मुफ़्त: आज, बाकी: इस महीने)
   const admin = createSupabaseAdminClient();
-  const since = periodStarts(plan);
-  const posterRes = await admin.rpc("credit_used", { p_user: user.id, p_kind: "poster", p_since: since.poster });
+  const since = windowStart(allowances.poster.window).toISOString();
+  const posterRes = await admin.rpc("credit_used", { p_user: user.id, p_kind: "poster", p_since: since });
   if (posterRes.error) {
     console.error("account: credit read failed", posterRes.error);
   }
