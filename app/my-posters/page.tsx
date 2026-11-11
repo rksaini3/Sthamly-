@@ -121,12 +121,11 @@ export default async function MyPostsPage() {
         <div className="card stack" style={{ gap: 6 }}>
           <strong>{PLAN_LABEL[status.plan]} प्लान</strong>
           <p className="muted" style={{ margin: 0 }}>
-            {WINDOW_TEXT[status.posterWindow]} पोस्टर {status.posterLeft} बचे, रील {status.reelLeft} बची।
+            {WINDOW_TEXT[status.posterWindow]} पोस्टर {status.posterLeft} बचे।
             वॉलेट: {formatRupees(status.walletPaise)}
           </p>
           <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
-            कोटा खत्म होने पर पोस्टर {formatRupees(PRICE_PAISE.ai_poster)} और रील{" "}
-            {formatRupees(PRICE_PAISE.slide_reel)} वॉलेट से कटेंगे।
+            कोटा खत्म होने पर पोस्टर {formatRupees(PRICE_PAISE.ai_poster)} वॉलेट से कटेगा।
           </p>
           <Link href="/pricing" className="btn btn-primary btn-block">
             वॉलेट में पैसे डालें
