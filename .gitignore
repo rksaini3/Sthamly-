@@ -1,39 +1,7 @@
-# dependencies
-node_modules/
-
-# Next.js
-.next/
-out/
+node_modules
+.next
 next-env.d.ts
-
-# build
-dist/
-build/
 *.tsbuildinfo
-
-# env: secrets कभी commit न करें
 .env
 .env.local
-.env.*.local
-!.env.example
-
-# Supabase local
-supabase/.branches
-supabase/.temp
-.supabase/
-
-# Vercel
-.vercel
-
-# logs और OS फाइलें
-npm-debug.log*
-*.log
-.DS_Store
-Thumbs.db
-coverage/
-
-# editor
-.idea/
-.vscode/*
-!.vscode/settings.json
-!.vscode/extensions.json
+dist
