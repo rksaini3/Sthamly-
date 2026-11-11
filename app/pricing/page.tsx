@@ -14,39 +14,24 @@ import {
 // कीमतें और कोटा सिर्फ़ lib/pricing.ts से आते हैं। यहाँ कोई संख्या नहीं लिखी जाती।
 const ORDER: PricingPlan[] = ["free", "starter", "premium", "business"];
 
+// पोस्टर की संख्या: प्लान में कोटा तय हो तो वही दिखे, वरना साफ़ लिखें कि अभी तय नहीं
+function posterLine(plan: PricingPlan): string {
+  const { limit, window } = PLAN_ALLOWANCES[plan].poster;
+  if (limit <= 0) return `पोस्टर: ${formatRupees(PRICE_PAISE.ai_poster)} प्रति पोस्टर, वॉलेट से (प्लान का कोटा जल्द तय होगा)`;
+  return window === "day" ? `रोज़ ${limit} पोस्टर` : `महीने में ${limit} पोस्टर`;
+}
+
 const PLAN_POINTS: Record<PricingPlan, string[]> = {
-  free: [
-    `रोज़ ${PLAN_ALLOWANCES.free.poster.limit} पोस्टर`,
-    `हफ़्ते में ${PLAN_ALLOWANCES.free.reel.limit} टेम्पलेट रील`,
-    "वॉटरमार्क के साथ",
-  ],
-  starter: [
-    `महीने में ${PLAN_ALLOWANCES.starter.poster.limit} पोस्टर`,
-    `महीने में ${PLAN_ALLOWANCES.starter.reel.limit} टेम्पलेट रील`,
-    `${PLAN_ALLOWANCES.starter.logins} लॉगिन`,
-  ],
-  premium: [
-    `महीने में ${PLAN_ALLOWANCES.premium.poster.limit} पोस्टर`,
-    `महीने में ${PLAN_ALLOWANCES.premium.reel.limit} टेम्पलेट रील`,
-    "बिना वॉटरमार्क",
-    `${PLAN_ALLOWANCES.premium.logins} लॉगिन`,
-  ],
-  business: [
-    `महीने में ${PLAN_ALLOWANCES.business.poster.limit} पोस्टर`,
-    `महीने में ${PLAN_ALLOWANCES.business.reel.limit} टेम्पलेट रील`,
-    "बिना वॉटरमार्क",
-    `${PLAN_ALLOWANCES.business.logins} लॉगिन`,
-  ],
+  free: [posterLine("free"), "वॉटरमार्क के साथ"],
+  starter: [posterLine("starter")],
+  premium: [posterLine("premium"), "बिना वॉटरमार्क"],
+  business: [posterLine("business"), "बिना वॉटरमार्क"],
 };
 
-// मुफ़्त प्लान की कीमत ₹0, बाकी की GST सहित कीमत lib/pricing.ts से
-function priceText(plan: PricingPlan): { monthly: string; yearly?: string } {
-  if (plan === "free") return { monthly: "₹0 / महीना" };
-  const prices = PLAN_PRICE_PAISE[plan];
-  return {
-    monthly: `${formatRupees(prices.monthly)} / महीना`,
-    yearly: `या ${formatRupees(prices.yearly)} / साल`,
-  };
+// मुफ़्त प्लान की कीमत ₹0, बाकी की मासिक कीमत lib/pricing.ts से
+function priceText(plan: PricingPlan): string {
+  if (plan === "free") return "₹0 / महीना";
+  return `${formatRupees(PLAN_PRICE_PAISE[plan])} / महीना`;
 }
 
 export default function PricingPage() {
@@ -58,12 +43,10 @@ export default function PricingPage() {
       </p>
 
       {ORDER.map((plan) => {
-        const price = priceText(plan);
         return (
           <section key={plan} className="card stack" style={{ gap: 8 }}>
             <strong style={{ fontSize: "1.1rem" }}>{PLAN_LABEL[plan]}</strong>
-            <p style={{ margin: 0, fontWeight: 700 }}>{price.monthly}</p>
-            {price.yearly && <p className="muted" style={{ margin: 0 }}>{price.yearly}</p>}
+            <p style={{ margin: 0, fontWeight: 700 }}>{priceText(plan)}</p>
             <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
               {PLAN_POINTS[plan].map((point) => (
                 <li key={point}>{point}</li>
@@ -77,8 +60,6 @@ export default function PricingPage() {
         <strong>वॉलेट से एक-एक काम</strong>
         <ul className="muted" style={{ margin: 0, paddingLeft: 20 }}>
           <li>AI पोस्टर: {formatRupees(PRICE_PAISE.ai_poster)}</li>
-          <li>AI बैनर: {formatRupees(PRICE_PAISE.ai_banner)}</li>
-          <li>स्लाइड-शो रील: {formatRupees(PRICE_PAISE.slide_reel)}</li>
           <li>पोस्टर से वॉटरमार्क हटाना: {formatRupees(PRICE_PAISE.watermark_removal)}</li>
         </ul>
         <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
