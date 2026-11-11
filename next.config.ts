@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  // native binary वाला package, bundle न करें
-  serverExternalPackages: ["@resvg/resvg-js"],
+const config: NextConfig = {
+  reactStrictMode: true,
+  poweredByHeader: false,
 };
 
-export default nextConfig;
+export default config;
