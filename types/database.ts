@@ -12,7 +12,7 @@ export type Database = {
       profiles: {
         Row: {
           id: string;
-          role: "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator";
+          role: "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator" | "finance";
           full_name: string | null;
           phone: string | null;
           city: string | null;
@@ -23,7 +23,7 @@ export type Database = {
         };
         Insert: {
           id: string;
-          role?: "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator";
+          role?: "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator" | "finance";
           full_name?: string | null;
           phone?: string | null;
           city?: string | null;
@@ -34,7 +34,7 @@ export type Database = {
         };
         Update: {
           id?: string;
-          role?: "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator";
+          role?: "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator" | "finance";
           full_name?: string | null;
           phone?: string | null;
           city?: string | null;
@@ -100,7 +100,7 @@ export type Database = {
           id: string;
           user_id: string;
           name: string;
-          category: "sweets" | "salon" | "coaching_clinic";
+          category: "salon" | "general" | "kirana" | "clothing" | "mobile" | "clinic" | "coaching";
           city: string;
           phone: string | null;
           created_at: string;
@@ -109,7 +109,7 @@ export type Database = {
           id?: string;
           user_id: string;
           name: string;
-          category?: "sweets" | "salon" | "coaching_clinic";
+          category?: "salon" | "general" | "kirana" | "clothing" | "mobile" | "clinic" | "coaching";
           city: string;
           phone?: string | null;
           created_at?: string;
@@ -118,7 +118,7 @@ export type Database = {
           id?: string;
           user_id?: string;
           name?: string;
-          category?: "sweets" | "salon" | "coaching_clinic";
+          category?: "salon" | "general" | "kirana" | "clothing" | "mobile" | "clinic" | "coaching";
           city?: string;
           phone?: string | null;
           created_at?: string;
@@ -151,10 +151,33 @@ export type Database = {
         Relationships: [];
       };
 
+      batches: {
+        Row: {
+          id: string;
+          user_id: string;
+          total: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          total: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          total?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+
       jobs: {
         Row: {
           id: string;
           shop_id: string;
+          batch_id: string | null;
           status: "queued" | "running" | "done" | "failed";
           input: Json;
           attempts: number;
@@ -168,6 +191,7 @@ export type Database = {
         Insert: {
           id?: string;
           shop_id: string;
+          batch_id?: string | null;
           status?: "queued" | "running" | "done" | "failed";
           input?: Json;
           attempts?: number;
@@ -181,6 +205,7 @@ export type Database = {
         Update: {
           id?: string;
           shop_id?: string;
+          batch_id?: string | null;
           status?: "queued" | "running" | "done" | "failed";
           input?: Json;
           attempts?: number;
@@ -191,7 +216,15 @@ export type Database = {
           created_at?: string;
           updated_at?: string | null;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "jobs_batch_id_fkey";
+            columns: ["batch_id"];
+            isOneToOne: false;
+            referencedRelation: "batches";
+            referencedColumns: ["id"];
+          },
+        ];
       };
 
       outputs: {
