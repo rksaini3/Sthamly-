@@ -1,0 +1,74 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
+import { isAdminUser } from "@/lib/admin";
+import { getAIProvider } from "@/lib/ai";
+import { checkFinanceAnswer } from "@/lib/finance/compliance";
+import { allowRequest } from "@/lib/rate-limit";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+// यह सिर्फ़ एडमिन के लिए है। शेयर और कंपनी विश्लेषण निजी रहेगा।
+// आम यूज़र के लिए यह रूट 403 देगा, और UI में भूमिका भी नहीं दिखती।
+
+const bodySchema = z.object({
+  question: z.string().trim().min(3).max(500),
+});
+
+const SYSTEM_RULES = `तुम एक वित्त-शिक्षा सहायक हो। सिर्फ़ शिक्षा दो।
+- कोई खरीद, बेच या होल्ड की सिफ़ारिश न करो।
+- कोई टारगेट प्राइस, रेटिंग, स्कोर या verdict न दो।
+- कोई गारंटीड रिटर्न या पक्का मुनाफ़ा न बताओ।
+- "आपके लिए सही" जैसी निजी सलाह न दो।
+- कंपनी के अनुपात (P/E, ROE, debt/equity, FCF) समझाओ और बताओ कि उन्हें कैसे पढ़ें।
+- जवाब सरल हिंदी या Hinglish में, छोटा और साफ़।`;
+
+export async function POST(req: NextRequest) {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
+  }
+  if (!isAdminUser(user.id)) {
+    return NextResponse.json({ error: { code: "FORBIDDEN", message: "यह सुविधा उपलब्ध नहीं है" } }, { status: 403 });
+  }
+
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return NextResponse.json({ error: { code: "BAD_REQUEST", message: "सही JSON भेजें" } }, { status: 400 });
+  }
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json({ error: { code: "VALIDATION_FAILED", message: "सवाल सही नहीं है" } }, { status: 400 });
+  }
+
+  const allowed = await allowRequest(`finance:${user.id}`, 60, 20);
+  if (!allowed) {
+    return NextResponse.json({ error: { code: "RATE_LIMITED", message: "थोड़ी देर बाद कोशिश करें" } }, { status: 429 });
+  }
+
+  try {
+    const provider = getAIProvider();
+    const result = await provider.generateText({
+      prompt: `${SYSTEM_RULES}\n\nसवाल: ${parsed.data.question}`,
+      maxTokens: 600,
+    });
+
+    // हर जवाब की आखिरी जांच और अस्वीकरण
+    const checked = checkFinanceAnswer(result.text ?? "");
+    if (!checked.ok) {
+      console.warn("finance answer blocked", { userId: user.id, matched: checked.matched });
+    }
+
+    return NextResponse.json({ ok: checked.ok, text: checked.text });
+  } catch (error) {
+    console.error("finance answer failed", error);
+    return NextResponse.json({ error: { code: "AI_FAILED", message: "जवाब नहीं बन पाया, दोबारा कोशिश करें" } }, { status: 500 });
+  }
+}
