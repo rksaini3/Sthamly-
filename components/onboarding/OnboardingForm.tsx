@@ -20,9 +20,13 @@ interface SavedOffer {
 }
 
 const CATEGORY_LABELS: Record<ShopCategory, string> = {
-  sweets: "मिठाई / हलवाई",
+  general: "जनरल स्टोर / अन्य",
+  kirana: "किराना",
   salon: "सैलून / पार्लर",
-  coaching_clinic: "कोचिंग / क्लिनिक",
+  clothing: "कपड़े",
+  mobile: "मोबाइल",
+  clinic: "क्लिनिक",
+  coaching: "कोचिंग",
 };
 
 function messageOf(error: unknown): string {
@@ -91,7 +95,7 @@ export function OnboardingForm() {
 
   // चरण 1: दुकान की जानकारी
   const [shopName, setShopName] = useState("");
-  const [category, setCategory] = useState<ShopCategory>("sweets");
+  const [category, setCategory] = useState<ShopCategory>("general");
   const [city, setCity] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
 
