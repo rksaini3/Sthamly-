@@ -4,24 +4,28 @@
   top: 10px;
   left: 10px;
   z-index: 60;
-  width: 48px;
-  height: 48px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg);
   color: var(--ink);
-  font-size: 1.4rem;
-  line-height: 1;
   cursor: pointer;
-  box-shadow: var(--shadow);
 }
 
-/* पीछे की परत: हल्की काली, बटन दबाने पर मेन्यू बंद */
+.trigger:hover {
+  background: var(--surface-2);
+}
+
+/* पीछे की परत: हल्की काली, दबाने पर मेन्यू बंद */
 .overlay {
   position: fixed;
   inset: 0;
   z-index: 70;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 /* बाएं से खुलने वाला पैनल */
@@ -34,10 +38,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 14px;
-  background: var(--surface);
+  padding: 12px;
+  background: var(--sidebar);
   color: var(--ink);
-  box-shadow: var(--shadow);
   overflow-y: auto;
 }
 
@@ -45,25 +48,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line);
+  padding: 0 4px 8px 12px;
+  font-size: 1.05rem;
 }
 
 .close {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
+  border-radius: 10px;
   background: transparent;
   color: var(--ink);
-  font-size: 1.2rem;
   cursor: pointer;
+}
+
+.close:hover {
+  background: var(--surface-2);
 }
 
 .list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 6px;
+  gap: 2px;
 }
 
 /* हर लिंक कम से कम 48px ऊंचा, ताकि आसानी से दबे */
@@ -75,12 +84,16 @@
   border-radius: 10px;
   color: var(--ink);
   text-decoration: none;
-  font-size: 1.05rem;
+  font-size: 1rem;
+}
+
+.link:hover {
+  background: var(--surface-2);
 }
 
 .active {
-  background: var(--accent-soft);
-  color: var(--accent-ink);
+  background: var(--surface-2);
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -88,10 +101,9 @@
 .footer {
   margin-top: auto;
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   padding-top: 12px;
-  border-top: 1px solid var(--line);
 }
 
 .avatar,
@@ -99,12 +111,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--bg);
+  border: none;
+  background: var(--surface-2);
   color: var(--ink);
   text-decoration: none;
-  font-size: 1.2rem;
+}
+
+.avatar:hover,
+.bell:hover {
+  background: var(--line);
 }
