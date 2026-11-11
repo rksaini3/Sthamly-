@@ -3,10 +3,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AccountActions } from "@/components/account/AccountActions";
 import { AccountMenu } from "@/components/account/AccountMenu";
-import { PLAN_ALLOWANCES, PLAN_LABEL, formatRupees } from "@/lib/pricing";
-import { getActivePlan, windowStart } from "@/lib/quota";
-import { getWalletBalance } from "@/lib/wallet";
+import { getActivePlan, periodStarts } from "@/lib/quota";
+import { formatRupees, PLAN_ALLOWANCES, PLAN_LABEL } from "@/lib/pricing";
 import { isRole, ROLE_INFO } from "@/lib/roles";
+import { getWalletBalance } from "@/lib/wallet";
 import { DICT, LANG_COOKIE, parseLang } from "@/lib/i18n";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -36,35 +36,19 @@ export default async function AccountPage() {
     .eq("id", user.id)
     .maybeSingle();
   const role = profile?.role;
-  if (!isRole(role)) redirect("/role");
 
   const plan = await getActivePlan(user.id);
   const allowances = PLAN_ALLOWANCES[plan];
-  const now = new Date();
+  const balancePaise = await getWalletBalance(user.id);
 
-  // हर प्रकार का खर्च उसकी अपनी विंडो से (मुफ़्त पोस्टर: आज, मुफ़्त रील: इस हफ़्ते, बाकी: इस महीने)
+  // पोस्टर का खर्च उसकी विंडो से (मुफ़्त: आज, बाकी: इस महीने)
   const admin = createSupabaseAdminClient();
-  const [posterRes, reelRes, balancePaise] = await Promise.all([
-    admin.rpc("credit_used", {
-      p_user: user.id,
-      p_kind: "poster",
-      p_since: windowStart(allowances.poster.window, now).toISOString(),
-    }),
-    admin.rpc("credit_used", {
-      p_user: user.id,
-      p_kind: "reel",
-      p_since: windowStart(allowances.reel.window, now).toISOString(),
-    }),
-    getWalletBalance(user.id),
-  ]);
-  if (posterRes.error || reelRes.error) {
-    console.error("account: credit read failed", posterRes.error ?? reelRes.error);
+  const since = periodStarts(plan);
+  const posterRes = await admin.rpc("credit_used", { p_user: user.id, p_kind: "poster", p_since: since.poster });
+  if (posterRes.error) {
+    console.error("account: credit read failed", posterRes.error);
   }
   const posterUsed = posterRes.data ?? 0;
-  const reelUsed = reelRes.data ?? 0;
-
-  // मुफ़्त प्लान का नाम dict से, बाकी प्लान का नाम PLAN_LABEL से
-  const planName = plan === "free" ? dict.planFree : PLAN_LABEL[plan];
 
   return (
     <main className="page stack">
@@ -81,7 +65,7 @@ export default async function AccountPage() {
       <section className="card stack" style={{ gap: 6 }}>
         <strong style={{ wordBreak: "break-all" }}>{user.email}</strong>
         <span className="muted">
-          {dict.plan}: {planName}
+          {dict.plan}: {plan === "free" ? dict.planFree : PLAN_LABEL[plan]}
         </span>
       </section>
 
@@ -89,9 +73,6 @@ export default async function AccountPage() {
         <strong>{dict.usage}</strong>
         <span>
           {dict.posters}: {posterUsed} / {allowances.poster.limit} ({WINDOW_LABEL[allowances.poster.window]})
-        </span>
-        <span>
-          {dict.reels}: {reelUsed} / {allowances.reel.limit} ({WINDOW_LABEL[allowances.reel.window]})
         </span>
         {plan === "free" && (
           <span className="muted">
@@ -108,7 +89,7 @@ export default async function AccountPage() {
 
       <section className="card row">
         <span>
-          <strong>{dict.role}:</strong> {ROLE_INFO[role].label}
+          <strong>{dict.role}:</strong> {isRole(role) ? ROLE_INFO[role].label : "चुनी नहीं"}
         </span>
         <Link href="/role">{dict.changeRole}</Link>
       </section>
