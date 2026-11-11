@@ -1,6 +1,6 @@
 // Domain types: पूरे app में एक ही जगह से import करें (`@/types/domain`)
 
-export const SHOP_CATEGORIES = ["sweets", "salon", "coaching_clinic"] as const;
+export const SHOP_CATEGORIES = ["general", "kirana", "salon", "clothing", "mobile", "clinic", "coaching"] as const;
 export type ShopCategory = (typeof SHOP_CATEGORIES)[number];
 
 export const JOB_STATUSES = ["queued", "running", "done", "failed"] as const;
@@ -14,7 +14,8 @@ export const PLANS = ["free", "starter", "premium", "business"] as const;
 export type Plan = (typeof PLANS)[number];
 
 // यूज़र की भूमिका। गिरगिट मोड: हर भूमिका का अलग home और टेम्पलेट।
-export const ROLES = ["shopkeeper", "student", "creator"] as const;
+// "finance" सिर्फ़ एडमिन के लिए है (शेयर और कंपनी विश्लेषण, निजी)। lib/admin.ts देखें।
+export const ROLES = ["shopkeeper", "student", "creator", "finance"] as const;
 export type Role = (typeof ROLES)[number];
 
 export type Language = "hinglish" | "hindi" | "bhojpuri" | "awadhi";
