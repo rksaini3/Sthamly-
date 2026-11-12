@@ -79,6 +79,7 @@
 .link {
   display: flex;
   align-items: center;
+  gap: 12px;
   min-height: 48px;
   padding: 0 12px;
   border-radius: 10px;
@@ -123,4 +124,99 @@
 .avatar:hover,
 .bell:hover {
   background: var(--line);
+}
+
+/* "नया काम" बटन: मेन्यू के सबसे ऊपर */
+.newBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.newBtn:hover {
+  background: var(--line);
+}
+
+/* पिन की हुई और हाल की बातचीत */
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+}
+
+.sectionTitle {
+  margin: 14px 12px 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.chatRow {
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.chatRow:hover,
+.chatActive {
+  background: var(--surface-2);
+}
+
+.chatLink {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  padding: 13px 12px;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chatAct {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.chatAct:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+/* पिन किया हुआ: आइकन गाढ़ा */
+.pinnedOn {
+  color: var(--ink);
+}
+
+.empty {
+  margin: 4px 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pinnedOn svg {
+  fill: currentColor;
 }
