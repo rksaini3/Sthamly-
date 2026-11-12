@@ -188,4 +188,227 @@ export type Database = {
         "kind"
       >;
 
-      cost_events: Table
+      cost_events: Table<
+        {
+          id: string;
+          job_id: string | null;
+          step: string;
+          provider: string;
+          model: string | null;
+          cost_paise: number;
+          meta: Json | null;
+          created_at: string;
+        },
+        "step" | "provider" | "cost_paise"
+      >;
+
+      usage_ledger: Table<
+        {
+          id: string;
+          user_id: string;
+          kind: string;
+          reason: string;
+          delta: number;
+          job_id: string | null;
+          created_at: string;
+        },
+        "user_id" | "kind" | "reason" | "delta"
+      >;
+
+      subscriptions: Table<
+        {
+          id: string;
+          user_id: string;
+          plan_tier: PlanTier;
+          razorpay_subscription_id: string;
+          status: string;
+          current_period_end: string | null;
+          created_at: string;
+        },
+        "user_id" | "plan_tier" | "razorpay_subscription_id" | "status"
+      >;
+
+      wallets: Table<
+        {
+          user_id: string;
+          balance_paise: number;
+          topup_bonus_used: boolean;
+          updated_at: string;
+        },
+        "user_id"
+      >;
+
+      wallet_ledger: Table<
+        {
+          id: number;
+          user_id: string;
+          delta_paise: number;
+          reason: "topup" | "bonus" | "debit" | "refund" | "admin";
+          ref: string | null;
+          job_id: string | null;
+          created_at: string;
+        },
+        "user_id" | "delta_paise" | "reason"
+      >;
+
+      payments: Table<
+        {
+          id: string;
+          user_id: string;
+          amount_paise: number;
+          status: string;
+          provider_ref: string | null;
+          created_at: string;
+        },
+        "user_id" | "amount_paise" | "status"
+      >;
+
+      processed_messages: Table<
+        {
+          wa_message_id: string;
+          from_phone: string;
+          processed_at: string;
+        },
+        "wa_message_id" | "from_phone"
+      >;
+
+      consents: Table<
+        {
+          id: string;
+          user_id: string;
+          purpose: string;
+          policy_version: string;
+          granted_at: string;
+          revoked_at: string | null;
+        },
+        "user_id" | "purpose" | "policy_version"
+      >;
+
+      deletion_log: Table<
+        {
+          id: string;
+          from_phone: string;
+          completed_at: string;
+          created_at: string;
+        },
+        "from_phone"
+      >;
+
+      webhook_events: Table<
+        {
+          id: string;
+          provider: string;
+          payload: Json;
+          created_at: string;
+        },
+        "provider" | "payload"
+      >;
+
+      audit_log: Table<
+        {
+          id: string;
+          user_id: string | null;
+          action: string;
+          meta: Json | null;
+          created_at: string;
+        },
+        "action"
+      >;
+
+      announcements: Table<
+        {
+          id: string;
+          user_id: string;
+          shop_name: string;
+          body: string;
+          status: "published" | "hidden";
+          reports: number;
+          created_at: string;
+        },
+        "user_id" | "shop_name" | "body"
+      >;
+
+      notifications: Table<
+        {
+          id: string;
+          user_id: string;
+          kind: "comment" | "job_done";
+          title: string;
+          body: string | null;
+          link: string | null;
+          read_at: string | null;
+          created_at: string;
+        },
+        "user_id" | "kind" | "title"
+      >;
+
+      announcement_comments: Table<
+        {
+          id: string;
+          announcement_id: string;
+          user_id: string;
+          author_name: string;
+          body: string;
+          status: string;
+          reports: number;
+          created_at: string;
+        },
+        "announcement_id" | "user_id" | "author_name" | "body"
+      >;
+    };
+
+    Views: {};
+
+    Functions: {
+      credit_used: {
+        Args: { p_user: string; p_kind: string; p_since: string };
+        Returns: number;
+      };
+      reserve_credits: {
+        Args: {
+          p_user: string;
+          p_job: string;
+          p_since: string;
+          p_poster_need: number;
+          p_reel_need: number;
+          p_poster_limit: number;
+          p_reel_limit: number;
+        };
+        Returns: Json;
+      };
+      refund_job_credits: {
+        Args: { p_job: string };
+        Returns: undefined;
+      };
+      wallet_credit: {
+        Args: {
+          p_user: string;
+          p_amount: number;
+          p_ref: string;
+          p_bonus_percent: number;
+          p_bonus_min: number;
+        };
+        Returns: Json;
+      };
+      wallet_debit: {
+        Args: { p_user: string; p_amount: number; p_item: string; p_job: string };
+        Returns: Json;
+      };
+      wallet_refund_job: {
+        Args: { p_job: string };
+        Returns: number;
+      };
+      report_announcement: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+      report_comment: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+    };
+
+    Enums: {};
+    CompositeTypes: {};
+  };
+};
