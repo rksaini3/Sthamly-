@@ -98,15 +98,6 @@
   font-weight: 600;
 }
 
-/* नीचे: खाता और घंटी, एक ही पंक्ति में */
-.footer {
-  margin-top: auto;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding-top: 12px;
-}
-
 .avatar,
 .bell {
   display: flex;
@@ -123,28 +114,6 @@
 
 .avatar:hover,
 .bell:hover {
-  background: var(--line);
-}
-
-/* "नया काम" बटन: मेन्यू के सबसे ऊपर */
-.newBtn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  padding: 0 12px;
-  border: none;
-  border-radius: 10px;
-  background: var(--surface-2);
-  color: var(--ink);
-  font: inherit;
-  font-size: 1rem;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-
-.newBtn:hover {
   background: var(--line);
 }
 
@@ -219,4 +188,70 @@
 
 .pinnedOn svg {
   fill: currentColor;
+}
+
+/* ऊपर: खोज बटन और बंद बटन साथ-साथ */
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.searchBtn {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.searchInput {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--accent);
+}
+
+/* नीचे हमेशा दिखने वाली पट्टी: बड़ा "नया काम" गोल बटन + खाता + घंटी */
+.footer {
+  position: sticky;
+  bottom: 0;
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0 4px;
+  background: var(--sidebar);
+}
+
+.newPill {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
 }
