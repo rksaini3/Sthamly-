@@ -193,33 +193,57 @@
   color: var(--muted, #78716c);
 }
 
-/* खाली स्क्रीन के सुझाव: सादे chip */
+/* सुझाव: ChatGPT जैसी सूची, इनपुट बार के ठीक ऊपर (आइकन के साथ एक-एक पंक्ति) */
 .suggestions {
-  align-self: center;
   width: 100%;
-  max-width: 480px;
-  margin-top: 12px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  margin: 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .suggestion {
-  min-height: 52px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--line, #e5e5e5);
-  background: var(--surface, #fff);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
   color: var(--ink, #1c1917);
   font: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
   text-align: left;
   cursor: pointer;
 }
 
-.suggestion:hover {
-  border-color: var(--accent, #e0561a);
+.suggestion:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.suggestion:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.suggestionIcon {
+  display: inline-flex;
+  color: var(--muted, #78716c);
+  flex-shrink: 0;
+}
+
+/* लॉग-इन का बटन (लिंक) */
+.loginBtn {
+  align-self: center;
+  margin-top: 4px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: var(--accent, #e0561a);
+  color: var(--accent-ink, #fff);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
 }
 
 /* ---- संदेश ---- */
