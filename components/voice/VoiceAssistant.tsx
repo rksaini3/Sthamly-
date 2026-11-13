@@ -198,6 +198,8 @@ export function VoiceAssistant({
   // चुनी हुई फ़ोटो (अभी backend को नहीं जाती, अगले कदम में जुड़ेगी)
   const [photo, setPhoto] = useState<File | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // लिखने की जगह दबी हो (कीबोर्ड खुला) तो सुझाव छिप जाते हैं, ताकि ऊपर का हिस्सा दिखता रहे
+  const [focused, setFocused] = useState(false);
   // आने वाले त्योहार और दिवस (तारीख़ browser में निकलती है, ताकि दिन सही रहे)
   const [festivals, setFestivals] = useState<UpcomingFestival[]>([]);
 
@@ -565,7 +567,7 @@ export function VoiceAssistant({
       </section>
 
       <div className={styles.composer}>
-        {isEmpty && (
+        {isEmpty && !focused && !hasDraft && (
           <div className={styles.suggestions}>
             {festivals.length > 0 && (
               <p style={{ margin: "0 10px 2px", fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>
@@ -642,6 +644,8 @@ export function VoiceAssistant({
               className={styles.input}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
               placeholder={t.placeholder}
               maxLength={1000}
               disabled={recording || busy !== "idle"}
