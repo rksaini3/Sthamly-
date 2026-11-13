@@ -1,8 +1,22 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// ये रास्ते सिर्फ लॉग-इन यूज़र के लिए हैं
-const PROTECTED_PREFIXES = ["/dashboard", "/onboarding"];
+// ये रास्ते सिर्फ लॉग-इन यूज़र के लिए हैं।
+// हर पेज खुद भी login जांचता है; यहां की जांच पहली सुरक्षा दीवार है।
+const PROTECTED_PREFIXES = [
+  "/account",
+  "/batch",
+  "/dashboard",
+  "/images",
+  "/live",
+  "/my-posters",
+  "/notebook",
+  "/notifications",
+  "/onboarding",
+  "/role",
+  "/settings",
+  "/voice",
+];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(
@@ -63,7 +77,8 @@ function redirectIfProtected(request: NextRequest, response: NextResponse, logge
 }
 
 export const config = {
-  // स्टैटिक फाइलें, PWA की फाइलें और Next.js के internal रास्ते छोड़कर बाकी पर चलेगा
+  // स्टैटिक फाइलें, PWA की फाइलें और Next.js के internal रास्ते छोड़कर बाकी पर चलेगा।
+  // API routes खुद auth जांचते हैं, इसलिए उन्हें यहां से बाहर रखा गया है।
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|robots.txt|icons/|fonts/|api/).*)",
   ],
