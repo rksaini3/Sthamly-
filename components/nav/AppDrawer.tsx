@@ -4,7 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import styles from "@/components/nav/AppDrawer.module.css";
+import { LangSwitch } from "@/components/nav/LangSwitch";
 import type { ChatSummary } from "@/lib/chats";
+import type { Lang } from "@/lib/i18n";
+import { LABELS, type Labels } from "@/lib/labels";
 
 // ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन और कानूनी पन्ने)
 const HIDDEN_PREFIXES = ["/login", "/auth", "/privacy", "/terms"] as const;
@@ -23,27 +26,48 @@ type IconName =
   | "projects"
   | "scheduled"
   | "plugins"
+  | "staff"
+  | "pencil"
   | "search";
+
+type ItemKey = "gallery" | "saved" | "notes" | "shop" | "campaign" | "later" | "connect" | "team" | "batch" | "feed";
 
 interface DrawerItem {
   href: string;
-  label: string;
+  key: ItemKey;
   icon: IconName;
 }
 
-// ड्रॉअर की सूची (ChatGPT जैसी)। "नया काम" नीचे गोल बटन है, खोज ऊपर।
-// जो अभी v1 में नहीं हैं (प्रोजेक्ट, शेड्यूल, प्लगइन) वे "जल्द आएगा" पन्ने पर खुलते हैं।
+// ड्रॉअर की सूची। नाम छोटे हैं और lib/labels.ts से दोनों भाषाओं में आते हैं।
+// "जल्द आएगा" वाले पन्ने /soon/... पर खुलते हैं।
 const ITEMS: DrawerItem[] = [
-  { href: "/images", label: "इमेज", icon: "images" },
-  { href: "/my-posters", label: "मेरे बनाए", icon: "library" },
-  { href: "/notebook", label: "नोटबुक", icon: "notebook" },
-  { href: "/account", label: "कस्टमाइज़", icon: "customize" },
-  { href: "/soon/projects", label: "प्रोजेक्ट", icon: "projects" },
-  { href: "/soon/scheduled", label: "शेड्यूल", icon: "scheduled" },
-  { href: "/soon/plugins", label: "प्लगइन", icon: "plugins" },
-  { href: "/batch", label: "बैच", icon: "batch" },
-  { href: "/feed", label: "घोषणा", icon: "feed" },
+  { href: "/images", key: "gallery", icon: "images" },
+  { href: "/my-posters", key: "saved", icon: "library" },
+  { href: "/notebook", key: "notes", icon: "notebook" },
+  { href: "/account", key: "shop", icon: "customize" },
+  { href: "/soon/campaigns", key: "campaign", icon: "projects" },
+  { href: "/soon/scheduled", key: "later", icon: "scheduled" },
+  { href: "/soon/apps", key: "connect", icon: "plugins" },
+  { href: "/soon/staff", key: "team", icon: "staff" },
+  { href: "/batch", key: "batch", icon: "batch" },
+  { href: "/feed", key: "feed", icon: "feed" },
 ];
+
+// तारीख़ के हिसाब से समूह: आज, कल, पिछले 7 दिन, पुराना
+type Group = "today" | "yesterday" | "week" | "older";
+const GROUP_ORDER: Group[] = ["today", "yesterday", "week", "older"];
+
+function groupOf(iso: string): Group {
+  const d = new Date(iso);
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const day = 24 * 60 * 60 * 1000;
+  const t = d.getTime();
+  if (t >= startToday) return "today";
+  if (t >= startToday - day) return "yesterday";
+  if (t >= startToday - 7 * day) return "week";
+  return "older";
+}
 
 function matches(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
@@ -65,6 +89,8 @@ const PATHS: Record<IconName, string[]> = {
   scheduled: ["M12 3a9 9 0 100 18 9 9 0 000-18z", "M12 7v5l3 2"],
   plugins: ["M9 3v4M15 3v4", "M6 7h12v4a6 6 0 01-12 0z", "M12 17v4"],
   search: ["M11 4a7 7 0 100 14 7 7 0 000-14z", "M20 20l-4-4"],
+  staff: ["M16 11a3 3 0 100-6 3 3 0 000 6z", "M8 12a3 3 0 100-6 3 3 0 000 6z", "M2 20c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5", "M14.5 15.7c.5-.2 1-.2 1.5-.2 2.8 0 5.2 1.5 6 4.5"],
+  pencil: ["M4 20l1-4L17 4l3 3L8 19z"],
 };
 
 function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
@@ -121,7 +147,8 @@ function BellIcon() {
   );
 }
 
-export function AppDrawer() {
+export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
+  const t: Labels["nav"] = LABELS[lang].nav;
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -208,12 +235,31 @@ export function AppDrawer() {
       if (!res.ok) throw new Error("pin failed");
     } catch {
       setChats((list) => list?.map((c) => (c.id === chat.id ? { ...c, pinned: chat.pinned } : c)) ?? list);
-      setChatError("पिन नहीं हो पाया, दोबारा कोशिश करें।");
+      setChatError(t.errPin);
+    }
+  }
+
+  // नाम बदलना (नया नाम सर्वर पर भी सेव होता है)
+  async function renameChat(chat: ChatSummary) {
+    const input = window.prompt(t.renamePrompt, chat.title);
+    const title = input?.trim();
+    if (!title || title === chat.title) return;
+    setChatError(null);
+    try {
+      const res = await fetch(`/api/chats/${chat.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title.slice(0, 80) }),
+      });
+      if (!res.ok) throw new Error("rename failed");
+      setChats((list) => list?.map((c) => (c.id === chat.id ? { ...c, title: title.slice(0, 80) } : c)) ?? list);
+    } catch {
+      setChatError(t.errRename);
     }
   }
 
   async function removeChat(chat: ChatSummary) {
-    if (!window.confirm("इस बातचीत को हमेशा के लिए हटाएं?")) return;
+    if (!window.confirm(t.removeConfirm)) return;
     setChatError(null);
     try {
       const res = await fetch(`/api/chats/${chat.id}`, { method: "DELETE" });
@@ -222,7 +268,7 @@ export function AppDrawer() {
       // जो चैट अभी खुली है वही हटी तो खाली नई चैट खोलें
       if (activeChat === chat.id) startNew();
     } catch {
-      setChatError("हटाया नहीं जा सका, दोबारा कोशिश करें।");
+      setChatError(t.errRemove);
     }
   }
 
@@ -241,7 +287,7 @@ export function AppDrawer() {
         <button
           type="button"
           className={`${styles.chatAct} ${chat.pinned ? styles.pinnedOn : ""}`}
-          aria-label={chat.pinned ? "पिन हटाएं" : "पिन करें"}
+          aria-label={chat.pinned ? t.unpin : t.pin}
           aria-pressed={chat.pinned}
           onClick={() => void togglePin(chat)}
         >
@@ -250,7 +296,15 @@ export function AppDrawer() {
         <button
           type="button"
           className={styles.chatAct}
-          aria-label="बातचीत हटाएं"
+          aria-label={t.rename}
+          onClick={() => void renameChat(chat)}
+        >
+          <Icon name="pencil" size={18} />
+        </button>
+        <button
+          type="button"
+          className={styles.chatAct}
+          aria-label={t.remove}
           onClick={() => void removeChat(chat)}
         >
           <Icon name="trash" size={18} />
@@ -269,7 +323,7 @@ export function AppDrawer() {
       <button
         type="button"
         className={styles.trigger}
-        aria-label="मेन्यू खोलें"
+        aria-label={t.menuOpen}
         aria-expanded={open}
         onClick={() => setOpen(true)}
       >
@@ -282,16 +336,17 @@ export function AppDrawer() {
             className={styles.drawer}
             role="dialog"
             aria-modal="true"
-            aria-label="मेन्यू"
+            aria-label={t.menu}
             onClick={(e) => e.stopPropagation()}
           >
             <div className={styles.head}>
-              <strong>Sthamly</strong>
+              <strong>{t.brand}</strong>
               <div className={styles.headActions}>
+                <LangSwitch lang={lang} label={t.language} />
                 <button
                   type="button"
                   className={styles.searchBtn}
-                  aria-label="बातचीत खोजें"
+                  aria-label={t.find}
                   aria-expanded={searching}
                   onClick={() => {
                     setSearching((v) => !v);
@@ -300,7 +355,7 @@ export function AppDrawer() {
                 >
                   <Icon name="search" size={20} />
                 </button>
-                <button type="button" className={styles.close} aria-label="मेन्यू बंद करें" onClick={close}>
+                <button type="button" className={styles.close} aria-label={t.menuClose} onClick={close}>
                   <CloseIcon />
                 </button>
               </div>
@@ -311,25 +366,25 @@ export function AppDrawer() {
                 className={styles.searchInput}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="बातचीत खोजें…"
-                aria-label="बातचीत खोजें"
+                placeholder={t.findHint}
+                aria-label={t.find}
                 autoFocus
               />
             )}
 
-            <nav className={styles.list} aria-label="मुख्य सूची">
+            <nav className={styles.list} aria-label={t.mainList}>
               {ITEMS.map((item) => {
                 const active = matches(pathname, item.href);
                 return (
                   <Link
-                    key={item.label}
+                    key={item.key}
                     href={item.href}
                     className={`${styles.link} ${active ? styles.active : ""}`}
                     aria-current={active ? "page" : undefined}
                     onClick={close}
                   >
                     <Icon name={item.icon} />
-                    {item.label}
+                    {t[item.key]}
                   </Link>
                 );
               })}
@@ -337,35 +392,46 @@ export function AppDrawer() {
 
             {/* पिन की हुई और हाल की बातचीत (लॉग-इन होने पर) */}
             <div className={styles.history}>
-              <p className={styles.sectionTitle}>पिन की हुई</p>
+              <p className={styles.sectionTitle}>{t.starred}</p>
               {historyState === "ok" && !q && pinned.length === 0 && (
-                <p className={styles.empty}>किसी बातचीत के 📌 को दबाकर यहाँ पिन करें।</p>
+                <p className={styles.empty}>{t.pinHint}</p>
               )}
               {pinned.map(chatRow)}
 
-              <p className={styles.sectionTitle}>हाल की बातचीत</p>
-              {historyState === "loading" && <p className={styles.empty}>लोड हो रहा है…</p>}
+              <p className={styles.sectionTitle}>{t.recent}</p>
+              {historyState === "loading" && <p className={styles.empty}>{t.loading}</p>}
               {historyState === "login" && (
                 <p className={styles.empty}>
-                  बातचीत सेव करने के लिए{" "}
+                  {t.loginPre}
                   <Link href="/login?next=/voice" onClick={close} style={{ color: "var(--accent)", fontWeight: 600 }}>
-                    लॉग-इन करें
+                    {t.loginLink}
                   </Link>
-                  ।
+                  {t.loginPost}
                 </p>
               )}
               {historyState === "error" && (
                 <p className={styles.empty}>
-                  इतिहास अभी नहीं खुल पाया। Supabase में <b>0027_chat_threads.sql</b> चलाया है या नहीं, देखें।
+                  {t.historyError}
                 </p>
               )}
               {historyState === "ok" && q && recent.length === 0 && pinned.length === 0 && (
-                <p className={styles.empty}>कोई बातचीत नहीं मिली।</p>
+                <p className={styles.empty}>{t.noMatch}</p>
               )}
               {historyState === "ok" && !q && recent.length === 0 && pinned.length === 0 && (
-                <p className={styles.empty}>अभी कोई बातचीत नहीं। पहला संदेश भेजते ही यहाँ दिखेगी।</p>
+                <p className={styles.empty}>{t.noChats}</p>
               )}
-              {recent.map(chatRow)}
+              {GROUP_ORDER.map((g) => {
+                const rows = recent.filter((c) => groupOf(c.updated_at) === g);
+                if (rows.length === 0) return null;
+                return (
+                  <div key={g}>
+                    <p className={styles.sectionTitle} style={{ fontWeight: 500, marginTop: 10 }}>
+                      {t[g]}
+                    </p>
+                    {rows.map(chatRow)}
+                  </div>
+                );
+              })}
 
               {chatError && (
                 <p role="alert" className={styles.empty} style={{ color: "var(--danger)" }}>
@@ -378,12 +444,12 @@ export function AppDrawer() {
             <div className={styles.footer}>
               <button type="button" className={styles.newPill} onClick={startNew}>
                 <Icon name="new" size={20} />
-                नया काम
+                {t.create}
               </button>
-              <Link href="/account" className={styles.avatar} aria-label="खाता" onClick={close}>
+              <Link href="/account" className={styles.avatar} aria-label={t.account} onClick={close}>
                 <UserIcon />
               </Link>
-              <Link href="/notifications" className={styles.bell} aria-label="सूचनाएं" onClick={close}>
+              <Link href="/notifications" className={styles.bell} aria-label={t.notifications} onClick={close}>
                 <BellIcon />
               </Link>
             </div>
