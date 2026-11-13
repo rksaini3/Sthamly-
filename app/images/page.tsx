@@ -1,16 +1,21 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import styles from "@/components/library/Library.module.css";
 import { ComingSoon } from "@/components/roles/ComingSoon";
 import { formatDate } from "@/lib/format";
 import { loadLibrary } from "@/lib/library";
+import { LANG_COOKIE, parseLang } from "@/lib/i18n";
+import { LABELS } from "@/lib/labels";
 import { isRole } from "@/lib/roles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-// इमेज: अब तक बने सारे पोस्टर की तस्वीरें, एक ग्रिड में
+// गैलरी: अब तक बने सारे पोस्टर की तस्वीरें, एक ग्रिड में
 export default async function ImagesPage() {
+  const lang = parseLang((await cookies()).get(LANG_COOKIE)?.value);
+  const t = LABELS[lang].gallery;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -24,7 +29,7 @@ export default async function ImagesPage() {
   if (role !== "shopkeeper") {
     return (
       <main className="page stack">
-        <h1 style={{ margin: 0 }}>इमेज</h1>
+        <h1 style={{ margin: 0 }}>{t.title}</h1>
         <ComingSoon role={role} />
       </main>
     );
@@ -34,18 +39,18 @@ export default async function ImagesPage() {
 
   return (
     <main className="page stack">
-      <h1 style={{ margin: 0 }}>इमेज</h1>
+      <h1 style={{ margin: 0 }}>{t.title}</h1>
       <p className="muted" style={{ margin: 0 }}>
-        आपके बनाए सारे पोस्टर। दबाकर बड़ा देखें।
+        {t.sub} ({items.length}). {t.tap}
       </p>
 
       {items.length === 0 ? (
         <div className="card stack">
           <p className="muted" style={{ margin: 0 }}>
-            अभी कोई पोस्टर नहीं बना है।
+            {t.empty}
           </p>
           <Link href="/voice" className="btn btn-primary btn-block">
-            नया काम शुरू करें
+            {t.start}
           </Link>
         </div>
       ) : (
@@ -53,8 +58,8 @@ export default async function ImagesPage() {
           {items.map((item) => (
             <a key={item.jobId} href={item.posterUrl ?? "#"} target="_blank" rel="noreferrer" className={styles.tile}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={item.posterUrl ?? ""} alt={item.offerText || "पोस्टर"} className={styles.tileImg} loading="lazy" />
-              <span className={styles.meta}>{formatDate(item.createdAt)}</span>
+              <img src={item.posterUrl ?? ""} alt={item.offerText || t.posterAlt} className={styles.tileImg} loading="lazy" />
+              <span className={styles.meta}>{formatDate(item.createdAt, lang)}</span>
             </a>
           ))}
         </div>
