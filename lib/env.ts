@@ -3,6 +3,8 @@ import { z } from "zod";
 // env सिर्फ तभी validate होगा जब getServerEnv() पहली बार बुलाया जाए।
 // इससे build के समय missing keys से crash नहीं होगा।
 const serverSchema = z.object({
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_LIVE_MODEL: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   CRON_SECRET: z.string().min(16),
   FAL_KEY: z.string().optional(),
