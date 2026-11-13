@@ -35,6 +35,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // कीबोर्ड खुलने पर पन्ना उतना ही छोटा हो जाए, ऊपर का हिस्सा बाहर न धकेले
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#212121" },
