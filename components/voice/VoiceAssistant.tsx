@@ -7,12 +7,14 @@ import styles from "@/components/voice/VoiceAssistant.module.css";
 import { upcomingFestivals, type UpcomingFestival } from "@/lib/festivals";
 import type { Lang } from "@/lib/i18n";
 import { LABELS } from "@/lib/labels";
-import { formatRupees } from "@/lib/pricing";
+import { PLAN_LABEL, formatRupees, type Plan } from "@/lib/pricing";
 
 export interface AssistantQuota {
   posterLeft: number;
   posterWindow: "day" | "week" | "month";
   walletPaise: number;
+  // प्लान का नाम (header में चिप दिखाने के लिए)। न हो तो Free मानें।
+  plan?: Plan;
 }
 
 // सुझावों के आइकन (वाक्य lib/labels.ts में, दोनों भाषाओं में)
@@ -21,6 +23,10 @@ const SUGGESTION_ICONS: SuggestionIcon[] = ["spark", "image", "pencil", "spark"]
 
 // फ़ोटो की अधिकतम साइज़ (10 MB)
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+
+// चैट और लाइव की कीमत (lib/meter.ts से मेल खाती है; client में server वाली फ़ाइल नहीं लाते)
+const CHAT_PRICE_PAISE = 50;
+const LIVE_PRICE_PAISE = 100;
 
 interface Offer {
   offerText: string;
@@ -42,6 +48,8 @@ interface Message {
   text: string;
   // अगर यह संदेश ऑफ़र का कार्ड है तो यहाँ नतीजा होगा (null = समझ नहीं आया)
   offerCard?: { offer: Offer | null };
+  // अगर चैट का कोटा और वॉलेट दोनों खत्म हो गए तो यह अपग्रेड/टॉप-अप कार्ड होगा
+  upsell?: { balancePaise: number };
 }
 
 // /onboarding पन्ना इसी key से समझा हुआ ऑफ़र और चुना हुआ प्रकार उठाता है
@@ -261,7 +269,7 @@ export function VoiceAssistant({
 
     const userMsg: Message = { id: newId(), role: "user", text };
     const history = [...messages, userMsg]
-      .filter((m) => !m.offerCard && m.text.trim().length > 0)
+      .filter((m) => !m.offerCard && !m.upsell && m.text.trim().length > 0)
       .slice(-12)
       .map((m) => ({ role: m.role, content: m.text.slice(0, 1000) }));
 
@@ -273,6 +281,17 @@ export function VoiceAssistant({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(threadId ? { threadId, messages: history } : { messages: history }),
       });
+
+      // कोटा और वॉलेट दोनों खत्म: चैट के अंदर ही अपग्रेड और टॉप-अप का कार्ड
+      if (res.status === 402) {
+        const data = (await res.json().catch(() => null)) as { balancePaise?: number } | null;
+        setMessages((prev) => [
+          ...prev,
+          { id: newId(), role: "assistant", text: "", upsell: { balancePaise: data?.balancePaise ?? 0 } },
+        ]);
+        return;
+      }
+
       if (!res.ok) {
         setError(await readError(res, t.errGeneric));
         return;
@@ -428,6 +447,7 @@ export function VoiceAssistant({
 
   const isEmpty = messages.length === 0;
   const hasDraft = draft.trim().length > 0;
+  const plan: Plan = quota?.plan ?? "free";
   const status = recording
     ? t.statusListening
     : busy === "transcribing"
@@ -448,6 +468,10 @@ export function VoiceAssistant({
 
         {loggedIn && (
           <div className={styles.topActions}>
+            {/* प्लान चिप: free यूज़र को अपग्रेड का रास्ता, paid यूज़र को उसके प्लान का नाम */}
+            <Link href="/pricing" className={styles.historyLink} aria-label="प्लान">
+              {plan === "free" ? "अपग्रेड" : PLAN_LABEL[plan]}
+            </Link>
             <button
               type="button"
               className={styles.iconBtn}
@@ -457,9 +481,6 @@ export function VoiceAssistant({
             >
               <NewChatIcon />
             </button>
-            <Link href="/live" className={styles.iconBtn} aria-label="Live बातचीत">
-              <LiveIcon />
-            </Link>
             <Link href="/my-posters" className={styles.iconBtn} aria-label={t.myWork}>
               <ClockIcon />
             </Link>
@@ -475,14 +496,6 @@ export function VoiceAssistant({
               </button>
               {menuOpen && (
                 <div className={styles.menu} role="menu">
-                  <Link
-                    href="/live"
-                    className={styles.menuItem}
-                    role="menuitem"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    Live बातचीत
-                  </Link>
                   <Link
                     href="/account"
                     className={styles.menuItem}
@@ -548,6 +561,26 @@ export function VoiceAssistant({
                 >
                   {t.makeOffer}
                 </button>
+              </div>
+            );
+          }
+
+          if (m.upsell) {
+            return (
+              <div key={m.id} className={styles.bubbleBot}>
+                <p className={styles.label}>आज की मुफ़्त बातचीत खत्म हो गई</p>
+                <p className={styles.muted}>
+                  वॉलेट बैलेंस: {formatRupees(m.upsell.balancePaise)}। हर चैट {formatRupees(CHAT_PRICE_PAISE)} और हर
+                  लाइव सत्र {formatRupees(LIVE_PRICE_PAISE)} से कटेगा। प्लान अपग्रेड करें या वॉलेट में बैलेंस डालें।
+                </p>
+                <div className={styles.btnRow}>
+                  <Link href="/pricing" className={styles.btnPrimary} style={{ textDecoration: "none" }}>
+                    प्लान अपग्रेड करें
+                  </Link>
+                  <Link href="/pricing" className={styles.btnGhost} style={{ textDecoration: "none" }}>
+                    वॉलेट में टॉप-अप
+                  </Link>
+                </div>
               </div>
             );
           }
@@ -683,6 +716,18 @@ export function VoiceAssistant({
               <CameraIcon />
             </button>
           </div>
+
+          {/* लाइव बातचीत: इनपुट के बगल में (ChatGPT की तरह), जब लिखने के लिए कुछ न हो */}
+          {loggedIn && !hasDraft && !recording && (
+            <Link
+              href="/live"
+              className={styles.iconBtn}
+              style={{ width: 48, height: 48, border: "1px solid var(--line, #e5e5e5)", flexShrink: 0 }}
+              aria-label="Live बातचीत"
+            >
+              <LiveIcon />
+            </Link>
+          )}
 
           {hasDraft ? (
             <button
