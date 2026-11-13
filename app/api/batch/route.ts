@@ -1,12 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createJob, type CreateJobResult } from "@/lib/jobs/create";
+import { allowRequest } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MAX_BATCH = 10;
+
+// एक batch request में 10 posters बन सकते हैं, इसलिए सीमा generate से कड़ी है।
+// 10 मिनट में 5 batch requests तक।
+const RATE_WINDOW_SECONDS = 10 * 60;
+const RATE_MAX_REQUESTS = 5;
 
 // बैच रुकने पर जो कारण मिल सकता है (createJob की गड़बड़ियों में से)
 type BatchStopCode = Extract<CreateJobResult, { ok: false }>["code"];
@@ -47,6 +53,20 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       return errorResponse("UNAUTHORIZED", "पहले लॉग-इन करें", 401);
+    }
+
+    // Rate limit: body पढ़ने से पहले ही रोकें
+    const allowed = await allowRequest(
+      `batch:${user.id}`,
+      RATE_WINDOW_SECONDS,
+      RATE_MAX_REQUESTS,
+    );
+    if (!allowed) {
+      return errorResponse(
+        "RATE_LIMITED",
+        "बहुत जल्दी-जल्दी बैच भेजे जा रहे हैं, थोड़ी देर बाद दोबारा कोशिश करें",
+        429,
+      );
     }
 
     let raw: unknown;
