@@ -513,6 +513,30 @@
   color: #fff;
 }
 
+/* छोटी स्क्रीन या कीबोर्ड खुला: गोला और शब्द छोटे, ताकि सब एक साथ दिखे */
+@media (max-height: 640px) {
+  .orb {
+    width: 64px;
+    height: 64px;
+  }
+
+  .greeting {
+    font-size: 22px;
+  }
+
+  .question {
+    font-size: 16px;
+  }
+
+  .hint {
+    display: none;
+  }
+
+  .stage {
+    padding: 8px 16px;
+  }
+}
+
 /* ---- Animation ---- */
 
 @keyframes spin {
