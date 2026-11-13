@@ -158,6 +158,16 @@ function ClockIcon() {
   );
 }
 
+// लाइव बातचीत का आइकन: बीच में बिंदु और चारों ओर तरंगें
+function LiveIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" />
+      <path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2" />
+    </svg>
+  );
+}
+
 function DotsIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -447,6 +457,9 @@ export function VoiceAssistant({
             >
               <NewChatIcon />
             </button>
+            <Link href="/live" className={styles.iconBtn} aria-label="Live बातचीत">
+              <LiveIcon />
+            </Link>
             <Link href="/my-posters" className={styles.iconBtn} aria-label={t.myWork}>
               <ClockIcon />
             </Link>
@@ -462,6 +475,14 @@ export function VoiceAssistant({
               </button>
               {menuOpen && (
                 <div className={styles.menu} role="menu">
+                  <Link
+                    href="/live"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    Live बातचीत
+                  </Link>
                   <Link
                     href="/account"
                     className={styles.menuItem}
