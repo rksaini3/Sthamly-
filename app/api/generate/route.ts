@@ -1,10 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { createJob } from "@/lib/jobs/create";
+import { allowRequest } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// एक यूज़र 10 मिनट में ज़्यादा से ज़्यादा 20 poster requests भेज सकता है।
+// AI का खर्च हर request पर लगता है, इसलिए यह सीमा cost abuse रोकती है।
+const RATE_WINDOW_SECONDS = 10 * 60;
+const RATE_MAX_REQUESTS = 20;
 
 const bodySchema = z.object({
   shopId: z.string().uuid(),
@@ -40,7 +46,21 @@ async function handleGenerate(req: NextRequest) {
     return errorResponse("UNAUTHORIZED", "पहले लॉग-इन करें", 401);
   }
 
-  // 2. Body पढ़ें और जांचें
+  // 2. Rate limit: body पढ़ने से पहले ही रोकें
+  const allowed = await allowRequest(
+    `generate:${user.id}`,
+    RATE_WINDOW_SECONDS,
+    RATE_MAX_REQUESTS,
+  );
+  if (!allowed) {
+    return errorResponse(
+      "RATE_LIMITED",
+      "बहुत जल्दी-जल्दी अनुरोध आ रहे हैं, थोड़ी देर बाद दोबारा कोशिश करें",
+      429,
+    );
+  }
+
+  // 3. Body पढ़ें और जांचें
   let raw: unknown;
   try {
     raw = await req.json();
@@ -53,7 +73,7 @@ async function handleGenerate(req: NextRequest) {
     return errorResponse("VALIDATION_FAILED", "इनपुट सही नहीं है", 400, parsed.error.flatten());
   }
 
-  // 3. Job, दुकान की जांच और credit का काम createJob करता है (WhatsApp भी यही इस्तेमाल करता है)
+  // 4. Job, दुकान की जांच और credit का काम createJob करता है (WhatsApp भी यही इस्तेमाल करता है)
   const result = await createJob({
     userId: user.id,
     ...parsed.data,
@@ -76,7 +96,7 @@ async function handleGenerate(req: NextRequest) {
     }
   }
 
-  // 4. सफल: job queued है, worker इसे अगले run में उठाएगा
+  // 5. सफल: job queued है, worker इसे अगले run में उठाएगा
   return NextResponse.json(
     { jobId: result.jobId, status: "queued", remaining: result.remaining },
     { status: 202 },
