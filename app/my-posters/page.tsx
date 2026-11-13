@@ -136,7 +136,7 @@ export default async function MyPostsPage() {
       {rows.length === 0 && (
         <div className="card">
           <p className="muted" style={{ margin: 0 }}>
-            अभी कोई पोस्टर या रील नहीं बना है। असिस्टेंट से नया काम शुरू करें।
+            अभी कोई पोस्टर या रील नहीं बना है। Sthamly से नया काम शुरू करें।
           </p>
         </div>
       )}
