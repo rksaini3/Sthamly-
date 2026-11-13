@@ -1,0 +1,290 @@
+/* लाइव कैमरा: पूरी स्क्रीन, काली पृष्ठभूमि। कैमरा के ऊपर के बटन हमेशा दिखें, इसलिए हल्की काली परत पर हैं। */
+
+.page {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: #fff;
+  overflow: hidden;
+}
+
+.video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(10px + env(safe-area-inset-top)) 12px 24px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+}
+
+.topRight {
+  display: flex;
+  gap: 8px;
+}
+
+.round {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  flex-shrink: 0;
+}
+
+.round:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.liveBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  font-weight: 700;
+  font-size: 14px;
+  backdrop-filter: blur(6px);
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 40px 14px calc(14px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0));
+}
+
+.caption {
+  max-height: 34dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+}
+
+.replyText {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.status {
+  margin: 0;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.errorLine {
+  margin: 0;
+  font-size: 14px;
+  color: #fecaca;
+}
+
+.chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.typeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #000;
+  font: inherit;
+  font-size: 16px;
+  outline: none;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+}
+
+.spacer {
+  width: 44px;
+}
+
+.talk {
+  width: 72px;
+  height: 72px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 4px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  cursor: pointer;
+}
+
+.talk:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.talkOn {
+  background: #ef4444;
+  color: #fff;
+  border-color: rgba(239, 68, 68, 0.5);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.hintLine {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* शुरू की स्क्रीन (कैमरा चालू करने से पहले) */
+.intro {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: #0b0b0b;
+  overflow-y: auto;
+}
+
+.introTitle {
+  margin: 0;
+  font-size: 24px;
+}
+
+.introText {
+  margin: 0;
+  max-width: 360px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.tip {
+  margin: 0;
+  max-width: 360px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.error {
+  margin: 0;
+  max-width: 360px;
+  font-size: 14px;
+  color: #fecaca;
+}
+
+.primary {
+  min-height: 52px;
+  padding: 0 28px;
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  border-radius: 999px;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+}
+
+.beta {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.back {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 15px;
+  padding: 10px;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot,
+  .talkOn {
+    animation: none;
+  }
+}
