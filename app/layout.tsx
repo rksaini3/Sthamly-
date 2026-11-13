@@ -55,7 +55,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       </head>
       <body>
         {/* ☰ मेन्यू हर पन्ने पर, ऊपर बाईं ओर। नीचे कोई बार नहीं। */}
-        <AppDrawer />
+        <AppDrawer lang={lang} />
         {children}
         <ServiceWorkerRegister />
       </body>
