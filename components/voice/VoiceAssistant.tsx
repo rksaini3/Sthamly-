@@ -4,6 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import styles from "@/components/voice/VoiceAssistant.module.css";
+import { upcomingFestivals, type UpcomingFestival } from "@/lib/festivals";
+import type { Lang } from "@/lib/i18n";
+import { LABELS } from "@/lib/labels";
 import { formatRupees } from "@/lib/pricing";
 
 export interface AssistantQuota {
@@ -12,19 +15,9 @@ export interface AssistantQuota {
   walletPaise: number;
 }
 
-const WINDOW_LABEL: Record<AssistantQuota["posterWindow"], string> = {
-  day: "आज",
-  week: "इस हफ़्ते",
-  month: "इस महीने",
-};
-
-// खाली स्क्रीन के सुझाव: कार्ड दबाने पर वाक्य लिखने की जगह में भर जाता है
-const SUGGESTIONS: { label: string; prompt: string }[] = [
-  { label: "दीवाली सेल का पोस्टर", prompt: "दीवाली सेल का पोस्टर बनाना है, ऑफ़र है " },
-  { label: "प्रोडक्ट की फ़ोटो से कार्ड", prompt: "मेरे प्रोडक्ट की फ़ोटो से कार्ड बनाना है" },
-  { label: "कल का मेन्यू", prompt: "कल का मेन्यू पोस्टर बनाना है" },
-  { label: "कैंप या बैच का पोस्टर", prompt: "कैंप या बैच का पोस्टर बनाना है" },
-];
+// सुझावों के आइकन (वाक्य lib/labels.ts में, दोनों भाषाओं में)
+type SuggestionIcon = "spark" | "image" | "pencil";
+const SUGGESTION_ICONS: SuggestionIcon[] = ["spark", "image", "pencil", "spark"];
 
 // फ़ोटो की अधिकतम साइज़ (10 MB)
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
@@ -36,6 +29,12 @@ interface Offer {
 
 type Kind = "poster" | "reel";
 type Busy = "idle" | "transcribing" | "replying" | "parsing";
+
+// पुरानी बातचीत खोलते समय सर्वर से आए संदेश
+export interface InitialMessage {
+  role: "user" | "assistant";
+  text: string;
+}
 
 interface Message {
   id: number;
@@ -54,12 +53,12 @@ function pickMimeType(): string {
   return options.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
 }
 
-async function readError(res: Response): Promise<string> {
+async function readError(res: Response, fallback: string): Promise<string> {
   try {
     const data = (await res.json()) as { error?: { message?: string } };
-    return data.error?.message ?? "कुछ गड़बड़ हुई, दोबारा कोशिश करें";
+    return data.error?.message ?? fallback;
   } catch {
-    return "कुछ गड़बड़ हुई, दोबारा कोशिश करें";
+    return fallback;
   }
 }
 
@@ -105,6 +104,51 @@ function CameraIcon() {
   );
 }
 
+function SuggestionGlyph({ icon }: { icon: SuggestionIcon }) {
+  const common = {
+    width: 20,
+    height: 20,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.8,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  if (icon === "image") {
+    return (
+      <svg {...common}>
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <circle cx="9" cy="10" r="1.6" />
+        <path d="M4 18l5-5 4 4 3-3 4 4" />
+      </svg>
+    );
+  }
+  if (icon === "pencil") {
+    return (
+      <svg {...common}>
+        <path d="M4 20l1-4L17 4l3 3L8 19z" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" />
+      <path d="M19 16v4M17 18h4" />
+    </svg>
+  );
+}
+
+function NewChatIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+    </svg>
+  );
+}
+
 function ClockIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -128,13 +172,25 @@ export function VoiceAssistant({
   name,
   loggedIn,
   quota,
+  lang = "hi",
+  initialThreadId = null,
+  initialMessages = [],
 }: {
   name: string;
   loggedIn: boolean;
   quota: AssistantQuota | null;
+  lang?: Lang;
+  initialThreadId?: string | null;
+  initialMessages?: InitialMessage[];
 }) {
   const router = useRouter();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const t = LABELS[lang].va;
+  const windowLabel = { day: t.windowDay, week: t.windowWeek, month: t.windowMonth };
+  // पुरानी बातचीत खुली हो तो उसके संदेश पहले से भरे (id 1, 2, 3…)
+  const [messages, setMessages] = useState<Message[]>(() =>
+    initialMessages.map((m, i) => ({ id: i + 1, role: m.role, text: m.text })),
+  );
+  const [threadId, setThreadId] = useState<string | null>(initialThreadId);
   const [busy, setBusy] = useState<Busy>("idle");
   const [recording, setRecording] = useState(false);
   const [draft, setDraft] = useState("");
@@ -142,8 +198,10 @@ export function VoiceAssistant({
   // चुनी हुई फ़ोटो (अभी backend को नहीं जाती, अगले कदम में जुड़ेगी)
   const [photo, setPhoto] = useState<File | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // आने वाले त्योहार और दिवस (तारीख़ browser में निकलती है, ताकि दिन सही रहे)
+  const [festivals, setFestivals] = useState<UpcomingFestival[]>([]);
 
-  const idRef = useRef(0);
+  const idRef = useRef(initialMessages.length);
   const endRef = useRef<HTMLDivElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -156,6 +214,21 @@ export function VoiceAssistant({
     return idRef.current;
   }
 
+  // नई बातचीत शुरू: पुराना सब साफ़, इतिहास में पुरानी चैट बनी रहती है
+  function startNewChat() {
+    if (recording) return;
+    setMessages([]);
+    setThreadId(null);
+    setDraft("");
+    setError(null);
+    setPhoto(null);
+    window.history.replaceState(null, "", "/voice");
+  }
+
+  useEffect(() => {
+    setFestivals(upcomingFestivals(new Date(), lang));
+  }, [lang]);
+
   // नया संदेश आने पर सबसे नीचे दिखाएं
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -165,7 +238,11 @@ export function VoiceAssistant({
   async function sendText(raw: string) {
     const text = raw.trim();
     if (text.length < 2) {
-      setError("कुछ बोलें या लिखें");
+      setError(t.errWriteOrSpeak);
+      return;
+    }
+    if (!loggedIn) {
+      setError(t.needLogin);
       return;
     }
     setError(null);
@@ -182,16 +259,21 @@ export function VoiceAssistant({
       const res = await fetch("/api/voice/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify(threadId ? { threadId, messages: history } : { messages: history }),
       });
       if (!res.ok) {
-        setError(await readError(res));
+        setError(await readError(res, t.errGeneric));
         return;
       }
-      const data = (await res.json()) as { reply: string };
+      const data = (await res.json()) as { reply: string; threadId?: string | null };
       setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: data.reply }]);
+      // नई बातचीत बनी: पता में उसकी id रखें, ताकि पेज दोबारा खुलने पर वही चैट खुले
+      if (data.threadId && data.threadId !== threadId) {
+        setThreadId(data.threadId);
+        window.history.replaceState(null, "", `/voice?chat=${data.threadId}`);
+      }
     } catch {
-      setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+      setError(t.errNetwork);
     } finally {
       setBusy("idle");
     }
@@ -208,7 +290,7 @@ export function VoiceAssistant({
         body: JSON.stringify({ text }),
       });
       if (!res.ok) {
-        setError(await readError(res));
+        setError(await readError(res, t.errGeneric));
         return;
       }
       const data = (await res.json()) as { offer: Offer | null };
@@ -217,7 +299,7 @@ export function VoiceAssistant({
         { id: newId(), role: "assistant", text: "", offerCard: { offer: data.offer } },
       ]);
     } catch {
-      setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+      setError(t.errNetwork);
     } finally {
       setBusy("idle");
     }
@@ -232,20 +314,20 @@ export function VoiceAssistant({
       form.append("audio", blob, "voice");
       const res = await fetch("/api/voice/transcribe", { method: "POST", body: form });
       if (!res.ok) {
-        setError(await readError(res));
+        setError(await readError(res, t.errGeneric));
         return;
       }
       const data = (await res.json()) as { text: string };
       said = data.text.trim();
     } catch {
-      setError("नेटवर्क की गड़बड़ी, दोबारा कोशिश करें");
+      setError(t.errNetwork);
       return;
     } finally {
       setBusy("idle");
     }
 
     if (said.length < 3) {
-      setError("आवाज़ साफ़ सुनाई नहीं दी। दोबारा बोलें।");
+      setError(t.errUnclear);
       return;
     }
     await sendText(said);
@@ -254,7 +336,7 @@ export function VoiceAssistant({
   async function startRecording() {
     setError(null);
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setError("इस browser में voice recording नहीं चलती। Chrome में खोलें, या नीचे लिखकर भेजें।");
+      setError(t.errNoRecording);
       return;
     }
     try {
@@ -280,7 +362,7 @@ export function VoiceAssistant({
       recorderRef.current = rec;
       setRecording(true);
     } catch {
-      setError("माइक्रोफोन की अनुमति नहीं मिली। Browser की settings में mic allow करें।");
+      setError(t.errMic);
     }
   }
 
@@ -296,11 +378,11 @@ export function VoiceAssistant({
     e.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      setError("सिर्फ़ फ़ोटो चुनें");
+      setError(t.errPhotoOnly);
       return;
     }
     if (file.size > MAX_PHOTO_BYTES) {
-      setError("फ़ोटो 10 MB से छोटी होनी चाहिए");
+      setError(t.errPhotoBig);
       return;
     }
     setError(null);
@@ -311,7 +393,7 @@ export function VoiceAssistant({
     e.preventDefault();
     const value = draft.trim();
     if (value.length < 2) {
-      setError("कुछ लिखें");
+      setError(t.errWrite);
       return;
     }
     setDraft("");
@@ -335,26 +417,35 @@ export function VoiceAssistant({
   const isEmpty = messages.length === 0;
   const hasDraft = draft.trim().length > 0;
   const status = recording
-    ? "सुन रहा हूं… बोलना खत्म हो तो बटन दबाएं"
+    ? t.statusListening
     : busy === "transcribing"
-      ? "आवाज़ को लिखा जा रहा है…"
+      ? t.statusTranscribing
       : busy === "replying"
-        ? "जवाब लिख रहा हूं…"
+        ? t.statusReplying
         : busy === "parsing"
-          ? "ऑफ़र समझ रहा हूं…"
+          ? t.statusParsing
           : "";
 
   return (
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.headerTitle}>
-          <div className={styles.title}>Sthamly असिस्टेंट</div>
-          <div className={styles.subtitle}>बोलकर या लिखकर बात करें</div>
+          <div className={styles.title}>{t.title}</div>
+          <div className={styles.subtitle}>{t.subtitle}</div>
         </div>
 
         {loggedIn && (
           <div className={styles.topActions}>
-            <Link href="/my-posters" className={styles.iconBtn} aria-label="मेरे बनाए काम">
+            <button
+              type="button"
+              className={styles.iconBtn}
+              onClick={startNewChat}
+              disabled={isEmpty}
+              aria-label={t.newChat}
+            >
+              <NewChatIcon />
+            </button>
+            <Link href="/my-posters" className={styles.iconBtn} aria-label={t.myWork}>
               <ClockIcon />
             </Link>
             <div className={styles.menuWrap}>
@@ -362,7 +453,7 @@ export function VoiceAssistant({
                 type="button"
                 className={styles.iconBtn}
                 onClick={() => setMenuOpen((v) => !v)}
-                aria-label="और विकल्प"
+                aria-label={t.more}
                 aria-expanded={menuOpen}
               >
                 <DotsIcon />
@@ -375,7 +466,7 @@ export function VoiceAssistant({
                     role="menuitem"
                     onClick={() => setMenuOpen(false)}
                   >
-                    दुकान की जानकारी
+                    {t.shopInfo}
                   </Link>
                   <Link
                     href="/settings"
@@ -383,7 +474,7 @@ export function VoiceAssistant({
                     role="menuitem"
                     onClick={() => setMenuOpen(false)}
                   >
-                    सेटिंग्स
+                    {t.settings}
                   </Link>
                 </div>
               )}
@@ -395,9 +486,9 @@ export function VoiceAssistant({
       {quota && (
         <div className={styles.quota} aria-live="polite">
           <span>
-            {WINDOW_LABEL[quota.posterWindow]} बचे पोस्टर: {quota.posterLeft}
+            {windowLabel[quota.posterWindow]} {t.postersLeft}: {quota.posterLeft}
           </span>
-          <span>वॉलेट: {formatRupees(quota.walletPaise)}</span>
+          <span>{t.wallet}: {formatRupees(quota.walletPaise)}</span>
         </div>
       )}
 
@@ -408,27 +499,15 @@ export function VoiceAssistant({
               aria-hidden
               className={`${styles.orb} ${recording ? styles.orbListening : ""} ${busy !== "idle" ? styles.orbBusy : ""}`}
             />
-            <h1 className={styles.greeting}>नमस्ते, {name}</h1>
-            <p className={styles.question}>आज क्या बनाएं?</p>
+            <h1 className={styles.greeting}>{t.hello}, {name}</h1>
+            <p className={styles.question}>{t.question}</p>
             <p className={styles.hint}>
-              {loggedIn
-                ? "बोलकर या लिखकर बताएं। फिर ऑफ़र बनाने के लिए संदेश के नीचे का बटन दबाएं।"
-                : "बातचीत के लिए पहले लॉग-इन करें।"}
+              {loggedIn ? t.hintIn : t.hintOut}
             </p>
-
-            {loggedIn && (
-              <div className={styles.suggestions}>
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s.label}
-                    type="button"
-                    className={styles.suggestion}
-                    onClick={() => setDraft(s.prompt)}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
+            {!loggedIn && (
+              <Link href="/login?next=/voice" className={styles.loginBtn}>
+                {t.login}
+              </Link>
             )}
           </>
         )}
@@ -444,7 +523,7 @@ export function VoiceAssistant({
                   onClick={() => void makeOffer(m.text)}
                   disabled={busy !== "idle"}
                 >
-                  ऑफ़र बनाएं
+                  {t.makeOffer}
                 </button>
               </div>
             );
@@ -456,20 +535,20 @@ export function VoiceAssistant({
               <div key={m.id} className={styles.bubbleBot}>
                 {offer ? (
                   <>
-                    <p className={styles.label}>मैंने यह ऑफ़र समझा:</p>
+                    <p className={styles.label}>{t.offerUnderstood}</p>
                     <p className={styles.offerText}>{offer.offerText}</p>
-                    {offer.occasion && <p className={styles.muted}>मौका: {offer.occasion}</p>}
+                    {offer.occasion && <p className={styles.muted}>{t.occasion}: {offer.occasion}</p>}
                     <div className={styles.btnRow}>
                       <button type="button" className={styles.btnPrimary} onClick={() => chooseOffer(offer, "poster")}>
-                        पोस्टर बनाएं
+                        {t.makePoster}
                       </button>
                       <button type="button" className={styles.btnGhost} onClick={() => chooseOffer(offer, "reel")}>
-                        रील बनाएं
+                        {t.makeReel}
                       </button>
                     </div>
                   </>
                 ) : (
-                  <p className={styles.muted}>ऑफ़र समझ नहीं आया। साफ़ शब्दों में दोबारा लिखें।</p>
+                  <p className={styles.muted}>{t.offerUnclear}</p>
                 )}
               </div>
             );
@@ -486,6 +565,50 @@ export function VoiceAssistant({
       </section>
 
       <div className={styles.composer}>
+        {isEmpty && (
+          <div className={styles.suggestions}>
+            {festivals.length > 0 && (
+              <p style={{ margin: "0 10px 2px", fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>
+                {t.upcoming}
+              </p>
+            )}
+            {festivals.map((f) => (
+              <button
+                key={f.name}
+                type="button"
+                className={styles.suggestion}
+                onClick={() => {
+                  setDraft(f.prompt);
+                  setError(null);
+                }}
+                disabled={recording || busy !== "idle"}
+              >
+                <span className={styles.suggestionIcon}>
+                  <SuggestionGlyph icon="spark" />
+                </span>
+                {f.name} ({f.when}), {t.makePoster.toLowerCase()}
+              </button>
+            ))}
+            {t.suggestions.map((sg, i) => (
+              <button
+                key={sg.label}
+                type="button"
+                className={styles.suggestion}
+                onClick={() => {
+                  setDraft(sg.prompt);
+                  setError(null);
+                }}
+                disabled={recording || busy !== "idle"}
+              >
+                <span className={styles.suggestionIcon}>
+                  <SuggestionGlyph icon={SUGGESTION_ICONS[i] ?? "spark"} />
+                </span>
+                {sg.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {error && <p className={styles.error}>{error}</p>}
         {status && <p className={styles.status}>{status}</p>}
 
@@ -496,7 +619,7 @@ export function VoiceAssistant({
               type="button"
               className={styles.photoRemove}
               onClick={() => setPhoto(null)}
-              aria-label="फ़ोटो हटाएं"
+              aria-label={t.removePhoto}
             >
               ✕
             </button>
@@ -510,7 +633,7 @@ export function VoiceAssistant({
               className={styles.iconBtn}
               onClick={() => photoInputRef.current?.click()}
               disabled={recording || busy !== "idle"}
-              aria-label="फ़ोटो चुनें"
+              aria-label={t.pickPhoto}
             >
               <ClipIcon />
             </button>
@@ -519,10 +642,10 @@ export function VoiceAssistant({
               className={styles.input}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="संदेश लिखें…"
+              placeholder={t.placeholder}
               maxLength={1000}
               disabled={recording || busy !== "idle"}
-              aria-label="संदेश लिखें"
+              aria-label={t.messageAria}
             />
 
             <button
@@ -530,7 +653,7 @@ export function VoiceAssistant({
               className={styles.iconBtn}
               onClick={() => cameraInputRef.current?.click()}
               disabled={recording || busy !== "idle"}
-              aria-label="कैमरे से फ़ोटो लें"
+              aria-label={t.camera}
             >
               <CameraIcon />
             </button>
@@ -541,7 +664,7 @@ export function VoiceAssistant({
               type="submit"
               className={`${styles.micBig} ${styles.circleSend}`}
               disabled={busy !== "idle"}
-              aria-label="भेजें"
+              aria-label={t.send}
             >
               <SendIcon />
             </button>
@@ -551,7 +674,7 @@ export function VoiceAssistant({
               onClick={recording ? stopRecording : startRecording}
               disabled={busy !== "idle"}
               className={`${styles.micBig} ${recording ? styles.circleStop : ""}`}
-              aria-label={recording ? "रिकॉर्डिंग रोकें" : "बोलें"}
+              aria-label={recording ? t.stopRec : t.speak}
             >
               {recording ? <StopIcon /> : <MicIcon />}
             </button>
