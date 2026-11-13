@@ -35,7 +35,7 @@ export default async function BatchPage() {
       ) : (
         <section className="card stack" style={{ gap: 8 }}>
           <span>बैच शुरू करने से पहले एक काम बनाएं।</span>
-          <Link href="/voice">असिस्टेंट पर जाएं</Link>
+          <Link href="/voice">Sthamly पर जाएं</Link>
         </section>
       )}
     </main>
