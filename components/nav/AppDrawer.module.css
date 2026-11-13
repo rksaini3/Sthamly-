@@ -28,7 +28,9 @@
   background: rgba(0, 0, 0, 0.4);
 }
 
-/* बाएं से खुलने वाला पैनल */
+/* बाएं से खुलने वाला पैनल।
+   लेआउट: ऊपर का हिस्सा (शीर्षक, सूची) और नीचे का footer स्थिर रहते हैं,
+   सिर्फ़ बीच की बातचीत की सूची scroll होती है। इससे कुछ भी एक-दूसरे पर नहीं चढ़ता। */
 .drawer {
   position: absolute;
   top: 0;
@@ -38,13 +40,14 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
+  padding: 12px 12px 0;
   background: var(--sidebar);
   color: var(--ink);
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -70,6 +73,7 @@
 }
 
 .list {
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -98,62 +102,53 @@
   font-weight: 600;
 }
 
-/* नीचे: खाता और घंटी, एक ही पंक्ति में */
-.footer {
-  margin-top: auto;
+/* ऊपर: खोज बटन और बंद बटन साथ-साथ */
+.headActions {
   display: flex;
-  gap: 8px;
   align-items: center;
-  padding-top: 12px;
+  gap: 4px;
 }
 
-.avatar,
-.bell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.searchBtn {
   width: 44px;
   height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  border: none;
   background: var(--surface-2);
   color: var(--ink);
-  text-decoration: none;
+  cursor: pointer;
 }
 
-.avatar:hover,
-.bell:hover {
-  background: var(--line);
-}
-
-/* "नया काम" बटन: मेन्यू के सबसे ऊपर */
-.newBtn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  padding: 0 12px;
-  border: none;
-  border-radius: 10px;
+.searchInput {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
   background: var(--surface-2);
   color: var(--ink);
   font: inherit;
   font-size: 1rem;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
+  outline: none;
 }
 
-.newBtn:hover {
-  background: var(--line);
+.searchInput:focus {
+  border-color: var(--accent);
 }
 
-/* पिन की हुई और हाल की बातचीत */
+/* पिन की हुई और हाल की बातचीत: यही हिस्सा scroll होता है, बाकी स्थिर रहता है */
 .history {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
 }
 
 .sectionTitle {
@@ -211,60 +206,77 @@
   color: var(--ink);
 }
 
+.pinnedOn svg {
+  fill: currentColor;
+}
+
 .empty {
   margin: 4px 12px;
   font-size: 0.85rem;
   color: var(--muted);
 }
 
-.pinnedOn svg {
-  fill: currentColor;
-}
-
-/* ऊपर: खोज बटन और बंद बटन साथ-साथ */
-.headActions {
+/* ऊपर का plan वाला पट्टा (जैसे "Plus"): सूची के ऊपर, स्थिर */
+.planStrip {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 4px 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 0.9rem;
 }
 
-.searchBtn {
-  width: 44px;
-  height: 44px;
-  display: inline-flex;
+.planStrip strong {
+  font-weight: 700;
+}
+
+.planBtn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* नीचे हमेशा दिखने वाली पट्टी: बड़ा "नया काम" बटन + खाता + घंटी।
+   यह scroll नहीं होती और सूची के ऊपर नहीं चढ़ती। */
+.footer {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--sidebar);
+}
+
+.avatar,
+.bell {
+  display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--line);
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
   border-radius: 999px;
+  border: none;
   background: var(--surface-2);
   color: var(--ink);
-  cursor: pointer;
+  text-decoration: none;
 }
 
-.searchInput {
-  min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface-2);
-  color: var(--ink);
-  font: inherit;
-  font-size: 1rem;
-  outline: none;
-}
-
-.searchInput:focus {
-  border-color: var(--accent);
-}
-
-/* नीचे हमेशा दिखने वाली पट्टी: बड़ा "नया काम" गोल बटन + खाता + घंटी */
-.footer {
-  position: sticky;
-  bottom: 0;
-  margin-top: auto;
-  padding: 12px 0 4px;
-  background: var(--sidebar);
-  justify-content: space-between;
+.avatar:hover,
+.bell:hover {
+  background: var(--line);
 }
 
 .newPill {
@@ -282,4 +294,26 @@
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+/* "नया काम" बटन: पुराना सादा रूप (अगर कहीं और इस्तेमाल हो) */
+.newBtn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.newBtn:hover {
+  background: var(--line);
 }
