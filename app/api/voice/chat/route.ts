@@ -3,9 +3,8 @@ import { z } from "zod";
 import { replyToChat } from "@/lib/assistant/chat";
 import { titleFromMessage } from "@/lib/chats";
 import { LANG_COOKIE, parseLang } from "@/lib/i18n";
-import { takeAssistantCredit } from "@/lib/meter";
+import { checkUsage, recordUsage } from "@/lib/usage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { refundWalletForJob } from "@/lib/wallet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +12,8 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.object({
   // पुरानी बातचीत जारी रखनी हो तो उसकी id (न हो तो नई बातचीत बनती है)
   threadId: z.uuid().optional(),
+  // "फिर से लिखें": वही सवाल दोबारा, इतिहास में सवाल दूसरी बार न जुड़े
+  regenerate: z.boolean().optional(),
   messages: z
     .array(
       z.object({
@@ -51,37 +52,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: { code: "BAD_ORDER", message: "आखिरी संदेश आपका होना चाहिए" } }, { status: 400 });
   }
 
-  // मीटरिंग: पहले मुफ़्त कोटा, फिर वॉलेट। पैसे न हों तो यहीं रुकें।
-  const credit = await takeAssistantCredit(user.id, "chat").catch((error: unknown) => {
-    console.error("voice chat: meter failed", error);
-    return null;
-  });
-  if (!credit) {
-    return NextResponse.json(
-      { error: { code: "METER_DOWN", message: "अभी सेवा उपलब्ध नहीं, थोड़ी देर बाद कोशिश करें" } },
-      { status: 503 },
-    );
-  }
-  if (!credit.ok) {
-    return NextResponse.json(
-      {
-        error: { code: "NEED_RECHARGE", message: "आज की मुफ़्त बातचीत खत्म हो गई। वॉलेट में बैलेंस डालें।" },
-        balancePaise: credit.balancePaise,
-      },
-      { status: 402 },
-    );
-  }
-
-  // जवाब विफल हो तो वॉलेट की कटौती वापस (मुफ़्त कोटा अलग से नहीं लौटता)
-  const walletJobId = credit.source === "wallet" ? credit.jobId : null;
-  const refundWallet = async () => {
-    if (!walletJobId) return;
-    try {
-      await refundWalletForJob(walletJobId);
-    } catch (error) {
-      console.error("voice chat: wallet refund failed", error);
+  // इस्तेमाल की सीमा: रोज़ की मुफ़्त सीमा के बाद वॉलेट से थोड़े पैसे, पैसे न हों तो रुकें।
+  // हिसाब की टेबल (0028) न बनी हो तो चैट न रोकें।
+  let willPayPaise = 0;
+  try {
+    const usage = await checkUsage(user.id, "chat");
+    if (!usage.ok) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "LIMIT_REACHED",
+            message: "आज की मुफ़्त बातचीत पूरी हो गई। जारी रखने के लिए वॉलेट भरें या प्लान लें।",
+          },
+          limit: { kind: "chat", plan: usage.plan, walletPaise: usage.walletPaise, pricePaise: usage.pricePaise },
+        },
+        { status: 402 },
+      );
     }
-  };
+    willPayPaise = usage.willPayPaise;
+  } catch (error) {
+    console.error("voice chat: usage check failed", error);
+  }
 
   // इतिहास में सेव करना सहायक काम है। टेबल न बनी हो या सेव न हो पाए तो भी चैट चलती रहे।
   let threadId: string | null = null;
@@ -108,10 +99,12 @@ export async function POST(req: NextRequest) {
       threadId = created.id;
       title = created.title;
     }
-    const { error: userMsgError } = await supabase
-      .from("chat_messages")
-      .insert({ thread_id: threadId, user_id: user.id, role: "user", content: last.content });
-    if (userMsgError) throw userMsgError;
+    if (!parsed.data.regenerate) {
+      const { error: userMsgError } = await supabase
+        .from("chat_messages")
+        .insert({ thread_id: threadId, user_id: user.id, role: "user", content: last.content });
+      if (userMsgError) throw userMsgError;
+    }
   } catch (error) {
     console.error("voice chat: history save failed", error);
     threadId = null;
@@ -121,12 +114,14 @@ export async function POST(req: NextRequest) {
     // जवाब उसी भाषा में जो ऐप में चुनी गई है
     const reply = await replyToChat(messages, parseLang(req.cookies.get(LANG_COOKIE)?.value));
     if (!reply) {
-      await refundWallet();
       return NextResponse.json(
         { error: { code: "EMPTY", message: "जवाब नहीं मिला, दोबारा पूछें" } },
         { status: 502 },
       );
     }
+
+    // जवाब मिल गया: अब इस्तेमाल दर्ज करें (और ज़रूरत हो तो वॉलेट से काटें)
+    await recordUsage(user.id, "chat", willPayPaise);
 
     if (threadId) {
       const { error: replyError } = await supabase
@@ -144,7 +139,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply, threadId, title });
   } catch (error) {
     console.error("voice chat failed", error);
-    await refundWallet();
     return NextResponse.json(
       {
         error: {
