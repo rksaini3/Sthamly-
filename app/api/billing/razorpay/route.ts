@@ -107,6 +107,7 @@ async function handleCapturedPayment(payment: PaymentEntity | undefined): Promis
     return;
   }
 
+  // wallet_credit payment id से idempotent है, इसलिए retry से दोबारा क्रेडिट नहीं होगा
   const result = await creditWallet({
     userId,
     amountPaise: payment.amount,
@@ -123,6 +124,7 @@ async function handleSubscriptionActive(sub: SubscriptionEntity | undefined): Pr
   const admin = createSupabaseAdminClient();
   const periodEnd = sub.current_end ? new Date(sub.current_end * 1000).toISOString() : null;
 
+  // पहले से पंक्ति है तो status और period अपडेट करें
   const { data: updated, error: updateError } = await admin
     .from("subscriptions")
     .update({ status: "active", current_period_end: periodEnd })
@@ -133,7 +135,9 @@ async function handleSubscriptionActive(sub: SubscriptionEntity | undefined): Pr
   if (updateError) throw updateError;
   if (updated) return;
 
-  // पंक्ति नहीं मिली (जैसे सीधे Razorpay से बना सब्सक्रिप्शन): notes से बनाएँ
+  // पंक्ति नहीं मिली (जैसे सीधे Razorpay से बना सब्सक्रिप्शन): notes से बनाएँ।
+  // razorpay_subscription_id पर unique constraint है (migration 0007), इसलिए
+  // समानांतर दो events आएँ तो भी दूसरी पंक्ति नहीं बनेगी।
   const userId = sub.notes?.user_id;
   const plan = asPaidPlan(sub.notes?.plan);
   if (!userId || !plan) {
@@ -141,14 +145,17 @@ async function handleSubscriptionActive(sub: SubscriptionEntity | undefined): Pr
     return;
   }
 
-  const { error: insertError } = await admin.from("subscriptions").insert({
-    user_id: userId,
-    plan_tier: plan,
-    status: "active",
-    razorpay_subscription_id: sub.id,
-    current_period_end: periodEnd,
-  });
-  if (insertError) throw insertError;
+  const { error: upsertError } = await admin.from("subscriptions").upsert(
+    {
+      user_id: userId,
+      plan_tier: plan,
+      status: "active",
+      razorpay_subscription_id: sub.id,
+      current_period_end: periodEnd,
+    },
+    { onConflict: "razorpay_subscription_id", ignoreDuplicates: false },
+  );
+  if (upsertError) throw upsertError;
 }
 
 async function handleSubscriptionEnded(eventName: string, sub: SubscriptionEntity | undefined): Promise<void> {
