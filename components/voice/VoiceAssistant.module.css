@@ -1,4 +1,4 @@
-/* Sthamly असिस्टेंट (होम स्क्रीन): साफ़ चैट जैसा लुक।
+/* Sthamly होम स्क्रीन: साफ़ चैट जैसा लुक।
    रंग सब globals.css और theme.css के टोकन से आते हैं। नारंगी सिर्फ़ मुख्य बटन पर। */
 
 .page {
@@ -144,15 +144,17 @@
 }
 
 .stageEmpty {
-  justify-content: center;
+  /* "safe": जगह कम पड़े तो ऊपर से कटने की बजाय स्क्रॉल हो */
+  justify-content: safe center;
+  gap: 10px;
 }
 
 /* Sthamly का अपना orb (किसी और ब्रांड का logo नहीं) */
 .orb {
   align-self: center;
   flex-shrink: 0;
-  width: 120px;
-  height: 120px;
+  width: 96px;
+  height: 96px;
   border-radius: 50%;
   background:
     radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%),
@@ -193,7 +195,7 @@
   color: var(--muted, #78716c);
 }
 
-/* सुझाव: ChatGPT जैसी सूची, इनपुट बार के ठीक ऊपर (आइकन के साथ एक-एक पंक्ति) */
+/* सुझाव: एक-एक पंक्ति की सूची, इनपुट बार के ठीक ऊपर (आइकन के साथ) */
 .suggestions {
   width: 100%;
   margin: 0 0 8px;
@@ -270,7 +272,7 @@
   overflow-wrap: anywhere;
 }
 
-/* असिस्टेंट का जवाब: बिना बॉक्स के, सादा text। फ़ोन की चौड़ाई में ही रहे। */
+/* Sthamly का जवाब: बिना बॉक्स के, सादा text। फ़ोन की चौड़ाई में ही रहे। */
 .bubbleBot {
   align-self: flex-start;
   max-width: 100%;
