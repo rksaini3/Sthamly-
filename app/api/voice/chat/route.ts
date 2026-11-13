@@ -3,7 +3,9 @@ import { z } from "zod";
 import { replyToChat } from "@/lib/assistant/chat";
 import { titleFromMessage } from "@/lib/chats";
 import { LANG_COOKIE, parseLang } from "@/lib/i18n";
+import { takeAssistantCredit } from "@/lib/meter";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { refundWalletForJob } from "@/lib/wallet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +51,38 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: { code: "BAD_ORDER", message: "आखिरी संदेश आपका होना चाहिए" } }, { status: 400 });
   }
 
+  // मीटरिंग: पहले मुफ़्त कोटा, फिर वॉलेट। पैसे न हों तो यहीं रुकें।
+  const credit = await takeAssistantCredit(user.id, "chat").catch((error: unknown) => {
+    console.error("voice chat: meter failed", error);
+    return null;
+  });
+  if (!credit) {
+    return NextResponse.json(
+      { error: { code: "METER_DOWN", message: "अभी सेवा उपलब्ध नहीं, थोड़ी देर बाद कोशिश करें" } },
+      { status: 503 },
+    );
+  }
+  if (!credit.ok) {
+    return NextResponse.json(
+      {
+        error: { code: "NEED_RECHARGE", message: "आज की मुफ़्त बातचीत खत्म हो गई। वॉलेट में बैलेंस डालें।" },
+        balancePaise: credit.balancePaise,
+      },
+      { status: 402 },
+    );
+  }
+
+  // जवाब विफल हो तो वॉलेट की कटौती वापस (मुफ़्त कोटा अलग से नहीं लौटता)
+  const walletJobId = credit.source === "wallet" ? credit.jobId : null;
+  const refundWallet = async () => {
+    if (!walletJobId) return;
+    try {
+      await refundWalletForJob(walletJobId);
+    } catch (error) {
+      console.error("voice chat: wallet refund failed", error);
+    }
+  };
+
   // इतिहास में सेव करना सहायक काम है। टेबल न बनी हो या सेव न हो पाए तो भी चैट चलती रहे।
   let threadId: string | null = null;
   let title: string | null = null;
@@ -87,6 +121,7 @@ export async function POST(req: NextRequest) {
     // जवाब उसी भाषा में जो ऐप में चुनी गई है
     const reply = await replyToChat(messages, parseLang(req.cookies.get(LANG_COOKIE)?.value));
     if (!reply) {
+      await refundWallet();
       return NextResponse.json(
         { error: { code: "EMPTY", message: "जवाब नहीं मिला, दोबारा पूछें" } },
         { status: 502 },
@@ -109,6 +144,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply, threadId, title });
   } catch (error) {
     console.error("voice chat failed", error);
+    await refundWallet();
     return NextResponse.json(
       {
         error: {
