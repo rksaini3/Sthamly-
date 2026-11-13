@@ -1,103 +1,125 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { PLANS, TOPUP_PRESETS_PAISE, formatRupees } from "@/lib/pricing";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import styles from "@/components/billing/UpgradeSheet.module.css";
+import type { Lang } from "@/lib/i18n";
+import { LABELS } from "@/lib/labels";
+import {
+  FIRST_TOPUP_BONUS_MIN_PAISE,
+  PLAN_LABEL,
+  PLAN_PRICE_PAISE,
+  TOPUP_PRESETS_PAISE,
+  formatRupees,
+  type PaidPlan,
+} from "@/lib/pricing";
+import { INCLUDED_PER_DAY } from "@/lib/usage-rules";
 
-interface AssistantStatus {
-  plan: string;
+interface Snapshot {
+  plan: "free" | PaidPlan;
   walletPaise: number;
-  chatsLeft: number;
-  liveLeft: number;
-  freeChats: number;
-  freeLive: number;
-  chatPricePaise: number;
-  livePricePaise: number;
+  chat: { used: number; included: number; pricePaise: number };
+  live: { used: number; included: number; pricePaise: number };
 }
 
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
-  }
+interface RazorpayOptions {
+  key: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  name: string;
+  handler: () => void;
+  modal?: { ondismiss?: () => void };
+}
+interface RazorpayWindow extends Window {
+  Razorpay?: new (options: RazorpayOptions) => { open(): void };
 }
 
-const PAID_PLANS = ["starter", "premium", "business"] as const;
-type PaidPlan = (typeof PAID_PLANS)[number];
+const CHECKOUT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
+const PAID_PLANS: PaidPlan[] = ["starter", "premium", "business"];
 
-function loadCheckoutScript(): Promise<void> {
-  if (window.Razorpay) return Promise.resolve();
-  return new Promise((resolve, reject) => {
+function loadCheckout(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if ((window as RazorpayWindow).Razorpay) return resolve(true);
     const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("भुगतान स्क्रीन लोड नहीं हो पाई"));
+    script.src = CHECKOUT_SRC;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
     document.body.appendChild(script);
   });
 }
 
+// "बढ़ाएँ" शीट: आज का इस्तेमाल, वॉलेट भरना (पे-पर-यूज़) और मासिक प्लान। सीमा पूरी होने पर भी यही खुलती है।
 export function UpgradeSheet({
   open,
   onClose,
-  reason,
-  onPaid,
+  lang,
+  limitReached = false,
 }: {
   open: boolean;
   onClose: () => void;
-  reason?: string;
-  onPaid?: () => void;
+  lang: Lang;
+  limitReached?: boolean;
 }) {
-  const [status, setStatus] = useState<AssistantStatus | null>(null);
+  const t = LABELS[lang].up;
+  const [snap, setSnap] = useState<Snapshot | null>(null);
+  const [state, setState] = useState<"loading" | "ok" | "login" | "error">("loading");
+  const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
 
-  const load = useCallback(async () => {
+  async function load() {
+    setState("loading");
     try {
-      const res = await fetch("/api/assistant/status", { cache: "no-store" });
-      if (res.ok) setStatus((await res.json()) as AssistantStatus);
+      const res = await fetch("/api/usage", { cache: "no-store" });
+      if (res.status === 401) return setState("login");
+      if (!res.ok) return setState("error");
+      setSnap((await res.json()) as Snapshot);
+      setState("ok");
     } catch {
-      // नेटवर्क नहीं है तो पुरानी जानकारी ही रहने दें
+      setState("error");
     }
-  }, []);
+  }
 
   useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
+    if (!open) return;
+    setMessage(null);
+    void load();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   async function topup(amountPaise: number) {
     setBusy(true);
-    setMessage("");
+    setMessage(t.opening);
     try {
-      await loadCheckoutScript();
       const res = await fetch("/api/billing/topup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountPaise }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error("ऑर्डर नहीं बन पाया, दोबारा कोशिश करें");
-
-      const Checkout = window.Razorpay;
-      if (!Checkout) throw new Error("भुगतान स्क्रीन उपलब्ध नहीं है");
-
-      const rzp = new Checkout({
+      const data = (await res.json()) as { ok?: boolean; orderId?: string; amountPaise?: number; keyId?: string };
+      if (!res.ok || !data.ok || !data.orderId || !data.keyId) throw new Error("order failed");
+      if (!(await loadCheckout())) throw new Error("script failed");
+      const Razorpay = (window as RazorpayWindow).Razorpay;
+      if (!Razorpay) throw new Error("no razorpay");
+      new Razorpay({
         key: data.keyId,
-        amount: data.amountPaise,
-        currency: "INR",
         order_id: data.orderId,
+        amount: data.amountPaise ?? amountPaise,
+        currency: "INR",
         name: "Sthamly",
-        description: "वॉलेट टॉप-अप",
-        theme: { color: "#B5451B" },
         handler: () => {
-          setMessage("भुगतान हो गया। बैलेंस कुछ सेकंड में दिखेगा।");
-          setTimeout(() => {
-            void load();
-            onPaid?.();
-          }, 3000);
+          setMessage(t.paid);
+          // पैसा webhook से आता है, इसलिए थोड़ी देर बाद ताज़ा करें
+          setTimeout(() => void load(), 3500);
         },
-        modal: { ondismiss: () => setBusy(false) },
-      });
-      rzp.open();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "कुछ गड़बड़ हुई");
+        modal: { ondismiss: () => setMessage(null) },
+      }).open();
+    } catch {
+      setMessage(t.payFail);
     } finally {
       setBusy(false);
     }
@@ -105,127 +127,127 @@ export function UpgradeSheet({
 
   async function subscribe(plan: PaidPlan) {
     setBusy(true);
-    setMessage("");
+    setMessage(t.opening);
     try {
       const res = await fetch("/api/billing/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, cycle: "monthly" }),
       });
-      const data = await res.json();
-      if (res.status === 409) throw new Error("आपका प्लान पहले से चालू है");
-      if (!res.ok || !data.ok || !data.checkoutUrl) throw new Error("प्लान शुरू नहीं हो पाया");
+      const data = (await res.json()) as { ok?: boolean; checkoutUrl?: string | null };
+      if (!res.ok || !data.ok || !data.checkoutUrl) throw new Error("subscribe failed");
       window.location.href = data.checkoutUrl;
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "कुछ गड़बड़ हुई");
+    } catch {
+      setMessage(t.payFail);
       setBusy(false);
     }
   }
 
   if (!open) return null;
 
-  return (
-    <div style={overlay} onClick={onClose} role="dialog" aria-modal="true">
-      <div style={sheet} onClick={(e) => e.stopPropagation()}>
-        <div style={handle} />
-        <h2 style={{ fontSize: 20, margin: "0 0 4px" }}>बढ़ाएं</h2>
-        {reason && <p style={{ color: "#b00020", margin: "0 0 8px" }}>{reason}</p>}
+  const meter = (label: string, used: number, included: number) => {
+    const pct = Math.min(100, Math.round((used / Math.max(1, included)) * 100));
+    return (
+      <div className={styles.meter}>
+        <div className={styles.meterTop}>
+          <span>{label}</span>
+          <span>
+            {Math.min(used, included)} {t.of} {included}
+          </span>
+        </div>
+        <div className={styles.bar}>
+          <div className={styles.fill} style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    );
+  };
 
-        {status && (
-          <div style={box}>
-            <div>आज बची बातचीत: {status.chatsLeft} / {status.freeChats}</div>
-            <div>आज बचे लाइव सत्र: {status.liveLeft} / {status.freeLive}</div>
-            <div>वॉलेट: {formatRupees(status.walletPaise)}</div>
-            <div style={{ fontSize: 13, opacity: 0.7, marginTop: 4 }}>
-              मुफ़्त खत्म होने पर हर बातचीत {formatRupees(status.chatPricePaise)} और हर लाइव सत्र {formatRupees(status.livePricePaise)} वॉलेट से कटेगा।
-            </div>
+  // document.body में बनाते हैं, ताकि ऊपर का ☰ बटन या कोई और परत इसके ऊपर न दिखे
+  return createPortal(
+    <div className={styles.overlay} onClick={onClose}>
+      <div className={styles.sheet} role="dialog" aria-modal="true" aria-label={t.title} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.grab} aria-hidden />
+        <div className={styles.head}>
+          <div>
+            <h2 className={styles.title}>{limitReached ? t.limitTitle : t.title}</h2>
+            <p className={styles.sub}>{limitReached ? t.limitBody : t.sub}</p>
           </div>
+          <button type="button" className={styles.close} onClick={onClose} aria-label={t.close}>
+            ✕
+          </button>
+        </div>
+
+        {state === "loading" && <p className={styles.note}>{t.loading}</p>}
+        {state === "login" && <p className={styles.note}>{t.needLogin}</p>}
+        {state === "error" && <p className={styles.note}>{t.loadFail}</p>}
+
+        {state === "ok" && snap && (
+          <>
+            <section className={styles.card}>
+              <div className={styles.cardHead}>
+                <strong>{t.usage}</strong>
+                <span className={styles.walletChip}>
+                  {t.wallet}: {formatRupees(snap.walletPaise)}
+                </span>
+              </div>
+              {meter(t.chat, snap.chat.used, snap.chat.included)}
+              {meter(t.live, snap.live.used, snap.live.included)}
+              <p className={styles.small}>
+                {t.extraChat}: {formatRupees(snap.chat.pricePaise)} · {t.extraLive}: {formatRupees(snap.live.pricePaise)}
+              </p>
+            </section>
+
+            <section className={styles.card}>
+              <strong>{t.topupTitle}</strong>
+              <p className={styles.small}>{t.topupSub}</p>
+              <div className={styles.chips}>
+                {TOPUP_PRESETS_PAISE.map((paise) => (
+                  <button key={paise} type="button" className={styles.chip} disabled={busy} onClick={() => void topup(paise)}>
+                    {formatRupees(paise)}
+                  </button>
+                ))}
+              </div>
+              <p className={styles.small}>{t.bonus.replace("₹100", formatRupees(FIRST_TOPUP_BONUS_MIN_PAISE))}</p>
+            </section>
+
+            <section className={styles.card}>
+              <strong>{t.plansTitle}</strong>
+              {PAID_PLANS.map((plan) => {
+                const inc = INCLUDED_PER_DAY[plan];
+                const current = snap.plan === plan;
+                return (
+                  <div key={plan} className={styles.plan}>
+                    <div>
+                      <div className={styles.planName}>{PLAN_LABEL[plan]}</div>
+                      <div className={styles.small}>
+                        {formatRupees(PLAN_PRICE_PAISE[plan])} {t.month}
+                      </div>
+                      <div className={styles.small}>
+                        {t.perDay}: {inc.chat} {t.chats}, {inc.live} {t.lives}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.planBtn}
+                      disabled={busy || current}
+                      onClick={() => void subscribe(plan)}
+                    >
+                      {current ? t.current : t.take}
+                    </button>
+                  </div>
+                );
+              })}
+            </section>
+          </>
         )}
 
-        <h3 style={sectionTitle}>वॉलेट में पैसे डालें (पे-पर-यूज़)</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {TOPUP_PRESETS_PAISE.map((amount) => (
-            <button key={amount} onClick={() => topup(amount)} disabled={busy} style={chip}>
-              {formatRupees(amount)} डालें
-            </button>
-          ))}
-        </div>
-
-        <h3 style={sectionTitle}>मासिक प्लान (हर महीने, बिना सीमा की बातचीत)</h3>
-        <div style={{ display: "grid", gap: 8 }}>
-          {PAID_PLANS.map((plan) => (
-            <button key={plan} onClick={() => subscribe(plan)} disabled={busy} style={planCard}>
-              <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{plan}</span>
-              <span>{formatRupees(PLANS[plan].monthlyPricePaise)} / महीना</span>
-            </button>
-          ))}
-        </div>
-
-        {message && <p style={{ marginTop: 12, fontSize: 14 }}>{message}</p>}
+        {message && (
+          <p className={styles.note} role="status">
+            {message}
+          </p>
+        )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
-
-const overlay: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.4)",
-  display: "flex",
-  alignItems: "flex-end",
-  justifyContent: "center",
-  zIndex: 50,
-};
-
-const sheet: CSSProperties = {
-  background: "#fff",
-  width: "100%",
-  maxWidth: 560,
-  borderRadius: "18px 18px 0 0",
-  padding: "12px 16px 24px",
-  maxHeight: "85vh",
-  overflowY: "auto",
-};
-
-const handle: CSSProperties = {
-  width: 40,
-  height: 4,
-  borderRadius: 2,
-  background: "#ccc",
-  margin: "0 auto 12px",
-};
-
-const box: CSSProperties = {
-  background: "#FCEEDF",
-  borderRadius: 12,
-  padding: 12,
-  fontSize: 15,
-  display: "grid",
-  gap: 4,
-};
-
-const sectionTitle: CSSProperties = {
-  fontSize: 15,
-  margin: "18px 0 8px",
-};
-
-const chip: CSSProperties = {
-  background: "#fff",
-  border: "1px solid #ddd",
-  borderRadius: 10,
-  padding: "12px 8px",
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-const planCard: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  background: "#fff",
-  border: "1px solid #ddd",
-  borderRadius: 12,
-  padding: "12px 14px",
-  fontSize: 15,
-  cursor: "pointer",
-};
