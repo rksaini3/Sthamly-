@@ -8,6 +8,7 @@ import { LangSwitch } from "@/components/nav/LangSwitch";
 import type { ChatSummary } from "@/lib/chats";
 import type { Lang } from "@/lib/i18n";
 import { LABELS, type Labels } from "@/lib/labels";
+import { PLAN_LABEL, formatRupees, type Plan } from "@/lib/pricing";
 
 // ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन और कानूनी पन्ने)
 const HIDDEN_PREFIXES = ["/login", "/auth", "/privacy", "/terms"] as const;
@@ -56,6 +57,14 @@ const ITEMS: DrawerItem[] = [
 // तारीख़ के हिसाब से समूह: आज, कल, पिछले 7 दिन, पुराना
 type Group = "today" | "yesterday" | "week" | "older";
 const GROUP_ORDER: Group[] = ["today", "yesterday", "week", "older"];
+
+// /api/assistant/status का जवाब (plan और बचा हुआ कोटा)
+interface PlanInfo {
+  plan: Plan;
+  walletPaise: number;
+  chatsLeft: number;
+  freeChats: number;
+}
 
 function groupOf(iso: string): Group {
   const d = new Date(iso);
@@ -161,6 +170,8 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
   const [query, setQuery] = useState("");
   // इतिहास का हिस्सा हमेशा दिखे: लोड हो रहा / लॉग-इन चाहिए / गड़बड़ / ठीक
   const [historyState, setHistoryState] = useState<"loading" | "login" | "error" | "ok">("loading");
+  // प्लान की पट्टी (footer के ऊपर): लॉग-इन न हो या जानकारी न आए तो नहीं दिखती
+  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
 
   const loadChats = useCallback(async () => {
     try {
@@ -185,6 +196,26 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     }
   }, []);
 
+  const loadPlan = useCallback(async () => {
+    try {
+      const res = await fetch("/api/assistant/status", { cache: "no-store" });
+      if (!res.ok) {
+        setPlanInfo(null);
+        return;
+      }
+      const data = (await res.json()) as PlanInfo;
+      setPlanInfo({
+        plan: data.plan,
+        walletPaise: data.walletPaise,
+        chatsLeft: data.chatsLeft,
+        freeChats: data.freeChats,
+      });
+    } catch {
+      // प्लान की जानकारी न आए तो पट्टी छिपी रहे, बाकी मेन्यू चले
+      setPlanInfo(null);
+    }
+  }, []);
+
   // Escape से बंद करें और खुले मेन्यू के पीछे का पन्ना न सरके
   useEffect(() => {
     if (!open) return;
@@ -199,7 +230,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     };
   }, [open]);
 
-  // हर बार मेन्यू खुलने पर ताज़ा सूची, और कौन-सी चैट खुली है
+  // हर बार मेन्यू खुलने पर ताज़ा सूची, प्लान, और कौन-सी चैट खुली है
   useEffect(() => {
     if (!open) return;
     setChatError(null);
@@ -207,7 +238,8 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     setQuery("");
     setActiveChat(new URLSearchParams(window.location.search).get("chat"));
     void loadChats();
-  }, [open, loadChats]);
+    void loadPlan();
+  }, [open, loadChats, loadPlan]);
 
   if (HIDDEN_PREFIXES.some((p) => matches(pathname, p))) return null;
 
@@ -390,7 +422,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               })}
             </nav>
 
-            {/* पिन की हुई और हाल की बातचीत (लॉग-इन होने पर) */}
+            {/* पिन की हुई और हाल की बातचीत (लॉग-इन होने पर) — सिर्फ़ यही हिस्सा scroll होता है */}
             <div className={styles.history}>
               <p className={styles.sectionTitle}>{t.starred}</p>
               {historyState === "ok" && !q && pinned.length === 0 && (
@@ -440,7 +472,32 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               )}
             </div>
 
-            {/* नीचे: खाता (प्रोफ़ाइल का गोला) और घंटी */}
+            {/* प्लान की पट्टी: footer के ठीक ऊपर, ChatGPT के "Get Plus" की तरह */}
+            {planInfo && (
+              <div className={styles.planStrip}>
+                {planInfo.plan === "free" ? (
+                  <>
+                    <span>
+                      <strong>Free प्लान</strong> · आज चैट बचे: {planInfo.chatsLeft}/{planInfo.freeChats}
+                    </span>
+                    <Link href="/pricing" className={styles.planBtn} onClick={close}>
+                      अपग्रेड
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      <strong>{PLAN_LABEL[planInfo.plan]} प्लान</strong> · वॉलेट: {formatRupees(planInfo.walletPaise)}
+                    </span>
+                    <Link href="/pricing" className={styles.planBtn} onClick={close}>
+                      प्लान देखें
+                    </Link>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* नीचे: "नया सेशन" बटन, खाता और घंटी। यह पट्टी scroll नहीं होती। */}
             <div className={styles.footer}>
               <button type="button" className={styles.newPill} onClick={startNew}>
                 <Icon name="new" size={20} />
