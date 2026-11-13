@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { getAIProvider } from "@/lib/ai";
 import { getServerEnv } from "@/lib/env";
@@ -42,11 +43,20 @@ function toStoredInput(raw: Json): StoredInput {
   return raw as unknown as StoredInput;
 }
 
+// Timing-safe तुलना। secret खाली या header न हो तो हमेशा false (fail-closed)।
+function isAuthorized(header: string | null, secret: string | undefined): boolean {
+  if (!secret || !header) return false;
+  const expected = Buffer.from(`Bearer ${secret}`, "utf8");
+  const received = Buffer.from(header, "utf8");
+  if (expected.length !== received.length) return false;
+  return timingSafeEqual(expected, received);
+}
+
 // ---- Entry point ----
 
 export async function GET(req: NextRequest) {
   const { CRON_SECRET, JOB_MAX_ATTEMPTS } = getServerEnv();
-  if (req.headers.get("authorization") !== `Bearer ${CRON_SECRET}`) {
+  if (!isAuthorized(req.headers.get("authorization"), CRON_SECRET)) {
     return new NextResponse("unauthorized", { status: 401 });
   }
 
