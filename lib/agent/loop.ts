@@ -1,8 +1,15 @@
 import { getAIProvider } from "@/lib/ai";
 import { logCost } from "@/lib/cost";
 import type { Lang } from "@/lib/i18n";
+import { packFor } from "@/lib/packs";
+import { guardReply } from "@/lib/packs/types";
 import { buildAgentPrompt, parseDecision, type ProtocolTurn } from "@/lib/agent/protocol";
-import { findTool, type AgentContext, type ToolResult } from "@/lib/agent/tools";
+import {
+  TOOLS,
+  findTool,
+  type AgentContext,
+  type ToolResult,
+} from "@/lib/agent/tools";
 import {
   appendStep,
   createAction,
@@ -11,6 +18,7 @@ import {
   setRunStatus,
   type RunStep,
 } from "@/lib/agent/store";
+import type { Role } from "@/types/domain";
 
 // ---- Limits ----
 
@@ -38,6 +46,21 @@ export type LoopOutcome =
   | { kind: "waiting"; runId: string; reply: string; steps: StepView[]; actions: ActionView[] }
   | { kind: "failed"; runId: string; reply: string; steps: StepView[] };
 
+// ---- भूमिका के tools ----
+
+// pack नहीं (दुकानदार और बाकी): पूरा दुकानदार वाला tool सेट
+const DEFAULT_TOOL_NAMES: string[] = TOOLS.map((t) => t.name);
+
+/**
+ * इस भूमिका को कौन से tools मिल सकते हैं।
+ * - pack हो तो सिर्फ़ उसके allowedTools (खाली हो तो कोई tool नहीं)
+ * - pack न हो तो पूरा सेट (पहले जैसा व्यवहार)
+ */
+export function allowedToolNames(role: Role | null): string[] {
+  const pack = packFor(role);
+  return pack ? [...pack.allowedTools] : DEFAULT_TOOL_NAMES;
+}
+
 // ---- Helpers ----
 
 function pick(lang: Lang, hi: string, en: string): string {
@@ -64,7 +87,8 @@ async function askModel(prompt: string): Promise<string> {
 // ---- Loop ----
 
 /**
- * एक दुकानदार के संदेश (goal) पर agent चलाएं।
+ * एक दुकानदार (या वकील आदि) के संदेश (goal) पर agent चलाएं।
+ * - role दिया हो तो उसी के tools चलेंगे, और pack हो तो जवाब guardReply से गुज़रेगा।
  * - लौटता है: final जवाब, या मंज़ूरी का इंतज़ार (waiting), या विफलता (failed)।
  * - मंज़ूरी के बाद का काम confirm route में होता है, इसलिए loop वहां दोबारा नहीं चलता।
  */
@@ -74,8 +98,12 @@ export async function runAgent(input: {
   lang: Lang;
   goal: string;
   history: ProtocolTurn[];
+  role?: Role | null;
 }): Promise<LoopOutcome> {
   const { userId, lang, goal, history } = input;
+  const role = input.role ?? null;
+  const pack = packFor(role);
+  const allowed = new Set(allowedToolNames(role));
   const ctx: AgentContext = { userId, threadId: input.threadId, lang };
 
   // पुराने, समय निकल चुके मंज़ूरी-अनुरोध बंद करें (ये सहायक काम है, न हो तो भी चलेगा)
@@ -93,6 +121,9 @@ export async function runAgent(input: {
   // model को दिखने वाले पिछले नतीजे (क्रम से)
   const observations: string[] = [];
 
+  // pack वाले जवाब पर guard और सूचना, बिना pack के जैसा है वैसा
+  const finish = (text: string): string => (pack ? guardReply(pack, text, lang).text : text);
+
   const fail = async (): Promise<LoopOutcome> => {
     await setRunStatus({ runId, userId, status: "failed" }).catch((e) =>
       console.error("agent: failed status save", e),
@@ -101,10 +132,12 @@ export async function runAgent(input: {
       kind: "failed",
       runId,
       steps: views,
-      reply: pick(
-        lang,
-        "काम पूरा नहीं हो पाया। एक बार फिर छोटे में बताएं।",
-        "I could not finish this. Please tell me again in short.",
+      reply: finish(
+        pick(
+          lang,
+          "काम पूरा नहीं हो पाया। एक बार फिर छोटे में बताएं।",
+          "I could not finish this. Please tell me again in short.",
+        ),
       ),
     };
   };
@@ -113,9 +146,7 @@ export async function runAgent(input: {
     // 1. model से अगला फ़ैसला
     let raw: string;
     try {
-      raw = await askModel(
-        buildAgentPrompt({ goal, history, observations, lang }),
-      );
+      raw = await askModel(buildAgentPrompt({ goal, history, observations, lang }));
     } catch (error) {
       console.error("agent: model call failed", error);
       return fail();
@@ -134,10 +165,16 @@ export async function runAgent(input: {
       await setRunStatus({ runId, userId, status: "done" }).catch((e) =>
         console.error("agent: done status save", e),
       );
-      return { kind: "reply", runId, reply: decision.reply, steps: views };
+      return { kind: "reply", runId, reply: finish(decision.reply), steps: views };
     }
 
-    // 4. tool मौजूद है या नहीं, और arguments सही हैं या नहीं
+    // 4. tool इस भूमिका के लिए मान्य है या नहीं
+    if (!allowed.has(decision.tool)) {
+      observations.push(`यह tool इस भूमिका में उपलब्ध नहीं है: ${decision.tool}। बिना tool के जवाब दो।`);
+      continue;
+    }
+
+    // 5. tool मौजूद है या नहीं, और arguments सही हैं या नहीं
     const tool = findTool(decision.tool);
     if (!tool) {
       observations.push(`tool नहीं मिला: ${decision.tool}`);
@@ -150,7 +187,7 @@ export async function runAgent(input: {
     }
     const cleanArgs = args.args as Record<string, unknown>;
 
-    // 5. मंज़ूरी वाला काम: अभी नहीं चलेगा, pending बनेगा और loop रुकेगा
+    // 6. मंज़ूरी वाला काम: अभी नहीं चलेगा, pending बनेगा और loop रुकेगा
     if (tool.permission === "confirm") {
       const summary = tool.summarize(args.args);
       const action = await createAction({
@@ -166,9 +203,10 @@ export async function runAgent(input: {
       return {
         kind: "waiting",
         runId,
-        reply:
+        reply: finish(
           decision.say ??
-          pick(lang, "यह काम करने से पहले आपकी मंज़ूरी चाहिए।", "I need your approval before doing this."),
+            pick(lang, "यह काम करने से पहले आपकी मंज़ूरी चाहिए।", "I need your approval before doing this."),
+        ),
         steps: views,
         actions: [
           {
@@ -181,7 +219,7 @@ export async function runAgent(input: {
       };
     }
 
-    // 6. बिना मंज़ूरी वाला काम: अभी चलाएं
+    // 7. बिना मंज़ूरी वाला काम: अभी चलाएं
     let result: ToolResult;
     try {
       result = await tool.run(args.args, ctx);
