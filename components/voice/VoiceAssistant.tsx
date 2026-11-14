@@ -558,8 +558,6 @@ export function VoiceAssistant({
   const leaveLabel = lang === "en" ? "Leave chat" : "बाहर निकलें";
 
   const isEmpty = messages.length === 0;
-  // ऊपर की गोली (पेंसिल + तीन डॉट): चैट शुरू हो या इनपुट बॉक्स में क्लिक हो तो दिखे
-  const showPill = !isEmpty || focused;
   const hasDraft = draft.trim().length > 0;
   const status = recording
     ? t.statusListening
@@ -607,63 +605,54 @@ export function VoiceAssistant({
   return (
     <div className={styles.page}>
       <header className={styles.header}>
+        {/* बाईं ओर: ChatGPT के "Get Plus" जैसा बटन */}
+        {loggedIn && (
+          <button
+            type="button"
+            className={styles.boost}
+            onClick={() => {
+              setLimitHit(false);
+              setSheetOpen(true);
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12 2l2.2 6.8L21 11l-6.8 2.2L12 20l-2.2-6.8L3 11l6.8-2.2z" />
+            </svg>
+            {t.boost}
+          </button>
+        )}
+
         <div className={styles.headerTitle}>
           <div className={styles.title}>{t.title}</div>
           <div className={styles.subtitle}>{t.subtitle}</div>
         </div>
 
+        {/* दाईं ओर: नई बातचीत (पेंसिल) और मेन्यू (तीन डॉट), हमेशा दिखें */}
         {loggedIn && (
-          <div className={styles.topActions}>
+          <div className={styles.menuWrap} style={CHAT_PILL}>
             <button
               type="button"
-              className={styles.boost}
+              style={PILL_BTN}
               onClick={() => {
-                setLimitHit(false);
-                setSheetOpen(true);
+                setMenuOpen(false);
+                startNewChat();
               }}
+              disabled={recording}
+              aria-label={t.newChat}
+              title={t.newChat}
             >
-              {t.boost}
+              <PencilIcon />
             </button>
-            {!showPill ? (
-              <div className={styles.menuWrap}>
-                <button
-                  type="button"
-                  className={styles.iconBtn}
-                  onClick={() => setMenuOpen((v) => !v)}
-                  aria-label={t.more}
-                  aria-expanded={menuOpen}
-                >
-                  <DotsIcon />
-                </button>
-                {menuNode}
-              </div>
-            ) : (
-              <div className={styles.menuWrap} style={CHAT_PILL}>
-                <button
-                  type="button"
-                  style={PILL_BTN}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    startNewChat();
-                  }}
-                  disabled={recording}
-                  aria-label={t.newChat}
-                  title={t.newChat}
-                >
-                  <PencilIcon />
-                </button>
-                <button
-                  type="button"
-                  style={PILL_BTN}
-                  onClick={() => setMenuOpen((v) => !v)}
-                  aria-label={t.more}
-                  aria-expanded={menuOpen}
-                >
-                  <DotsIcon />
-                </button>
-                {menuNode}
-              </div>
-            )}
+            <button
+              type="button"
+              style={PILL_BTN}
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-label={t.more}
+              aria-expanded={menuOpen}
+            >
+              <DotsIcon />
+            </button>
+            {menuNode}
           </div>
         )}
       </header>
