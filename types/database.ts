@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-type Role = "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator" | "finance";
+type Role = "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator" | "lawyer" | "finance";
 type PlanTier = "free" | "plus" | "vip" | "starter" | "premium" | "business";
 type ShopCategory = "salon" | "general" | "kirana" | "clothing" | "mobile" | "clinic" | "coaching";
 type JobStatus = "queued" | "running" | "done" | "failed";
@@ -354,6 +354,59 @@ export type Database = {
           created_at: string;
         },
         "announcement_id" | "user_id" | "author_name" | "body"
+      >;
+
+      // एजेंट का हर run (migration 0009)। client सिर्फ़ अपना पढ़ सकता है, लिखता server।
+      agent_runs: Table<
+        {
+          id: string;
+          user_id: string;
+          thread_id: string | null;
+          goal: string;
+          status: "running" | "waiting_confirm" | "done" | "failed";
+          steps: Json;
+          step_count: number;
+          created_at: string;
+          updated_at: string;
+        },
+        "user_id" | "goal"
+      >;
+
+      // मंज़ूरी के इंतज़ार वाले काम (पैसे, public, delete) (migration 0009)
+      agent_actions: Table<
+        {
+          id: string;
+          run_id: string;
+          user_id: string;
+          tool: string;
+          args: Json;
+          summary: string;
+          status: "pending" | "approved" | "rejected" | "done" | "failed" | "expired";
+          result: Json | null;
+          expires_at: string;
+          decided_at: string | null;
+          created_at: string;
+        },
+        "run_id" | "user_id" | "tool" | "summary",
+        [
+          {
+            foreignKeyName: "agent_actions_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "agent_runs";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
+
+      // हर user की home screen की पसंद, एक ही row (migration 0010)
+      user_layouts: Table<
+        {
+          user_id: string;
+          items: Json;
+          updated_at: string;
+        },
+        "user_id"
       >;
     };
 
