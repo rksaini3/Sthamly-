@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import styles from "@/components/nav/AppDrawer.module.css";
 import { LangSwitch } from "@/components/nav/LangSwitch";
-import { ThemeSwitch } from "@/components/nav/ThemeSwitch";
 import type { ChatSummary } from "@/lib/chats";
 import type { Lang } from "@/lib/i18n";
 import { LABELS, type Labels } from "@/lib/labels";
@@ -30,7 +29,8 @@ type IconName =
   | "staff"
   | "pencil"
   | "live"
-  | "search";
+  | "search"
+  | "globe";
 
 // साइडबार में केवल ज़रूरी चीज़ें; बाकी प्रोफ़ाइल पर हैं
 type ItemKey = "live" | "gallery" | "saved" | "notes";
@@ -86,6 +86,7 @@ const PATHS: Record<IconName, string[]> = {
   scheduled: ["M12 3a9 9 0 100 18 9 9 0 000-18z", "M12 7v5l3 2"],
   plugins: ["M9 3v4M15 3v4", "M6 7h12v4a6 6 0 01-12 0z", "M12 17v4"],
   search: ["M11 4a7 7 0 100 14 7 7 0 000-14z", "M20 20l-4-4"],
+  globe: ["M12 3a9 9 0 100 18 9 9 0 000-18z", "M3 12h18", "M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"],
   staff: ["M16 11a3 3 0 100-6 3 3 0 000 6z", "M8 12a3 3 0 100-6 3 3 0 000 6z", "M2 20c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5", "M14.5 15.7c.5-.2 1-.2 1.5-.2 2.8 0 5.2 1.5 6 4.5"],
   pencil: ["M4 20l1-4L17 4l3 3L8 19z"],
   live: ["M3 7a2 2 0 012-2h9a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z", "M16 10l5-3v10l-5-3"],
@@ -115,14 +116,6 @@ function MenuIcon() {
   return (
     <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M4 8h16M4 16h10" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M6 6l12 12M18 6L6 18" />
     </svg>
   );
 }
@@ -331,7 +324,6 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
             <div className={styles.head}>
               <strong>{t.brand}</strong>
               <div className={styles.headActions}>
-                <LangSwitch lang={lang} label={t.language} />
                 <button
                   type="button"
                   className={styles.searchBtn}
@@ -343,9 +335,6 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
                   }}
                 >
                   <Icon name="search" size={20} />
-                </button>
-                <button type="button" className={styles.close} aria-label={t.menuClose} onClick={close}>
-                  <CloseIcon />
                 </button>
               </div>
             </div>
@@ -378,6 +367,14 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
                     </Link>
                   );
                 })}
+                {/* भाषा: बाकी सूची जैसी ही पंक्ति, दाईं ओर हिं | EN */}
+                <div className={styles.link} style={{ justifyContent: "space-between", cursor: "default" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
+                    <Icon name="globe" />
+                    {t.language}
+                  </span>
+                  <LangSwitch lang={lang} label={t.language} />
+                </div>
               </nav>
 
               {/* पिन की हुई और हाल की बातचीत (लॉग-इन होने पर) */}
@@ -429,14 +426,6 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
                   </p>
                 )}
               </div>
-            </div>
-
-            <div className={styles.themeRow}>
-              <span>{t.theme}</span>
-              <ThemeSwitch
-                label={t.theme}
-                labels={{ system: t.themeAuto, light: t.themeLight, dark: t.themeDark }}
-              />
             </div>
 
             {/* नीचे (ChatGPT जैसा): बाईं ओर नीला "चैट" बटन, दाईं ओर प्रोफ़ाइल का गोला */}
