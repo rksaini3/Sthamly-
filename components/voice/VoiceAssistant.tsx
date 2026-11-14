@@ -3,18 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { UpgradeSheet } from "@/components/billing/UpgradeSheet";
+import { MessageActions } from "@/components/voice/MessageActions";
 import styles from "@/components/voice/VoiceAssistant.module.css";
 import { upcomingFestivals, type UpcomingFestival } from "@/lib/festivals";
 import type { Lang } from "@/lib/i18n";
 import { LABELS } from "@/lib/labels";
-import { PLAN_LABEL, formatRupees, type Plan } from "@/lib/pricing";
+import { formatRupees } from "@/lib/pricing";
 
 export interface AssistantQuota {
   posterLeft: number;
   posterWindow: "day" | "week" | "month";
   walletPaise: number;
-  // प्लान का नाम (header में चिप दिखाने के लिए)। न हो तो Free मानें।
-  plan?: Plan;
 }
 
 // सुझावों के आइकन (वाक्य lib/labels.ts में, दोनों भाषाओं में)
@@ -23,10 +23,6 @@ const SUGGESTION_ICONS: SuggestionIcon[] = ["spark", "image", "pencil", "spark"]
 
 // फ़ोटो की अधिकतम साइज़ (10 MB)
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
-
-// चैट और लाइव की कीमत (lib/meter.ts से मेल खाती है; client में server वाली फ़ाइल नहीं लाते)
-const CHAT_PRICE_PAISE = 50;
-const LIVE_PRICE_PAISE = 100;
 
 interface Offer {
   offerText: string;
@@ -48,8 +44,6 @@ interface Message {
   text: string;
   // अगर यह संदेश ऑफ़र का कार्ड है तो यहाँ नतीजा होगा (null = समझ नहीं आया)
   offerCard?: { offer: Offer | null };
-  // अगर चैट का कोटा और वॉलेट दोनों खत्म हो गए तो यह अपग्रेड/टॉप-अप कार्ड होगा
-  upsell?: { balancePaise: number };
 }
 
 // /onboarding पन्ना इसी key से समझा हुआ ऑफ़र और चुना हुआ प्रकार उठाता है
@@ -148,33 +142,15 @@ function SuggestionGlyph({ icon }: { icon: SuggestionIcon }) {
   );
 }
 
-function NewChatIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
-    </svg>
-  );
-}
-
-function ClockIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 7v5l3 2" />
-    </svg>
-  );
-}
-
-// लाइव बातचीत का आइकन: बीच में बिंदु और चारों ओर तरंगें
-function LiveIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <circle cx="12" cy="12" r="2.6" fill="currentColor" />
-      <path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2" />
-    </svg>
-  );
-}
+// मेन्यू का बटन भी लिंक जैसा दिखे (बॉर्डर और बैकग्राउंड हटा दिए)
+const MENU_BUTTON_RESET = {
+  width: "100%",
+  border: "none",
+  background: "none",
+  textAlign: "left" as const,
+  cursor: "pointer",
+  font: "inherit",
+};
 
 function DotsIcon() {
   return (
@@ -220,6 +196,9 @@ export function VoiceAssistant({
   const [focused, setFocused] = useState(false);
   // आने वाले त्योहार और दिवस (तारीख़ browser में निकलती है, ताकि दिन सही रहे)
   const [festivals, setFestivals] = useState<UpcomingFestival[]>([]);
+  // "बढ़ाएँ" शीट: बटन से या सीमा पूरी होने पर अपने-आप खुलती है
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [limitHit, setLimitHit] = useState(false);
 
   const idRef = useRef(initialMessages.length);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -250,48 +229,28 @@ export function VoiceAssistant({
   }, [lang]);
 
   // नया संदेश आने पर सबसे नीचे दिखाएं
+  // खाली स्क्रीन पर नहीं सरकाते, वरना ऊपर का हिस्सा (नाम, गोला) बाहर चला जाता है
   useEffect(() => {
+    if (messages.length === 0) return;
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, busy]);
 
-  // चैट से जवाब लेना। इतिहास में ऑफ़र कार्ड शामिल नहीं होते, सिर्फ़ बात-चीत।
-  async function sendText(raw: string) {
-    const text = raw.trim();
-    if (text.length < 2) {
-      setError(t.errWriteOrSpeak);
-      return;
-    }
-    if (!loggedIn) {
-      setError(t.needLogin);
-      return;
-    }
-    setError(null);
-
-    const userMsg: Message = { id: newId(), role: "user", text };
-    const history = [...messages, userMsg]
-      .filter((m) => !m.offerCard && !m.upsell && m.text.trim().length > 0)
-      .slice(-12)
-      .map((m) => ({ role: m.role, content: m.text.slice(0, 1000) }));
-
-    setMessages((prev) => [...prev, userMsg]);
+  // जवाब माँगना। regenerate=true हो तो वही सवाल दोबारा, इतिहास में सवाल दोबारा नहीं जुड़ता।
+  async function requestReply(history: { role: "user" | "assistant"; content: string }[], regenerate: boolean) {
     setBusy("replying");
     try {
       const res = await fetch("/api/voice/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(threadId ? { threadId, messages: history } : { messages: history }),
+        body: JSON.stringify({ ...(threadId ? { threadId } : {}), messages: history, ...(regenerate ? { regenerate: true } : {}) }),
       });
-
-      // कोटा और वॉलेट दोनों खत्म: चैट के अंदर ही अपग्रेड और टॉप-अप का कार्ड
       if (res.status === 402) {
-        const data = (await res.json().catch(() => null)) as { balancePaise?: number } | null;
-        setMessages((prev) => [
-          ...prev,
-          { id: newId(), role: "assistant", text: "", upsell: { balancePaise: data?.balancePaise ?? 0 } },
-        ]);
+        // आज की मुफ़्त सीमा पूरी: बढ़ाएँ शीट खोलें
+        setLimitHit(true);
+        setSheetOpen(true);
+        setError(await readError(res, LABELS[lang].up.limitBody));
         return;
       }
-
       if (!res.ok) {
         setError(await readError(res, t.errGeneric));
         return;
@@ -308,6 +267,55 @@ export function VoiceAssistant({
     } finally {
       setBusy("idle");
     }
+  }
+
+  function toHistory(list: Message[]) {
+    return list
+      .filter((m) => !m.offerCard && m.text.trim().length > 0)
+      .slice(-12)
+      .map((m) => ({ role: m.role, content: m.text.slice(0, 1000) }));
+  }
+
+  // चैट से जवाब लेना। इतिहास में ऑफ़र कार्ड शामिल नहीं होते, सिर्फ़ बात-चीत।
+  async function sendText(raw: string) {
+    const text = raw.trim();
+    if (text.length < 2) {
+      setError(t.errWriteOrSpeak);
+      return;
+    }
+    if (!loggedIn) {
+      setError(t.needLogin);
+      return;
+    }
+    setError(null);
+
+    const userMsg: Message = { id: newId(), role: "user", text };
+    const history = toHistory([...messages, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
+    await requestReply(history, false);
+  }
+
+  // आखिरी जवाब हटाकर उसी सवाल का नया जवाब
+  async function retryLast() {
+    if (busy !== "idle") return;
+    const lastBot = [...messages].reverse().find((m) => m.role === "assistant" && !m.offerCard);
+    if (!lastBot) return;
+    const rest = messages.filter((m) => m.id !== lastBot.id);
+    if (rest.length === 0 || rest[rest.length - 1]?.role !== "user") return;
+    setError(null);
+    setMessages(rest);
+    await requestReply(toHistory(rest), true);
+  }
+
+  // इस जवाब तक की बातचीत से नई बातचीत शुरू (पुरानी जैसी की तैसी रहती है)
+  function branchFrom(id: number) {
+    const at = messages.findIndex((m) => m.id === id);
+    if (at < 0) return;
+    setMessages(messages.slice(0, at + 1));
+    setThreadId(null);
+    setDraft("");
+    setError(null);
+    window.history.replaceState(null, "", "/voice");
   }
 
   // किसी एक संदेश से ऑफ़र समझना
@@ -447,7 +455,6 @@ export function VoiceAssistant({
 
   const isEmpty = messages.length === 0;
   const hasDraft = draft.trim().length > 0;
-  const plan: Plan = quota?.plan ?? "free";
   const status = recording
     ? t.statusListening
     : busy === "transcribing"
@@ -468,22 +475,16 @@ export function VoiceAssistant({
 
         {loggedIn && (
           <div className={styles.topActions}>
-            {/* प्लान चिप: free यूज़र को अपग्रेड का रास्ता, paid यूज़र को उसके प्लान का नाम */}
-            <Link href="/pricing" className={styles.historyLink} aria-label="प्लान">
-              {plan === "free" ? "अपग्रेड" : PLAN_LABEL[plan]}
-            </Link>
             <button
               type="button"
-              className={styles.iconBtn}
-              onClick={startNewChat}
-              disabled={isEmpty}
-              aria-label={t.newChat}
+              className={styles.boost}
+              onClick={() => {
+                setLimitHit(false);
+                setSheetOpen(true);
+              }}
             >
-              <NewChatIcon />
+              {t.boost}
             </button>
-            <Link href="/my-posters" className={styles.iconBtn} aria-label={t.myWork}>
-              <ClockIcon />
-            </Link>
             <div className={styles.menuWrap}>
               <button
                 type="button"
@@ -496,13 +497,26 @@ export function VoiceAssistant({
               </button>
               {menuOpen && (
                 <div className={styles.menu} role="menu">
+                  <button
+                    type="button"
+                    className={styles.menuItem}
+                    role="menuitem"
+                    disabled={isEmpty}
+                    style={MENU_BUTTON_RESET}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      startNewChat();
+                    }}
+                  >
+                    {t.newChat}
+                  </button>
                   <Link
-                    href="/account"
+                    href="/my-posters"
                     className={styles.menuItem}
                     role="menuitem"
                     onClick={() => setMenuOpen(false)}
                   >
-                    {t.shopInfo}
+                    {t.myWork}
                   </Link>
                   <Link
                     href="/settings"
@@ -520,12 +534,20 @@ export function VoiceAssistant({
       </header>
 
       {quota && (
-        <div className={styles.quota} aria-live="polite">
+        <button
+          type="button"
+          className={styles.quota}
+          aria-live="polite"
+          onClick={() => {
+            setLimitHit(false);
+            setSheetOpen(true);
+          }}
+        >
           <span>
             {windowLabel[quota.posterWindow]} {t.postersLeft}: {quota.posterLeft}
           </span>
           <span>{t.wallet}: {formatRupees(quota.walletPaise)}</span>
-        </div>
+        </button>
       )}
 
       <section className={`${styles.stage} ${isEmpty ? styles.stageEmpty : ""}`}>
@@ -545,6 +567,50 @@ export function VoiceAssistant({
                 {t.login}
               </Link>
             )}
+            {loggedIn && (
+              <Link href="/live" className={styles.livePill}>
+                <span className={styles.liveDot} aria-hidden />
+                {t.goLive}
+              </Link>
+            )}
+            {!focused && !hasDraft && (
+              <div className={styles.suggestions}>
+                {festivals.map((f) => (
+                  <button
+                    key={f.name}
+                    type="button"
+                    className={styles.suggestion}
+                    onClick={() => {
+                      setDraft(f.prompt);
+                      setError(null);
+                    }}
+                    disabled={recording || busy !== "idle"}
+                  >
+                    <span className={styles.suggestionIcon}>
+                      <SuggestionGlyph icon="spark" />
+                    </span>
+                    {f.name} ({f.when})
+                  </button>
+                ))}
+                {t.suggestions.map((sg, i) => (
+                  <button
+                    key={sg.label}
+                    type="button"
+                    className={styles.suggestion}
+                    onClick={() => {
+                      setDraft(sg.prompt);
+                      setError(null);
+                    }}
+                    disabled={recording || busy !== "idle"}
+                  >
+                    <span className={styles.suggestionIcon}>
+                      <SuggestionGlyph icon={SUGGESTION_ICONS[i] ?? "spark"} />
+                    </span>
+                    {sg.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
 
@@ -561,26 +627,6 @@ export function VoiceAssistant({
                 >
                   {t.makeOffer}
                 </button>
-              </div>
-            );
-          }
-
-          if (m.upsell) {
-            return (
-              <div key={m.id} className={styles.bubbleBot}>
-                <p className={styles.label}>आज की मुफ़्त बातचीत खत्म हो गई</p>
-                <p className={styles.muted}>
-                  वॉलेट बैलेंस: {formatRupees(m.upsell.balancePaise)}। हर चैट {formatRupees(CHAT_PRICE_PAISE)} और हर
-                  लाइव सत्र {formatRupees(LIVE_PRICE_PAISE)} से कटेगा। प्लान अपग्रेड करें या वॉलेट में बैलेंस डालें।
-                </p>
-                <div className={styles.btnRow}>
-                  <Link href="/pricing" className={styles.btnPrimary} style={{ textDecoration: "none" }}>
-                    प्लान अपग्रेड करें
-                  </Link>
-                  <Link href="/pricing" className={styles.btnGhost} style={{ textDecoration: "none" }}>
-                    वॉलेट में टॉप-अप
-                  </Link>
-                </div>
               </div>
             );
           }
@@ -610,9 +656,22 @@ export function VoiceAssistant({
             );
           }
 
+          const lastBotId = [...messages].reverse().find((x) => x.role === "assistant" && !x.offerCard)?.id;
           return (
             <div key={m.id} className={styles.bubbleBot}>
               <p className={styles.botText}>{m.text}</p>
+              <MessageActions
+                text={m.text}
+                lang={lang}
+                isLast={m.id === lastBotId}
+                busy={busy !== "idle"}
+                onRetry={() => void retryLast()}
+                onBranch={() => branchFrom(m.id)}
+                onShorter={() => void sendText(t.shorter)}
+                onSimpler={() => void sendText(t.simpler)}
+                onPoster={() => void makeOffer(m.text.slice(0, 600))}
+                onNewChat={startNewChat}
+              />
             </div>
           );
         })}
@@ -621,50 +680,6 @@ export function VoiceAssistant({
       </section>
 
       <div className={styles.composer}>
-        {isEmpty && !focused && !hasDraft && (
-          <div className={styles.suggestions}>
-            {festivals.length > 0 && (
-              <p style={{ margin: "0 10px 2px", fontSize: 12, fontWeight: 600, color: "var(--muted)" }}>
-                {t.upcoming}
-              </p>
-            )}
-            {festivals.map((f) => (
-              <button
-                key={f.name}
-                type="button"
-                className={styles.suggestion}
-                onClick={() => {
-                  setDraft(f.prompt);
-                  setError(null);
-                }}
-                disabled={recording || busy !== "idle"}
-              >
-                <span className={styles.suggestionIcon}>
-                  <SuggestionGlyph icon="spark" />
-                </span>
-                {f.name} ({f.when}), {t.makePoster.toLowerCase()}
-              </button>
-            ))}
-            {t.suggestions.map((sg, i) => (
-              <button
-                key={sg.label}
-                type="button"
-                className={styles.suggestion}
-                onClick={() => {
-                  setDraft(sg.prompt);
-                  setError(null);
-                }}
-                disabled={recording || busy !== "idle"}
-              >
-                <span className={styles.suggestionIcon}>
-                  <SuggestionGlyph icon={SUGGESTION_ICONS[i] ?? "spark"} />
-                </span>
-                {sg.label}
-              </button>
-            ))}
-          </div>
-        )}
-
         {error && <p className={styles.error}>{error}</p>}
         {status && <p className={styles.status}>{status}</p>}
 
@@ -717,18 +732,6 @@ export function VoiceAssistant({
             </button>
           </div>
 
-          {/* लाइव बातचीत: इनपुट के बगल में (ChatGPT की तरह), जब लिखने के लिए कुछ न हो */}
-          {loggedIn && !hasDraft && !recording && (
-            <Link
-              href="/live"
-              className={styles.iconBtn}
-              style={{ width: 48, height: 48, border: "1px solid var(--line, #e5e5e5)", flexShrink: 0 }}
-              aria-label="Live बातचीत"
-            >
-              <LiveIcon />
-            </Link>
-          )}
-
           {hasDraft ? (
             <button
               type="submit"
@@ -767,6 +770,16 @@ export function VoiceAssistant({
           hidden
         />
       </div>
+
+      <UpgradeSheet
+        open={sheetOpen}
+        onClose={() => {
+          setSheetOpen(false);
+          setLimitHit(false);
+        }}
+        lang={lang}
+        limitReached={limitHit}
+      />
     </div>
   );
 }
