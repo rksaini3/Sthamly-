@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { AccountActions } from "@/components/account/AccountActions";
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { AppShortcuts } from "@/components/account/AppShortcuts";
+import { ThemeSwitch } from "@/components/nav/ThemeSwitch";
+import { LABELS } from "@/lib/labels";
 import { getActivePlan, windowStart } from "@/lib/quota";
 import { formatRupees, PLAN_ALLOWANCES, PLAN_LABEL } from "@/lib/pricing";
 import { isRole, ROLE_INFO } from "@/lib/roles";
@@ -93,6 +95,18 @@ export default async function AccountPage() {
           <strong>{dict.role}:</strong> {isRole(role) ? ROLE_INFO[role].label : "चुनी नहीं"}
         </span>
         <Link href="/role">{dict.changeRole}</Link>
+      </section>
+
+      <section className="card row">
+        <strong>{LABELS[lang].nav.theme}</strong>
+        <ThemeSwitch
+          label={LABELS[lang].nav.theme}
+          labels={{
+            system: LABELS[lang].nav.themeAuto,
+            light: LABELS[lang].nav.themeLight,
+            dark: LABELS[lang].nav.themeDark,
+          }}
+        />
       </section>
 
       <AppShortcuts lang={lang} />
