@@ -4,12 +4,7 @@ import type { Lang } from "@/lib/i18n";
 import { packFor } from "@/lib/packs";
 import { guardReply } from "@/lib/packs/types";
 import { buildAgentPrompt, parseDecision, type ProtocolTurn } from "@/lib/agent/protocol";
-import {
-  TOOLS,
-  findTool,
-  type AgentContext,
-  type ToolResult,
-} from "@/lib/agent/tools";
+import { TOOLS, findTool, type AgentContext, type ToolResult } from "@/lib/agent/tools";
 import {
   appendStep,
   createAction,
@@ -88,7 +83,8 @@ async function askModel(prompt: string): Promise<string> {
 
 /**
  * एक दुकानदार (या वकील आदि) के संदेश (goal) पर agent चलाएं।
- * - role दिया हो तो उसी के tools चलेंगे, और pack हो तो जवाब guardReply से गुज़रेगा।
+ * - role दिया हो तो उसी के tools चलेंगे (prompt में भी वही दिखेंगे),
+ *   और pack हो तो जवाब guardReply से गुज़रेगा।
  * - लौटता है: final जवाब, या मंज़ूरी का इंतज़ार (waiting), या विफलता (failed)।
  * - मंज़ूरी के बाद का काम confirm route में होता है, इसलिए loop वहां दोबारा नहीं चलता।
  */
@@ -103,7 +99,8 @@ export async function runAgent(input: {
   const { userId, lang, goal, history } = input;
   const role = input.role ?? null;
   const pack = packFor(role);
-  const allowed = new Set(allowedToolNames(role));
+  const toolNames = allowedToolNames(role);
+  const allowed = new Set(toolNames);
   const ctx: AgentContext = { userId, threadId: input.threadId, lang };
 
   // पुराने, समय निकल चुके मंज़ूरी-अनुरोध बंद करें (ये सहायक काम है, न हो तो भी चलेगा)
@@ -143,10 +140,12 @@ export async function runAgent(input: {
   };
 
   for (let i = 0; i < MAX_STEPS; i++) {
-    // 1. model से अगला फ़ैसला
+    // 1. model से अगला फ़ैसला (prompt में भी सिर्फ़ इस भूमिका के tools)
     let raw: string;
     try {
-      raw = await askModel(buildAgentPrompt({ goal, history, observations, lang }));
+      raw = await askModel(
+        buildAgentPrompt({ goal, history, observations, lang, allowedTools: toolNames }),
+      );
     } catch (error) {
       console.error("agent: model call failed", error);
       return fail();
