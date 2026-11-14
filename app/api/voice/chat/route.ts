@@ -4,8 +4,10 @@ import { runAgent, type ActionView, type StepView } from "@/lib/agent/loop";
 import { replyToChat } from "@/lib/assistant/chat";
 import { titleFromMessage } from "@/lib/chats";
 import { LANG_COOKIE, parseLang, type Lang } from "@/lib/i18n";
+import { isRole } from "@/lib/roles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkUsage, recordUsage } from "@/lib/usage";
+import type { Role } from "@/types/domain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +41,20 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// profiles से भूमिका: न मिले या गलत हो तो null (यानी दुकानदार वाला सामान्य रास्ता)
+async function roleOf(
+  userId: string,
+  supabase: Awaited<ReturnType<typeof createSupabaseServerClient>>,
+): Promise<Role | null> {
+  try {
+    const { data } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
+    return isRole(data?.role) ? data.role : null;
+  } catch (error) {
+    console.error("voice chat: role read failed", error);
+    return null;
+  }
+}
+
 async function handleChat(req: NextRequest) {
   // 1. Login जांच
   const supabase = await createSupabaseServerClient();
@@ -64,6 +80,7 @@ async function handleChat(req: NextRequest) {
   }
 
   const lang: Lang = parseLang(req.cookies.get(LANG_COOKIE)?.value);
+  const role = await roleOf(user.id, supabase);
 
   // 3. इस्तेमाल की सीमा: रोज़ की मुफ़्त सीमा के बाद वॉलेट से, पैसे न हों तो रुकें।
   let willPayPaise = 0;
@@ -123,8 +140,8 @@ async function handleChat(req: NextRequest) {
     threadId = null;
   }
 
-  // 5. जवाब: पहले agent, विफल हो तो सादा सवाल-जवाब
-  const outcome = await answer({ userId: user.id, threadId, lang, messages });
+  // 5. जवाब: पहले agent (भूमिका के tools के साथ), विफल हो तो सादा सवाल-जवाब
+  const outcome = await answer({ userId: user.id, threadId, lang, role, messages });
 
   // 6. इस्तेमाल दर्ज करें (जवाब मिल गया, चाहे agent से हो या fallback से)
   try {
@@ -183,6 +200,7 @@ async function answer(input: {
   userId: string;
   threadId: string | null;
   lang: Lang;
+  role: Role | null;
   messages: { role: "user" | "assistant"; content: string }[];
 }): Promise<Answer> {
   const last = input.messages[input.messages.length - 1];
@@ -195,6 +213,7 @@ async function answer(input: {
       lang: input.lang,
       goal: last.content,
       history,
+      role: input.role,
     });
 
     if (outcome.kind === "reply") {
@@ -211,7 +230,7 @@ async function answer(input: {
     }
 
     // agent पूरा न कर पाया: सादा सवाल-जवाब से कोशिश करें
-    const chatReply = await safeChat(input.messages, input.lang);
+    const chatReply = await safeChat(input.messages, input.lang, input.role);
     return {
       reply: chatReply || outcome.reply,
       runId: outcome.runId,
@@ -221,14 +240,18 @@ async function answer(input: {
     };
   } catch (error) {
     console.error("voice chat: agent failed, using chat fallback", error);
-    const chatReply = await safeChat(input.messages, input.lang);
+    const chatReply = await safeChat(input.messages, input.lang, input.role);
     return { reply: chatReply, runId: null, status: "chat", steps: [], actions: [] };
   }
 }
 
-async function safeChat(messages: { role: "user" | "assistant"; content: string }[], lang: Lang): Promise<string> {
+async function safeChat(
+  messages: { role: "user" | "assistant"; content: string }[],
+  lang: Lang,
+  role: Role | null,
+): Promise<string> {
   try {
-    return await replyToChat(messages, lang);
+    return await replyToChat(messages, lang, role);
   } catch (error) {
     console.error("voice chat: fallback chat failed", error);
     return "";
