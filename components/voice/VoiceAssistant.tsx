@@ -162,6 +162,45 @@ function DotsIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" />
+    </svg>
+  );
+}
+
+// चैट शुरू होने के बाद ऊपर वाली गोली: नई बातचीत (पेंसिल) और मेन्यू (तीन डॉट)
+const CHAT_PILL = {
+  display: "flex",
+  alignItems: "center",
+  height: 44,
+  padding: "0 2px",
+  borderRadius: 999,
+  border: "1px solid var(--line, #e5e5e5)",
+  background: "var(--surface, #fff)",
+};
+
+const PILL_BTN = {
+  width: 40,
+  height: 40,
+  border: "none",
+  borderRadius: 999,
+  background: "transparent",
+  color: "var(--ink, #1c1917)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+};
+
+const PILL_DIVIDER = {
+  width: 1,
+  height: 20,
+  background: "var(--line, #e5e5e5)",
+};
+
 export function VoiceAssistant({
   name,
   loggedIn,
@@ -453,6 +492,15 @@ export function VoiceAssistant({
     router.push(`/onboarding?kind=${kind}`);
   }
 
+  // चैट से बाहर निकलना: पिछले पन्ने पर, वरना होम पर
+  function leaveChat() {
+    setMenuOpen(false);
+    if (window.history.length > 1) router.back();
+    else router.push("/");
+  }
+
+  const leaveLabel = lang === "en" ? "Leave chat" : "बाहर निकलें";
+
   const isEmpty = messages.length === 0;
   const hasDraft = draft.trim().length > 0;
   const status = recording
@@ -464,6 +512,39 @@ export function VoiceAssistant({
         : busy === "parsing"
           ? t.statusParsing
           : "";
+
+  // तीन डॉट का मेन्यू (खुला हो तभी बनता है)
+  const menuNode = menuOpen ? (
+    <div className={styles.menu} role="menu">
+      <Link
+        href="/my-posters"
+        className={styles.menuItem}
+        role="menuitem"
+        onClick={() => setMenuOpen(false)}
+      >
+        {t.myWork}
+      </Link>
+      <Link
+        href="/settings"
+        className={styles.menuItem}
+        role="menuitem"
+        onClick={() => setMenuOpen(false)}
+      >
+        {t.settings}
+      </Link>
+      {!isEmpty && (
+        <button
+          type="button"
+          className={styles.menuItem}
+          role="menuitem"
+          style={MENU_BUTTON_RESET}
+          onClick={leaveChat}
+        >
+          {leaveLabel}
+        </button>
+      )}
+    </div>
+  ) : null;
 
   return (
     <div className={styles.page}>
@@ -485,50 +566,47 @@ export function VoiceAssistant({
             >
               {t.boost}
             </button>
-            <div className={styles.menuWrap}>
-              <button
-                type="button"
-                className={styles.iconBtn}
-                onClick={() => setMenuOpen((v) => !v)}
-                aria-label={t.more}
-                aria-expanded={menuOpen}
-              >
-                <DotsIcon />
-              </button>
-              {menuOpen && (
-                <div className={styles.menu} role="menu">
-                  <button
-                    type="button"
-                    className={styles.menuItem}
-                    role="menuitem"
-                    disabled={isEmpty}
-                    style={MENU_BUTTON_RESET}
-                    onClick={() => {
-                      setMenuOpen(false);
-                      startNewChat();
-                    }}
-                  >
-                    {t.newChat}
-                  </button>
-                  <Link
-                    href="/my-posters"
-                    className={styles.menuItem}
-                    role="menuitem"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    {t.myWork}
-                  </Link>
-                  <Link
-                    href="/settings"
-                    className={styles.menuItem}
-                    role="menuitem"
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    {t.settings}
-                  </Link>
-                </div>
-              )}
-            </div>
+            {isEmpty ? (
+              <div className={styles.menuWrap}>
+                <button
+                  type="button"
+                  className={styles.iconBtn}
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-label={t.more}
+                  aria-expanded={menuOpen}
+                >
+                  <DotsIcon />
+                </button>
+                {menuNode}
+              </div>
+            ) : (
+              <div className={styles.menuWrap} style={CHAT_PILL}>
+                <button
+                  type="button"
+                  style={PILL_BTN}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    startNewChat();
+                  }}
+                  disabled={recording}
+                  aria-label={t.newChat}
+                  title={t.newChat}
+                >
+                  <PencilIcon />
+                </button>
+                <span aria-hidden style={PILL_DIVIDER} />
+                <button
+                  type="button"
+                  style={PILL_BTN}
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-label={t.more}
+                  aria-expanded={menuOpen}
+                >
+                  <DotsIcon />
+                </button>
+                {menuNode}
+              </div>
+            )}
           </div>
         )}
       </header>
