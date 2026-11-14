@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { AgentActionCard, type ActionCardData } from "@/components/voice/AgentActionCard";
 import { UpgradeSheet } from "@/components/billing/UpgradeSheet";
 import { MessageActions } from "@/components/voice/MessageActions";
 import styles from "@/components/voice/VoiceAssistant.module.css";
@@ -39,12 +40,35 @@ export interface InitialMessage {
   text: string;
 }
 
+// agent के कदम (सर्वर से): client में server वाली फ़ाइल नहीं लाते, इसलिए यहीं छोटा रूप
+interface AgentStepView {
+  tool: string;
+  text: string;
+}
+
+// tool के नाम, दुकानदार की भाषा में (कच्चे English नाम नहीं दिखने चाहिए)
+const TOOL_LABEL: Record<string, { hi: string; en: string }> = {
+  get_job_status: { hi: "पोस्टर की स्थिति", en: "Poster status" },
+  list_recent_jobs: { hi: "हाल के पोस्टर", en: "Recent posters" },
+  create_poster: { hi: "पोस्टर बनाना", en: "Make poster" },
+};
+
+function toolLabel(tool: string, lang: Lang): string {
+  const entry = TOOL_LABEL[tool];
+  if (!entry) return tool;
+  return lang === "en" ? entry.en : entry.hi;
+}
+
 interface Message {
   id: number;
   role: "user" | "assistant";
   text: string;
   // अगर यह संदेश ऑफ़र का कार्ड है तो यहाँ नतीजा होगा (null = समझ नहीं आया)
   offerCard?: { offer: Offer | null };
+  // agent ने जो कदम उठाए (सिर्फ़ जवाब वाले संदेश पर)
+  steps?: AgentStepView[];
+  // मंज़ूरी के इंतज़ार वाले काम (पोस्टर बनाना आदि)
+  actions?: ActionCardData[];
 }
 
 // /onboarding पन्ना इसी key से समझा हुआ ऑफ़र और चुना हुआ प्रकार उठाता है
@@ -309,6 +333,11 @@ export function VoiceAssistant({
     return idRef.current;
   }
 
+  // चैट में सिर्फ़ सहायक का एक नोट जोड़ें (जैसे मंज़ूरी के बाद का नतीजा)
+  function addBotNote(text: string) {
+    setMessages((prev) => [...prev, { id: newId(), role: "assistant", text }]);
+  }
+
   // इंटरनेट न हो और URL में ?chat= हो, तो उस बातचीत की फ़ोन में सेव की हुई कॉपी दिखाएं
   useEffect(() => {
     const urlChat = new URLSearchParams(window.location.search).get("chat");
@@ -372,8 +401,22 @@ export function VoiceAssistant({
         setError(await readError(res, t.errGeneric));
         return;
       }
-      const data = (await res.json()) as { reply: string; threadId?: string | null };
-      setMessages((prev) => [...prev, { id: newId(), role: "assistant", text: data.reply }]);
+      const data = (await res.json()) as {
+        reply: string;
+        threadId?: string | null;
+        steps?: AgentStepView[];
+        actions?: ActionCardData[];
+      };
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: newId(),
+          role: "assistant",
+          text: data.reply,
+          steps: data.steps ?? [],
+          actions: data.actions ?? [],
+        },
+      ]);
       // नई बातचीत बनी: पता में उसकी id रखें, ताकि पेज दोबारा खुलने पर वही चैट खुले
       if (data.threadId && data.threadId !== threadId) {
         setThreadId(data.threadId);
@@ -797,9 +840,33 @@ export function VoiceAssistant({
           }
 
           const lastBotId = [...messages].reverse().find((x) => x.role === "assistant" && !x.offerCard)?.id;
+          const steps = m.steps ?? [];
+          const actions = m.actions ?? [];
           return (
             <div key={m.id} className={styles.bubbleBot}>
+              {/* agent ने क्या-क्या किया: छोटी सूची, जवाब से पहले */}
+              {steps.length > 0 && (
+                <div className={styles.muted} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {steps.map((s, i) => (
+                    <span key={`${s.tool}-${i}`} style={{ whiteSpace: "pre-wrap" }}>
+                      ✓ {toolLabel(s.tool, lang)}: {s.text}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <p className={styles.botText}>{m.text}</p>
+
+              {/* मंज़ूरी के इंतज़ार वाले काम: हर एक का अपना card */}
+              {actions.map((a) => (
+                <AgentActionCard
+                  key={a.id}
+                  action={a}
+                  lang={lang}
+                  onDecided={(text) => addBotNote(text)}
+                />
+              ))}
+
               <MessageActions
                 text={m.text}
                 lang={lang}
