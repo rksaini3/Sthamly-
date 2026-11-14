@@ -32,20 +32,25 @@ type IconName =
   | "live"
   | "search"
   | "globe"
-  | "share";
+  | "share"
+  | "home";
 
 // साइडबार में केवल ज़रूरी चीज़ें; बाकी प्रोफ़ाइल पर हैं
 type ItemKey = "live" | "gallery" | "saved" | "notes";
 
 interface DrawerItem {
   href: string;
-  key: ItemKey;
   icon: IconName;
+  // lib/labels.ts का key (ज़्यादातर सूची के लिए)
+  key?: ItemKey;
+  // सीधा लेबल, जब नाम lib/labels.ts में न हो (जैसे "होम")
+  label?: { hi: string; en: string };
 }
 
 // ड्रॉअर की सूची। नाम छोटे हैं और lib/labels.ts से दोनों भाषाओं में आते हैं।
 // "जल्द आएगा" वाले पन्ने /soon/... पर खुलते हैं।
 const ITEMS: DrawerItem[] = [
+  { href: "/home", icon: "home", label: { hi: "होम", en: "Home" } },
   { href: "/live", key: "live", icon: "live" },
   { href: "/images", key: "gallery", icon: "images" },
   { href: "/my-posters", key: "saved", icon: "library" },
@@ -93,6 +98,7 @@ const PATHS: Record<IconName, string[]> = {
   staff: ["M16 11a3 3 0 100-6 3 3 0 000 6z", "M8 12a3 3 0 100-6 3 3 0 000 6z", "M2 20c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5", "M14.5 15.7c.5-.2 1-.2 1.5-.2 2.8 0 5.2 1.5 6 4.5"],
   pencil: ["M4 20l1-4L17 4l3 3L8 19z"],
   live: ["M3 7a2 2 0 012-2h9a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z", "M16 10l5-3v10l-5-3"],
+  home: ["M3 11l9-7 9 7", "M5 10v10h14V10", "M10 20v-5h4v5"],
 };
 
 function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
@@ -377,16 +383,23 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               <nav className={styles.list} aria-label={t.mainList}>
                 {ITEMS.map((item) => {
                   const active = matches(pathname, item.href);
+                  const text = item.label
+                    ? lang === "en"
+                      ? item.label.en
+                      : item.label.hi
+                    : item.key
+                      ? t[item.key]
+                      : item.href;
                   return (
                     <Link
-                      key={item.key}
+                      key={item.href}
                       href={item.href}
                       className={`${styles.link} ${active ? styles.active : ""}`}
                       aria-current={active ? "page" : undefined}
                       onClick={close}
                     >
                       <Icon name={item.icon} />
-                      {t[item.key]}
+                      {text}
                     </Link>
                   );
                 })}
