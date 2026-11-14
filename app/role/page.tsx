@@ -11,6 +11,8 @@ export default function RolePage() {
   const [error, setError] = useState<string | null>(null);
 
   async function choose(role: Role) {
+    // जल्द आने वाली भूमिका: कोई request नहीं
+    if (!ROLE_INFO[role].live) return;
     setError(null);
     setBusy(role);
     try {
@@ -42,20 +44,27 @@ export default function RolePage() {
 
       {ROLES.map((role) => {
         const info = ROLE_INFO[role];
+        // "जल्द आएगा" वाली भूमिका दबाने लायक नहीं
+        const comingSoon = !info.live;
         return (
           <button
             key={role}
             type="button"
             className="card"
             onClick={() => choose(role)}
-            disabled={busy !== null}
-            style={{ textAlign: "left", cursor: "pointer" }}
+            disabled={busy !== null || comingSoon}
+            aria-disabled={comingSoon}
+            style={{
+              textAlign: "left",
+              cursor: comingSoon ? "not-allowed" : "pointer",
+              opacity: comingSoon ? 0.6 : 1,
+            }}
           >
             <strong>{info.label}</strong>
             <p className="muted" style={{ margin: "4px 0 0" }}>
               {info.hint}
             </p>
-            {!info.live && (
+            {comingSoon && (
               <p className="muted" style={{ margin: "4px 0 0" }}>
                 जल्द आएगा
               </p>
