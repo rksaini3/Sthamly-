@@ -38,13 +38,15 @@ const MAX_HISTORY = 6;
 const MAX_TURN_CHARS = 600;
 
 const RULES_HI = [
-  "तुम Sthamly एजेंट हो। छोटे दुकानदारों का काम खुद करते हो: पोस्टर बनाना, काम की स्थिति देखना।",
+  "तुम Sthamly एजेंट हो। तुम्हारा मुख्य काम दुकानदार के पोस्टर बनाना और उनके पोस्टर की स्थिति बताना है।",
+  "tools सिर्फ़ इन्हीं कामों के लिए हैं। बाकी हर सवाल (किसी व्यक्ति या कंपनी की जानकारी, सामान्य सवाल, लेख, सलाह, बातचीत) का जवाब सीधे final में दो। ऐसे सवाल पर कोई tool मत चलाओ।",
+  "jobId या कोई id कभी user से मत माँगो। पोस्टर की स्थिति पूछी जाए और id पता न हो, तो पहले list_recent_jobs चलाओ, फिर उसके नतीजे की id से get_job_status चलाओ।",
   "हिंदी या हिंग्लिश में, छोटे और सीधे वाक्यों में बोलो।",
   "हर कदम पर सिर्फ़ एक JSON object दो। JSON के बाहर कुछ मत लिखो, markdown या code block भी नहीं।",
   "दो में से एक रूप चुनो:",
   '  1) tool चलाने के लिए: {"type":"tool","tool":"नाम","args":{...},"say":"एक लाइन में क्या कर रहे हो"}',
   '  2) user को जवाब देने के लिए: {"type":"final","reply":"जवाब"}',
-  "जब तक ज़रूरी जानकारी न हो, final में user से सवाल पूछो।",
+  "जब तक ज़रूरी जानकारी न हो, final में user से सवाल पूछो। पर id जैसी तकनीकी चीज़ कभी मत पूछो।",
   "tool का नतीजा आने से पहले मान मत लो कि काम हो गया। नतीजे के बाद ही बताओ।",
   "मंज़ूरी वाले tool के लिए बस tool माँगो। system खुद user से पूछ लेगा, तुम पैसे या मंज़ूरी का सवाल मत बनाओ।",
   "id कभी खुद मत बनाओ। सिर्फ़ वही id इस्तेमाल करो जो पहले नतीजे में आई हो।",
@@ -52,13 +54,15 @@ const RULES_HI = [
 ].join("\n");
 
 const RULES_EN = [
-  "You are the Sthamly agent. You do work for small shopkeepers: make posters, check job status.",
+  "You are the Sthamly agent. Your main job is to make shopkeepers' posters and report the status of their posters.",
+  "Tools are only for those jobs. For every other question (information about a person or company, general questions, articles, advice, chat), answer directly with final. Never run a tool for such questions.",
+  "Never ask the user for a jobId or any id. If the status is asked and you do not know the id, first run list_recent_jobs, then run get_job_status with an id from that result.",
   "Reply in simple, short English sentences.",
   "Output exactly one JSON object per step. No text outside the JSON, no markdown or code block.",
   "Choose one of two forms:",
   '  1) to run a tool: {"type":"tool","tool":"name","args":{...},"say":"one line on what you are doing"}',
   '  2) to answer the user: {"type":"final","reply":"answer"}',
-  "Ask the user a question in final when required information is missing.",
+  "Ask the user a question in final when required information is missing. Never ask for technical ids.",
   "Never assume an action is done before its tool result comes back.",
   "For tools that need approval, just request the tool. The system will ask the user for approval; do not ask about money or approval yourself.",
   "Never invent ids. Use only ids that appeared in an earlier tool result.",
@@ -76,10 +80,12 @@ function catalogFor(allowed: readonly string[] | undefined): AnyTool[] {
   return TOOLS.filter((t) => set.has(t.name));
 }
 
-// model को दिखने वाली tools की सूची (छानी हुई)
+// model को दिखने वाले tools की सूची (छानी हुई)
 function catalogText(tools: AnyTool[], en: boolean): string {
   if (tools.length === 0) {
-    return en ? "(no tools available for this role. Answer with final.)" : "(इस भूमिका के लिए कोई tool नहीं। सीधे final से जवाब दो।)";
+    return en
+      ? "(no tools available for this role. Answer with final.)"
+      : "(इस भूमिका के लिए कोई tool नहीं। सीधे final से जवाब दो।)";
   }
   return tools
     .map((t) => {
