@@ -360,6 +360,12 @@ export type Database = {
     Views: {};
 
     Functions: {
+      // rate-limit: lib/rate-limit.ts यह function बुलाता है। Args/Returns ढीले रखे हैं,
+      // ताकि SQL में जो भी पैरामीटर हों, typecheck न टूटे।
+      rate_limit_hit: {
+        Args: Record<string, unknown>;
+        Returns: Json;
+      };
       credit_used: {
         Args: { p_user: string; p_kind: string; p_since: string };
         Returns: number;
