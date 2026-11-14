@@ -27,6 +27,12 @@ function fail(code: string, message: string, status: number, extra?: Record<stri
   return NextResponse.json({ error: { code, message }, ...extra }, { status });
 }
 
+// Error का छोटा और सुरक्षित हिस्सा (key या लंबा text न जाए)
+function shortReason(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw.replace(/key=[^\s&]+/gi, "key=***").slice(0, 160);
+}
+
 export async function POST(req: NextRequest) {
   const supabase = await createSupabaseServerClient();
   const {
@@ -38,7 +44,6 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return fail("VALIDATION_FAILED", "तस्वीर या सवाल सही नहीं है", 400);
 
   // रोज़ की मुफ़्त सीमा के बाद वॉलेट से थोड़े पैसे, पैसे न हों तो रुकें।
-  // लाइव महँगा है, इसलिए हिसाब की टेबल (0028) न मिले तो भी चलने नहीं देते।
   let willPayPaise = 0;
   try {
     const usage = await checkUsage(user.id, "live");
@@ -65,7 +70,9 @@ export async function POST(req: NextRequest) {
     await recordUsage(user.id, "live", willPayPaise);
     return NextResponse.json({ reply });
   } catch (error) {
+    // पूरा error Vercel logs में जाए, और screen पर छोटा कारण दिखे
     console.error("live ask failed", error);
-    return fail("LIVE_FAILED", "अभी जवाब नहीं बन पाया", 502);
+    const reason = shortReason(error);
+    return fail("LIVE_FAILED", `अभी जवाब नहीं बन पाया (कारण: ${reason})`, 502);
   }
 }
