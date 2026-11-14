@@ -15,7 +15,8 @@ export type Plan = (typeof PLANS)[number];
 
 // यूज़र की भूमिका। गिरगिट मोड: हर भूमिका का अलग home और टेम्पलेट।
 // "finance" सिर्फ़ एडमिन के लिए है (शेयर और कंपनी विश्लेषण, निजी)। lib/admin.ts देखें।
-export const ROLES = ["shopkeeper", "student", "creator", "finance"] as const;
+// "lawyer" (वकील): कानूनी मसौदे का pack अभी नहीं बना, इसलिए शुरू में "जल्द आएगा" दिखेगा।
+export const ROLES = ["shopkeeper", "student", "creator", "lawyer", "finance"] as const;
 export type Role = (typeof ROLES)[number];
 
 export type Language = "hinglish" | "hindi" | "bhojpuri" | "awadhi";
