@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -50,7 +51,9 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   return NextResponse.json({ chat: data });
 }
 
-// बातचीत हटाना (संदेश अपने-आप हटते हैं)
+// बातचीत हटाना (संदेश पहले हटते हैं, फिर बातचीत)।
+// पहले जांचते हैं कि बातचीत इसी user की है, फिर admin client से हटाते हैं।
+// Admin client पर RLS लागू नहीं होता, इसलिए हर delete में user_id का फ़िल्टर ज़रूरी है।
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
   if (!idSchema.safeParse(id).success) return error(400, "BAD_ID", "बातचीत नहीं मिली");
@@ -61,16 +64,44 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
   } = await supabase.auth.getUser();
   if (!user) return error(401, "UNAUTHORIZED", "पहले लॉग-इन करें");
 
-  const { data, error: dbError } = await supabase
+  // 1. मालिकाना हक़ की जांच
+  const { data: owned, error: ownError } = await supabase
+    .from("chat_threads")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (ownError) {
+    console.error("chat delete: ownership check failed", ownError);
+    return error(500, "DELETE_FAILED", "हटाया नहीं जा सका");
+  }
+  if (!owned) return error(404, "NOT_FOUND", "बातचीत नहीं मिली");
+
+  // 2. संदेश हटाएं (thread_id की जांच ऊपर हो चुकी है)
+  const admin = createSupabaseAdminClient();
+  const { error: msgError } = await admin.from("chat_messages").delete().eq("thread_id", id);
+  if (msgError) {
+    console.error("chat delete: messages delete failed", msgError);
+    return error(500, "DELETE_FAILED", "हटाया नहीं जा सका");
+  }
+
+  // 3. बातचीत हटाएं, और जांचें कि सच में कोई row हटी
+  const { data: removed, error: threadError } = await admin
     .from("chat_threads")
     .delete()
     .eq("id", id)
+    .eq("user_id", user.id)
     .select("id");
 
-  if (dbError) {
-    console.error("chat delete failed", dbError);
+  if (threadError) {
+    console.error("chat delete: thread delete failed", threadError);
     return error(500, "DELETE_FAILED", "हटाया नहीं जा सका");
   }
-  if (!data || data.length === 0) return error(404, "NOT_FOUND", "बातचीत नहीं मिली");
+  if (!removed || removed.length === 0) {
+    // कुछ नहीं हटा: यह "हटा दिया" नहीं है, इसलिए गड़बड़ बताएं
+    return error(500, "DELETE_FAILED", "हटाया नहीं जा सका");
+  }
+
   return NextResponse.json({ ok: true });
 }
