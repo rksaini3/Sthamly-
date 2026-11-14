@@ -22,7 +22,7 @@ interface Snapshot {
   live: { used: number; included: number; pricePaise: number };
 }
 
-// Server के error जवाब का रूप (message और code दोनों हो सकते हैं)
+// Server के error जवाब का रूप
 interface ApiError {
   ok?: boolean;
   code?: string;
@@ -48,11 +48,17 @@ interface RazorpayWindow extends Window {
 const CHECKOUT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 const PAID_PLANS: PaidPlan[] = ["starter", "premium", "business"];
 
-// top-up route के कोड का छोटा हिंदी संदेश (route सिर्फ़ code भेजता है)
-const TOPUP_CODE_HI: Record<string, string> = {
+// हर server code का हिंदी संदेश (topup और subscribe दोनों के codes)।
+// server message भेजे तो वही दिखता है; ये सिर्फ़ fallback है।
+const CODE_HI: Record<string, string> = {
   UNAUTHORIZED: "भुगतान के लिए पहले लॉग-इन करें।",
+  BAD_REQUEST: "प्लान सही नहीं चुना गया।",
   BAD_AMOUNT: "यह रकम मान्य नहीं है।",
+  PLAN_NOT_CONFIGURED: "यह प्लान अभी चालू नहीं हुआ है। थोड़ी देर बाद दोबारा कोशिश करें।",
+  ALREADY_ACTIVE: "आपका प्लान पहले से चालू है।",
+  RAZORPAY_REJECTED: "Razorpay ने यह प्लान नहीं बनाया। थोड़ी देर बाद दोबारा कोशिश करें।",
   ORDER_FAILED: "Razorpay पर भुगतान शुरू नहीं हो पाया। थोड़ी देर बाद दोबारा कोशिश करें।",
+  INTERNAL: "कुछ गड़बड़ हुई, दोबारा कोशिश करें।",
 };
 
 function loadCheckout(): Promise<boolean> {
@@ -82,9 +88,9 @@ export function UpgradeSheet({
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "login" | "error">("loading");
   const [message, setMessage] = useState<string | null>(null);
-  // कौन सा बटन चल रहा है (जैसे "topup-50" या "plan-starter"). सिर्फ़ वही बटन बदलता है।
+  // कौन सा बटन चल रहा है (जैसे "topup-50" या "plan-starter")। सिर्फ़ वही बटन बदलता है।
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  // दोबारा दबाने से दो checkout न खुलें (state से पहले ही रोकता है)
+  // दोबारा दबाने से दो checkout न खुलें
   const busyRef = useRef(false);
 
   async function load() {
@@ -125,12 +131,12 @@ export function UpgradeSheet({
     setPendingKey(null);
   }
 
-  // Server का जवाब पढ़ें: message हो तो वही, वरना code का हिंदी, वरना सामान्य संदेश
+  // Server का जवाब पढ़ें: पहले message, फिर code का हिंदी, फिर सामान्य संदेश।
+  // साथ में code भी दिखाते हैं, ताकि सहायता के लिए बताया जा सके।
   async function readApiError(res: Response): Promise<string> {
     const data = (await res.json().catch(() => null)) as ApiError | null;
-    if (data?.message) return data.message;
-    if (data?.code && TOPUP_CODE_HI[data.code]) return TOPUP_CODE_HI[data.code];
-    return t.payFail;
+    const text = data?.message ?? (data?.code ? CODE_HI[data.code] : undefined) ?? t.payFail;
+    return data?.code ? `${text} (कोड: ${data.code})` : text;
   }
 
   // Razorpay checkout खोलें और handler/ondismiss जोड़ें
@@ -197,7 +203,6 @@ export function UpgradeSheet({
         body: JSON.stringify({ plan, cycle: "monthly" }),
       });
       if (!res.ok) {
-        // server का साफ़ संदेश (जैसे "यह प्लान अभी चालू नहीं हुआ है")
         setMessage(await readApiError(res));
         return;
       }
@@ -207,9 +212,10 @@ export function UpgradeSheet({
         keyId?: string;
         checkoutUrl?: string | null;
         message?: string;
+        code?: string;
       };
       if (!data.ok || !data.subscriptionId || !data.keyId) {
-        setMessage(data.message ?? t.payFail);
+        setMessage(data.message ?? (data.code ? CODE_HI[data.code] : undefined) ?? t.payFail);
         return;
       }
       if (await loadCheckout()) {
