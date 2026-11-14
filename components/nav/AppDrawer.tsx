@@ -42,6 +42,7 @@ interface DrawerItem {
 }
 
 // ड्रॉअर की सूची। नाम छोटे हैं और lib/labels.ts से दोनों भाषाओं में आते हैं।
+// "जल्द आएगा" वाले पन्ने /soon/... पर खुलते हैं।
 const ITEMS: DrawerItem[] = [
   { href: "/live", key: "live", icon: "live" },
   { href: "/images", key: "gallery", icon: "images" },
@@ -131,15 +132,6 @@ function UserIcon() {
     <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <circle cx="12" cy="8" r="4" />
       <path d="M4 20c1.5-3.5 4.5-5 8-5s6.5 1.5 8 5" />
-    </svg>
-  );
-}
-
-function BellIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M6 9a6 6 0 1112 0c0 5 2 6 2 6H4s2-1 2-6z" />
-      <path d="M10 19a2 2 0 004 0" />
     </svg>
   );
 }
@@ -358,12 +350,6 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               </div>
             </div>
 
-            {/* नई चैट: हमेशा ऊपर दिखे, सूची सरकने पर भी */}
-            <button type="button" className={styles.newBtn} onClick={startNew}>
-              <Icon name="new" size={20} />
-              {LABELS[lang].va.newChat}
-            </button>
-
             {searching && (
               <input
                 className={styles.searchInput}
@@ -453,13 +439,14 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               />
             </div>
 
-            {/* नीचे: प्रोफ़ाइल (गोला) और घंटी */}
+            {/* नीचे (ChatGPT जैसा): बाईं ओर नीला "चैट" बटन, दाईं ओर प्रोफ़ाइल का गोला */}
             <div className={styles.footer}>
+              <button type="button" className={styles.newPill} onClick={startNew}>
+                <Icon name="new" size={20} />
+                {lang === "en" ? "Chat" : "चैट"}
+              </button>
               <Link href="/account" className={styles.avatar} aria-label={t.account} onClick={close}>
                 <UserIcon />
-              </Link>
-              <Link href="/notifications" className={styles.bell} aria-label={t.notifications} onClick={close}>
-                <BellIcon />
               </Link>
             </div>
           </aside>
