@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Lang } from "@/lib/i18n";
-import { toolCatalogText } from "@/lib/agent/tools";
+import { TOOLS, type AnyTool } from "@/lib/agent/tools";
 
 // ---- Types ----
 
@@ -69,8 +69,29 @@ function clip(text: string): string {
   return text.length > MAX_TURN_CHARS ? `${text.slice(0, MAX_TURN_CHARS)}…` : text;
 }
 
+// भूमिका के मान्य tools की सूची (मूल, छाना हुआ)। allowed न दिया हो तो सारे tools।
+function catalogFor(allowed: readonly string[] | undefined): AnyTool[] {
+  if (!allowed) return TOOLS;
+  const set = new Set(allowed);
+  return TOOLS.filter((t) => set.has(t.name));
+}
+
+// model को दिखने वाली tools की सूची (छानी हुई)
+function catalogText(tools: AnyTool[], en: boolean): string {
+  if (tools.length === 0) {
+    return en ? "(no tools available for this role. Answer with final.)" : "(इस भूमिका के लिए कोई tool नहीं। सीधे final से जवाब दो।)";
+  }
+  return tools
+    .map((t) => {
+      const mode = t.permission === "confirm" ? (en ? " [needs approval]" : " [मंज़ूरी चाहिए]") : "";
+      return `- ${t.name}${mode}: ${t.description}\n  arguments: ${t.argsHint}`;
+    })
+    .join("\n");
+}
+
 /**
  * model को अगला फ़ैसला माँगने का prompt।
+ * - allowedTools: इस भूमिका के मान्य tool नाम। न दिया हो तो सारे tools (पुराना व्यवहार)।
  * - goal: user का ताज़ा संदेश (लक्ष्य)
  * - history: पिछली बातचीत (आखिरी कुछ संदेश)
  * - observations: अब तक के tool नतीजे, क्रम से
@@ -80,6 +101,7 @@ export function buildAgentPrompt(input: {
   history: ProtocolTurn[];
   observations: string[];
   lang: Lang;
+  allowedTools?: readonly string[];
 }): string {
   const en = input.lang === "en";
   const rules = en ? RULES_EN : RULES_HI;
@@ -99,7 +121,7 @@ export function buildAgentPrompt(input: {
     rules,
     "",
     toolsHeader,
-    toolCatalogText(),
+    catalogText(catalogFor(input.allowedTools), en),
     "",
     historyHeader,
     ...(recent.length ? recent : [en ? "(none)" : "(कुछ नहीं)"]),
