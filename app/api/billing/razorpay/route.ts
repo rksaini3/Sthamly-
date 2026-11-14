@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { verifyWebhookSignature } from "@/lib/billing/razorpay";
+import { fetchOrder, verifyWebhookSignature } from "@/lib/billing/razorpay";
 import { PLAN_PRICE_PAISE, type PaidPlan } from "@/lib/pricing";
 import { creditWallet } from "@/lib/wallet";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -21,6 +21,7 @@ interface RazorpayEvent {
 
 interface PaymentEntity {
   id: string;
+  order_id?: string;
   amount: number; // paise में
   currency: string;
   status: string;
@@ -100,10 +101,19 @@ function asPaidPlan(value: string | undefined): PaidPlan | null {
 
 async function handleCapturedPayment(payment: PaymentEntity | undefined): Promise<void> {
   if (!payment) return;
-  if (payment.notes?.kind !== "topup") return; // सब्सक्रिप्शन की कटौती इस रास्ते से नहीं
-  const userId = payment.notes?.user_id;
+
+  // पहले payment के notes देखें; न हों तो order से पढ़ें (यही असली स्रोत है)
+  let notes: Record<string, string> = payment.notes ?? {};
+  if (notes.kind !== "topup") {
+    if (!payment.order_id) return;
+    const order = await fetchOrder(payment.order_id); // error हो तो 500, Razorpay दोबारा भेजेगा
+    notes = order.notes ?? {};
+  }
+
+  if (notes.kind !== "topup") return; // सब्सक्रिप्शन की कटौती इस रास्ते से नहीं
+  const userId = notes.user_id;
   if (!userId) {
-    console.error("razorpay: topup payment without user_id", payment.id);
+    console.error("razorpay: topup order without user_id", payment.id);
     return;
   }
 
