@@ -39,7 +39,7 @@ export const WIDGET_INFO: Record<WidgetType, WidgetInfo> = {
   tip_card: {
     label: { hi: "सलाह", en: "Tip" },
     roles: ROLES,
-    // finance की अनुपालन सूचना हमेशा दिखेगी (lib/finance/compliance.ts से मेल)
+    // finance की अनुपालन सूचना और वकील की "यह कानूनी सलाह नहीं है" सूचना हमेशा दिखेगी
     mandatory: true,
   },
 };
@@ -69,6 +69,7 @@ const DEFAULT_ORDER: Record<Role, WidgetType[]> = {
   shopkeeper: ["quick_actions", "festivals", "recent_posters", "tip_card"],
   creator: ["quick_actions", "recent_posters", "festivals", "tip_card"],
   student: ["quick_actions", "tip_card"],
+  lawyer: ["quick_actions", "tip_card"],
   finance: ["quick_actions", "tip_card"],
 };
 
