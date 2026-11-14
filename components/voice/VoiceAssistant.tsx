@@ -7,6 +7,7 @@ import { UpgradeSheet } from "@/components/billing/UpgradeSheet";
 import { MessageActions } from "@/components/voice/MessageActions";
 import styles from "@/components/voice/VoiceAssistant.module.css";
 import { upcomingFestivals, type UpcomingFestival } from "@/lib/festivals";
+import { loadChatCache, saveChatCache } from "@/lib/offline-cache";
 import type { Lang } from "@/lib/i18n";
 import { LABELS } from "@/lib/labels";
 import { formatRupees } from "@/lib/pricing";
@@ -307,6 +308,27 @@ export function VoiceAssistant({
     idRef.current += 1;
     return idRef.current;
   }
+
+  // इंटरनेट न हो और URL में ?chat= हो, तो उस बातचीत की फ़ोन में सेव की हुई कॉपी दिखाएं
+  useEffect(() => {
+    const urlChat = new URLSearchParams(window.location.search).get("chat");
+    if (!urlChat || navigator.onLine) return;
+    const cached = loadChatCache(urlChat);
+    if (!cached) return;
+    setThreadId(urlChat);
+    setMessages(cached.map((m) => ({ id: newId(), role: m.role, text: m.text })));
+  }, []);
+
+  // हर बदलाव फ़ोन में सेव: अगली बार बिना इंटरनेट के भी यही बातचीत दिखे
+  useEffect(() => {
+    if (!threadId || messages.length === 0) return;
+    saveChatCache(
+      threadId,
+      messages
+        .filter((m) => !m.offerCard && m.text.trim().length > 0)
+        .map((m) => ({ role: m.role, text: m.text })),
+    );
+  }, [messages, threadId]);
 
   // नई बातचीत शुरू: पुराना सब साफ़, इतिहास में पुरानी चैट बनी रहती है
   function startNewChat() {
