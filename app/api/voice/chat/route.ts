@@ -203,7 +203,11 @@ async function answer(input: {
   role: Role | null;
   messages: { role: "user" | "assistant"; content: string }[];
 }): Promise<Answer> {
+  // आखिरी संदेश खाली नहीं हो सकता (ऊपर जांच हो चुकी है), फिर भी type-safe रहने के लिए guard
   const last = input.messages[input.messages.length - 1];
+  if (!last) {
+    return { reply: "", runId: null, status: "chat", steps: [], actions: [] };
+  }
   const history = input.messages.slice(0, -1);
 
   try {
