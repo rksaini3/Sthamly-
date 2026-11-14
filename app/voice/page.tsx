@@ -70,8 +70,6 @@ export default async function VoicePage({
         posterLeft: status.posterLeft,
         posterWindow: status.posterWindow,
         walletPaise: status.walletPaise,
-        // header की plan चिप के लिए (अपग्रेड या प्लान का नाम)
-        plan: status.plan,
       };
     } catch (error) {
       console.error("voice page: quota read failed", error);
