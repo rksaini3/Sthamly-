@@ -171,20 +171,20 @@ function PencilIcon() {
   );
 }
 
-// चैट शुरू होने के बाद ऊपर वाली गोली: नई बातचीत (पेंसिल) और मेन्यू (तीन डॉट)
+// ऊपर वाली गोली (ChatGPT जैसी): नई बातचीत (पेंसिल) और मेन्यू (तीन डॉट)
 const CHAT_PILL = {
   display: "flex",
   alignItems: "center",
-  height: 44,
-  padding: "0 2px",
+  height: 48,
+  padding: "0 4px",
   borderRadius: 999,
-  border: "1px solid var(--line, #e5e5e5)",
-  background: "var(--surface, #fff)",
+  border: "none",
+  background: "var(--surface-2, #2a2a2a)",
 };
 
 const PILL_BTN = {
-  width: 40,
-  height: 40,
+  width: 44,
+  height: 44,
   border: "none",
   borderRadius: 999,
   background: "transparent",
@@ -195,10 +195,63 @@ const PILL_BTN = {
   cursor: "pointer",
 };
 
-const PILL_DIVIDER = {
-  width: 1,
-  height: 20,
-  background: "var(--line, #e5e5e5)",
+function PlusIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+// लाइव (आवाज़ वाला) बटन: ChatGPT की तरह नीले गोले में लहर का निशान
+function WaveIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+      <path d="M6 10v4M10 7v10M14 9v6M18 11v2" />
+    </svg>
+  );
+}
+
+const ROUND_LIVE = {
+  flexShrink: 0,
+  width: 40,
+  height: 40,
+  borderRadius: 999,
+  display: "grid",
+  placeItems: "center",
+  background: "#3b6cf6",
+  color: "#fff",
+  textDecoration: "none",
+};
+
+const ROUND_SEND = {
+  flexShrink: 0,
+  width: 40,
+  height: 40,
+  border: "none",
+  borderRadius: 999,
+  display: "grid",
+  placeItems: "center",
+  background: "var(--ink, #1c1917)",
+  color: "var(--bg, #fff)",
+  cursor: "pointer",
+};
+
+// "+" मेन्यू: इनपुट के ऊपर खुलता है, बाहर दबाने पर बंद
+const PLUS_MENU = {
+  top: "auto",
+  bottom: "calc(100% + 10px)",
+  left: 0,
+  right: "auto",
+  minWidth: 220,
+  zIndex: 41,
+};
+
+const PLUS_SCRIM = {
+  position: "fixed" as const,
+  inset: 0,
+  zIndex: 40,
+  background: "transparent",
 };
 
 export function VoiceAssistant({
@@ -231,6 +284,8 @@ export function VoiceAssistant({
   // चुनी हुई फ़ोटो (अभी backend को नहीं जाती, अगले कदम में जुड़ेगी)
   const [photo, setPhoto] = useState<File | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // इनपुट के "+" वाला मेन्यू (फ़ोटो या कैमरा)
+  const [plusOpen, setPlusOpen] = useState(false);
   // लिखने की जगह दबी हो (कीबोर्ड खुला) तो सुझाव छिप जाते हैं, ताकि ऊपर का हिस्सा दिखता रहे
   const [focused, setFocused] = useState(false);
   // आने वाले त्योहार और दिवस (तारीख़ browser में निकलती है, ताकि दिन सही रहे)
@@ -502,6 +557,8 @@ export function VoiceAssistant({
   const leaveLabel = lang === "en" ? "Leave chat" : "बाहर निकलें";
 
   const isEmpty = messages.length === 0;
+  // ऊपर की गोली (पेंसिल + तीन डॉट): चैट शुरू हो या इनपुट बॉक्स में क्लिक हो तो दिखे
+  const showPill = !isEmpty || focused;
   const hasDraft = draft.trim().length > 0;
   const status = recording
     ? t.statusListening
@@ -566,7 +623,7 @@ export function VoiceAssistant({
             >
               {t.boost}
             </button>
-            {isEmpty ? (
+            {!showPill ? (
               <div className={styles.menuWrap}>
                 <button
                   type="button"
@@ -594,7 +651,6 @@ export function VoiceAssistant({
                 >
                   <PencilIcon />
                 </button>
-                <span aria-hidden style={PILL_DIVIDER} />
                 <button
                   type="button"
                   style={PILL_BTN}
@@ -643,12 +699,6 @@ export function VoiceAssistant({
             {!loggedIn && (
               <Link href="/login?next=/voice" className={styles.loginBtn}>
                 {t.login}
-              </Link>
-            )}
-            {loggedIn && (
-              <Link href="/live" className={styles.livePill}>
-                <span className={styles.liveDot} aria-hidden />
-                {t.goLive}
               </Link>
             )}
             {!focused && !hasDraft && (
@@ -777,59 +827,88 @@ export function VoiceAssistant({
 
         <form className={styles.row} onSubmit={onSend}>
           <div className={styles.pill}>
-            <button
-              type="button"
-              className={styles.iconBtn}
-              onClick={() => photoInputRef.current?.click()}
-              disabled={recording || busy !== "idle"}
-              aria-label={t.pickPhoto}
-            >
-              <ClipIcon />
-            </button>
+            <div style={{ position: "relative", display: "flex", flexShrink: 0 }}>
+              <button
+                type="button"
+                className={styles.iconBtn}
+                onClick={() => setPlusOpen((v) => !v)}
+                disabled={recording || busy !== "idle"}
+                aria-label={t.pickPhoto}
+                aria-expanded={plusOpen}
+              >
+                <PlusIcon />
+              </button>
+              {plusOpen && (
+                <>
+                  <div style={PLUS_SCRIM} onClick={() => setPlusOpen(false)} />
+                  <div className={styles.menu} role="menu" style={PLUS_MENU}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={styles.menuItem}
+                      style={MENU_BUTTON_RESET}
+                      onClick={() => {
+                        setPlusOpen(false);
+                        photoInputRef.current?.click();
+                      }}
+                    >
+                      {t.pickPhoto}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={styles.menuItem}
+                      style={MENU_BUTTON_RESET}
+                      onClick={() => {
+                        setPlusOpen(false);
+                        cameraInputRef.current?.click();
+                      }}
+                    >
+                      {t.camera}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
 
             <input
               className={styles.input}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
+              onBlur={() => window.setTimeout(() => setFocused(false), 200)}
               placeholder={t.placeholder}
               maxLength={1000}
               disabled={recording || busy !== "idle"}
               aria-label={t.messageAria}
             />
 
-            <button
-              type="button"
-              className={styles.iconBtn}
-              onClick={() => cameraInputRef.current?.click()}
-              disabled={recording || busy !== "idle"}
-              aria-label={t.camera}
-            >
-              <CameraIcon />
-            </button>
+            {hasDraft ? (
+              <button
+                type="submit"
+                style={ROUND_SEND}
+                disabled={busy !== "idle"}
+                aria-label={t.send}
+              >
+                <SendIcon />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.iconBtn} ${recording ? styles.circleStop : ""}`}
+                  onClick={recording ? stopRecording : startRecording}
+                  disabled={busy !== "idle"}
+                  aria-label={recording ? t.stopRec : t.speak}
+                >
+                  {recording ? <StopIcon /> : <MicIcon />}
+                </button>
+                <Link href="/live" style={ROUND_LIVE} aria-label={t.goLive} title={t.goLive}>
+                  <WaveIcon />
+                </Link>
+              </>
+            )}
           </div>
-
-          {hasDraft ? (
-            <button
-              type="submit"
-              className={`${styles.micBig} ${styles.circleSend}`}
-              disabled={busy !== "idle"}
-              aria-label={t.send}
-            >
-              <SendIcon />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={recording ? stopRecording : startRecording}
-              disabled={busy !== "idle"}
-              className={`${styles.micBig} ${recording ? styles.circleStop : ""}`}
-              aria-label={recording ? t.stopRec : t.speak}
-            >
-              {recording ? <StopIcon /> : <MicIcon />}
-            </button>
-          )}
         </form>
 
         <input
