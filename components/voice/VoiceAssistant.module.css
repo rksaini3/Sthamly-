@@ -1,13 +1,13 @@
-/* Sthamly होम स्क्रीन: साफ़ चैट जैसा लुक।
+/* Sthamly असिस्टेंट (होम स्क्रीन): साफ़ चैट जैसा लुक।
    रंग सब globals.css और theme.css के टोकन से आते हैं। नारंगी सिर्फ़ मुख्य बटन पर। */
 
+/* पूरा पन्ना स्क्रीन में जमा रहता है: ऊपर का हिस्सा और नीचे का लिखने का बार नहीं हिलते,
+   सिर्फ़ बीच की बातचीत स्क्रॉल होती है। fixed होने से फ़ोन के नीचे के बार के पीछे भी नहीं कटता। */
 .page {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  /* पूरी स्क्रीन यहीं रहे, सिर्फ़ बीच का चैट हिस्सा स्क्रॉल हो (हेडर और इनपुट ऊपर-नीचे न खिसकें) */
-  overflow: hidden;
-  padding-top: env(safe-area-inset-top, 0px);
   max-width: 640px;
   margin: 0 auto;
   background: var(--bg, #f7f5f2);
@@ -18,16 +18,18 @@
 
 /* बाईं तरफ़ ☰ (AppDrawer) के लिए जगह छोड़ी गई है */
 .header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px 12px 64px;
-  flex-shrink: 0;
 }
 
 .headerTitle {
   min-width: 0;
+  flex: 1;
+  text-align: center;
 }
 
 .title {
@@ -122,16 +124,18 @@
 
 .quota {
   flex-shrink: 0;
+  font: inherit;
+  cursor: pointer;
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 6px 14px;
-  margin: 10px 16px 0;
-  padding: 8px 14px;
+  margin: 4px 16px 0;
+  padding: 6px 12px;
   border-radius: 999px;
   background: var(--surface, #fff);
   border: 1px solid var(--line, #e5e5e5);
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ink, #1c1917);
 }
 
@@ -141,7 +145,6 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -159,8 +162,8 @@
 .orb {
   align-self: center;
   flex-shrink: 0;
-  width: 96px;
-  height: 96px;
+  width: 80px;
+  height: 80px;
   border-radius: 50%;
   background:
     radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%),
@@ -201,33 +204,38 @@
   color: var(--muted, #78716c);
 }
 
-/* सुझाव: एक-एक पंक्ति की सूची, इनपुट बार के ठीक ऊपर (आइकन के साथ) */
+/* सुझाव: बातचीत वाले खाली हिस्से के अंदर, हल्की सूची। अलग से चिपकाए हुए नहीं लगते। */
 .suggestions {
   width: 100%;
-  margin: 0 0 8px;
+  max-width: 420px;
+  align-self: center;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
 }
 
 .suggestion {
   display: flex;
   align-items: center;
-  gap: 14px;
-  min-height: 48px;
-  padding: 6px 10px;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 4px;
   border: none;
-  border-radius: 12px;
+  border-top: 1px solid var(--line);
   background: transparent;
-  color: var(--ink, #1c1917);
+  color: var(--ink);
   font: inherit;
   font-size: 15px;
   text-align: left;
   cursor: pointer;
 }
 
+.suggestion:first-child {
+  border-top: none;
+}
+
 .suggestion:hover:not(:disabled) {
-  background: rgba(127, 127, 127, 0.12);
+  background: var(--surface-2);
 }
 
 .suggestion:disabled {
@@ -237,8 +245,54 @@
 
 .suggestionIcon {
   display: inline-flex;
-  color: var(--muted, #78716c);
+  color: var(--muted);
   flex-shrink: 0;
+}
+
+/* "बढ़ाएँ" बटन (ऊपर बाईं ओर, ChatGPT के Get Plus जैसा) */
+.boost {
+  height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-2, #2a2a2a);
+  color: #3b82f6;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.boost:hover {
+  filter: brightness(1.08);
+}
+
+/* "लाइव" बटन खाली स्क्रीन पर */
+.livePill {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.liveDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e11d48;
+  box-shadow: 0 0 0 4px rgba(225, 29, 72, 0.18);
 }
 
 /* लॉग-इन का बटन (लिंक) */
@@ -278,7 +332,7 @@
   overflow-wrap: anywhere;
 }
 
-/* Sthamly का जवाब: बिना बॉक्स के, सादा text। फ़ोन की चौड़ाई में ही रहे। */
+/* असिस्टेंट का जवाब: बिना बॉक्स के, सादा text। फ़ोन की चौड़ाई में ही रहे। */
 .bubbleBot {
   align-self: flex-start;
   max-width: 100%;
@@ -352,10 +406,9 @@
 
 /* ---- नीचे का composer ---- */
 
-/* नीचे का हिस्सा हमेशा स्क्रीन के अंदर: Android के navigation bar के ऊपर */
 .composer {
   flex-shrink: 0;
-  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--line, #e5e5e5);
   background: var(--bg, #f7f5f2);
 }
@@ -494,8 +547,8 @@
 /* बड़ा गोल mic / send बटन, pill के बाहर */
 .micBig {
   flex-shrink: 0;
-  width: 60px;
-  height: 60px;
+  width: 52px;
+  height: 52px;
   border: none;
   border-radius: 999px;
   display: grid;
@@ -536,7 +589,8 @@
     font-size: 16px;
   }
 
-  .hint {
+  .hint,
+  .suggestions {
     display: none;
   }
 
