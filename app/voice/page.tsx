@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
+import type { ActionCardData } from "@/components/voice/AgentActionCard";
 import { VoiceAssistant, type AssistantQuota, type InitialMessage } from "@/components/voice/VoiceAssistant";
 import { LANG_COOKIE, parseLang } from "@/lib/i18n";
 import { LABELS } from "@/lib/labels";
@@ -30,6 +31,8 @@ export default async function VoicePage({
   let quota: AssistantQuota | null = null;
   let threadId: string | null = null;
   let initialMessages: InitialMessage[] = [];
+  // बातचीत में अभी मंज़ूरी के इंतज़ार वाले काम (पेज खुलने पर वापस दिखें)
+  let initialActions: ActionCardData[] = [];
 
   if (user) {
     const { data: profile } = await supabase
@@ -61,6 +64,42 @@ export default async function VoicePage({
       } catch (error) {
         console.error("voice page: chat history read failed", error);
       }
+
+      // पेंडिंग मंज़ूरी: इस बातचीत के उन runs के pending actions जो अभी समय सीमा में हैं
+      if (threadId) {
+        try {
+          const { data: runs } = await supabase
+            .from("agent_runs")
+            .select("id")
+            .eq("user_id", user.id)
+            .eq("thread_id", threadId)
+            .eq("status", "waiting_confirm")
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+          const runIds = (runs ?? []).map((r) => r.id);
+          if (runIds.length > 0) {
+            const { data: actions } = await supabase
+              .from("agent_actions")
+              .select("id, tool, summary, expires_at")
+              .eq("user_id", user.id)
+              .in("run_id", runIds)
+              .eq("status", "pending")
+              .gt("expires_at", new Date().toISOString())
+              .order("created_at", { ascending: true });
+
+            initialActions = (actions ?? []).map((a) => ({
+              id: a.id,
+              tool: a.tool,
+              summary: a.summary,
+              expiresAt: a.expires_at,
+            }));
+          }
+        } catch (error) {
+          // agent टेबल न बनी हो तो भी बातचीत खुले
+          console.error("voice page: pending actions read failed", error);
+        }
+      }
     }
 
     // कोटे की गिनती न हो पाए तो भी असिस्टेंट खुले, बस बैलेंस की चिप न दिखे
@@ -86,6 +125,7 @@ export default async function VoicePage({
       lang={lang}
       initialThreadId={threadId}
       initialMessages={initialMessages}
+      initialActions={initialActions}
     />
   );
 }
