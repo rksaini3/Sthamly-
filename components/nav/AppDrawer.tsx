@@ -5,13 +5,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import styles from "@/components/nav/AppDrawer.module.css";
 import { LangSwitch } from "@/components/nav/LangSwitch";
+import { ThemeSwitch } from "@/components/nav/ThemeSwitch";
 import type { ChatSummary } from "@/lib/chats";
 import type { Lang } from "@/lib/i18n";
 import { LABELS, type Labels } from "@/lib/labels";
-import { PLAN_LABEL, formatRupees, type Plan } from "@/lib/pricing";
 
-// ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन और कानूनी पन्ने)
-const HIDDEN_PREFIXES = ["/login", "/auth", "/privacy", "/terms"] as const;
+// ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन, कानूनी पन्ने और पूरी स्क्रीन वाला लाइव कैमरा)
+const HIDDEN_PREFIXES = ["/login", "/auth", "/privacy", "/terms", "/live"] as const;
 
 type IconName =
   | "new"
@@ -29,9 +29,11 @@ type IconName =
   | "plugins"
   | "staff"
   | "pencil"
+  | "live"
   | "search";
 
-type ItemKey = "gallery" | "saved" | "notes" | "shop" | "campaign" | "later" | "connect" | "team" | "batch" | "feed";
+// साइडबार में केवल ज़रूरी चीज़ें; बाकी प्रोफ़ाइल पर हैं
+type ItemKey = "live" | "gallery" | "saved" | "notes";
 
 interface DrawerItem {
   href: string;
@@ -40,31 +42,16 @@ interface DrawerItem {
 }
 
 // ड्रॉअर की सूची। नाम छोटे हैं और lib/labels.ts से दोनों भाषाओं में आते हैं।
-// "जल्द आएगा" वाले पन्ने /soon/... पर खुलते हैं।
 const ITEMS: DrawerItem[] = [
+  { href: "/live", key: "live", icon: "live" },
   { href: "/images", key: "gallery", icon: "images" },
   { href: "/my-posters", key: "saved", icon: "library" },
   { href: "/notebook", key: "notes", icon: "notebook" },
-  { href: "/account", key: "shop", icon: "customize" },
-  { href: "/soon/campaigns", key: "campaign", icon: "projects" },
-  { href: "/soon/scheduled", key: "later", icon: "scheduled" },
-  { href: "/soon/apps", key: "connect", icon: "plugins" },
-  { href: "/soon/staff", key: "team", icon: "staff" },
-  { href: "/batch", key: "batch", icon: "batch" },
-  { href: "/feed", key: "feed", icon: "feed" },
 ];
 
 // तारीख़ के हिसाब से समूह: आज, कल, पिछले 7 दिन, पुराना
 type Group = "today" | "yesterday" | "week" | "older";
 const GROUP_ORDER: Group[] = ["today", "yesterday", "week", "older"];
-
-// /api/assistant/status का जवाब (plan और बचा हुआ कोटा)
-interface PlanInfo {
-  plan: Plan;
-  walletPaise: number;
-  chatsLeft: number;
-  freeChats: number;
-}
 
 function groupOf(iso: string): Group {
   const d = new Date(iso);
@@ -100,6 +87,7 @@ const PATHS: Record<IconName, string[]> = {
   search: ["M11 4a7 7 0 100 14 7 7 0 000-14z", "M20 20l-4-4"],
   staff: ["M16 11a3 3 0 100-6 3 3 0 000 6z", "M8 12a3 3 0 100-6 3 3 0 000 6z", "M2 20c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5", "M14.5 15.7c.5-.2 1-.2 1.5-.2 2.8 0 5.2 1.5 6 4.5"],
   pencil: ["M4 20l1-4L17 4l3 3L8 19z"],
+  live: ["M3 7a2 2 0 012-2h9a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z", "M16 10l5-3v10l-5-3"],
 };
 
 function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
@@ -170,8 +158,6 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
   const [query, setQuery] = useState("");
   // इतिहास का हिस्सा हमेशा दिखे: लोड हो रहा / लॉग-इन चाहिए / गड़बड़ / ठीक
   const [historyState, setHistoryState] = useState<"loading" | "login" | "error" | "ok">("loading");
-  // प्लान की पट्टी (footer के ऊपर): लॉग-इन न हो या जानकारी न आए तो नहीं दिखती
-  const [planInfo, setPlanInfo] = useState<PlanInfo | null>(null);
 
   const loadChats = useCallback(async () => {
     try {
@@ -196,26 +182,6 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     }
   }, []);
 
-  const loadPlan = useCallback(async () => {
-    try {
-      const res = await fetch("/api/assistant/status", { cache: "no-store" });
-      if (!res.ok) {
-        setPlanInfo(null);
-        return;
-      }
-      const data = (await res.json()) as PlanInfo;
-      setPlanInfo({
-        plan: data.plan,
-        walletPaise: data.walletPaise,
-        chatsLeft: data.chatsLeft,
-        freeChats: data.freeChats,
-      });
-    } catch {
-      // प्लान की जानकारी न आए तो पट्टी छिपी रहे, बाकी मेन्यू चले
-      setPlanInfo(null);
-    }
-  }, []);
-
   // Escape से बंद करें और खुले मेन्यू के पीछे का पन्ना न सरके
   useEffect(() => {
     if (!open) return;
@@ -230,7 +196,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     };
   }, [open]);
 
-  // हर बार मेन्यू खुलने पर ताज़ा सूची, प्लान, और कौन-सी चैट खुली है
+  // हर बार मेन्यू खुलने पर ताज़ा सूची, और कौन-सी चैट खुली है
   useEffect(() => {
     if (!open) return;
     setChatError(null);
@@ -238,8 +204,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     setQuery("");
     setActiveChat(new URLSearchParams(window.location.search).get("chat"));
     void loadChats();
-    void loadPlan();
-  }, [open, loadChats, loadPlan]);
+  }, [open, loadChats]);
 
   if (HIDDEN_PREFIXES.some((p) => matches(pathname, p))) return null;
 
@@ -393,6 +358,12 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               </div>
             </div>
 
+            {/* नई चैट: हमेशा ऊपर दिखे, सूची सरकने पर भी */}
+            <button type="button" className={styles.newBtn} onClick={startNew}>
+              <Icon name="new" size={20} />
+              {LABELS[lang].va.newChat}
+            </button>
+
             {searching && (
               <input
                 className={styles.searchInput}
@@ -404,105 +375,86 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               />
             )}
 
-            <nav className={styles.list} aria-label={t.mainList}>
-              {ITEMS.map((item) => {
-                const active = matches(pathname, item.href);
-                return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    className={`${styles.link} ${active ? styles.active : ""}`}
-                    aria-current={active ? "page" : undefined}
-                    onClick={close}
-                  >
-                    <Icon name={item.icon} />
-                    {t[item.key]}
-                  </Link>
-                );
-              })}
-            </nav>
-
-            {/* पिन की हुई और हाल की बातचीत (लॉग-इन होने पर) — सिर्फ़ यही हिस्सा scroll होता है */}
-            <div className={styles.history}>
-              <p className={styles.sectionTitle}>{t.starred}</p>
-              {historyState === "ok" && !q && pinned.length === 0 && (
-                <p className={styles.empty}>{t.pinHint}</p>
-              )}
-              {pinned.map(chatRow)}
-
-              <p className={styles.sectionTitle}>{t.recent}</p>
-              {historyState === "loading" && <p className={styles.empty}>{t.loading}</p>}
-              {historyState === "login" && (
-                <p className={styles.empty}>
-                  {t.loginPre}
-                  <Link href="/login?next=/voice" onClick={close} style={{ color: "var(--accent)", fontWeight: 600 }}>
-                    {t.loginLink}
-                  </Link>
-                  {t.loginPost}
-                </p>
-              )}
-              {historyState === "error" && (
-                <p className={styles.empty}>
-                  {t.historyError}
-                </p>
-              )}
-              {historyState === "ok" && q && recent.length === 0 && pinned.length === 0 && (
-                <p className={styles.empty}>{t.noMatch}</p>
-              )}
-              {historyState === "ok" && !q && recent.length === 0 && pinned.length === 0 && (
-                <p className={styles.empty}>{t.noChats}</p>
-              )}
-              {GROUP_ORDER.map((g) => {
-                const rows = recent.filter((c) => groupOf(c.updated_at) === g);
-                if (rows.length === 0) return null;
-                return (
-                  <div key={g}>
-                    <p className={styles.sectionTitle} style={{ fontWeight: 500, marginTop: 10 }}>
-                      {t[g]}
-                    </p>
-                    {rows.map(chatRow)}
-                  </div>
-                );
-              })}
-
-              {chatError && (
-                <p role="alert" className={styles.empty} style={{ color: "var(--danger)" }}>
-                  {chatError}
-                </p>
-              )}
-            </div>
-
-            {/* प्लान की पट्टी: footer के ठीक ऊपर, ChatGPT के "Get Plus" की तरह */}
-            {planInfo && (
-              <div className={styles.planStrip}>
-                {planInfo.plan === "free" ? (
-                  <>
-                    <span>
-                      <strong>Free प्लान</strong> · आज चैट बचे: {planInfo.chatsLeft}/{planInfo.freeChats}
-                    </span>
-                    <Link href="/pricing" className={styles.planBtn} onClick={close}>
-                      अपग्रेड
+            <div className={styles.scroll}>
+              <nav className={styles.list} aria-label={t.mainList}>
+                {ITEMS.map((item) => {
+                  const active = matches(pathname, item.href);
+                  return (
+                    <Link
+                      key={item.key}
+                      href={item.href}
+                      className={`${styles.link} ${active ? styles.active : ""}`}
+                      aria-current={active ? "page" : undefined}
+                      onClick={close}
+                    >
+                      <Icon name={item.icon} />
+                      {t[item.key]}
                     </Link>
-                  </>
-                ) : (
-                  <>
-                    <span>
-                      <strong>{PLAN_LABEL[planInfo.plan]} प्लान</strong> · वॉलेट: {formatRupees(planInfo.walletPaise)}
-                    </span>
-                    <Link href="/pricing" className={styles.planBtn} onClick={close}>
-                      प्लान देखें
+                  );
+                })}
+              </nav>
+
+              {/* पिन की हुई और हाल की बातचीत (लॉग-इन होने पर) */}
+              <div className={styles.history}>
+                <p className={styles.sectionTitle}>{t.starred}</p>
+                {historyState === "ok" && !q && pinned.length === 0 && (
+                  <p className={styles.empty}>{t.pinHint}</p>
+                )}
+                {pinned.map(chatRow)}
+
+                <p className={styles.sectionTitle}>{t.recent}</p>
+                {historyState === "loading" && <p className={styles.empty}>{t.loading}</p>}
+                {historyState === "login" && (
+                  <p className={styles.empty}>
+                    {t.loginPre}
+                    <Link href="/login?next=/voice" onClick={close} style={{ color: "var(--accent)", fontWeight: 600 }}>
+                      {t.loginLink}
                     </Link>
-                  </>
+                    {t.loginPost}
+                  </p>
+                )}
+                {historyState === "error" && (
+                  <p className={styles.empty}>
+                    {t.historyError}
+                  </p>
+                )}
+                {historyState === "ok" && q && recent.length === 0 && pinned.length === 0 && (
+                  <p className={styles.empty}>{t.noMatch}</p>
+                )}
+                {historyState === "ok" && !q && recent.length === 0 && pinned.length === 0 && (
+                  <p className={styles.empty}>{t.noChats}</p>
+                )}
+                {GROUP_ORDER.map((g) => {
+                  const rows = recent.filter((c) => groupOf(c.updated_at) === g);
+                  if (rows.length === 0) return null;
+                  return (
+                    <div key={g}>
+                      <p className={styles.sectionTitle} style={{ fontWeight: 500, marginTop: 10 }}>
+                        {t[g]}
+                      </p>
+                      {rows.map(chatRow)}
+                    </div>
+                  );
+                })}
+
+                {chatError && (
+                  <p role="alert" className={styles.empty} style={{ color: "var(--danger)" }}>
+                    {chatError}
+                  </p>
                 )}
               </div>
-            )}
+            </div>
 
-            {/* नीचे: "नया सेशन" बटन, खाता और घंटी। यह पट्टी scroll नहीं होती। */}
+            <div className={styles.themeRow}>
+              <span>{t.theme}</span>
+              <ThemeSwitch
+                label={t.theme}
+                labels={{ system: t.themeAuto, light: t.themeLight, dark: t.themeDark }}
+              />
+            </div>
+
+            {/* नीचे: प्रोफ़ाइल (गोला) और घंटी */}
             <div className={styles.footer}>
-              <button type="button" className={styles.newPill} onClick={startNew}>
-                <Icon name="new" size={20} />
-                {t.create}
-              </button>
               <Link href="/account" className={styles.avatar} aria-label={t.account} onClick={close}>
                 <UserIcon />
               </Link>
