@@ -22,6 +22,13 @@ interface Snapshot {
   live: { used: number; included: number; pricePaise: number };
 }
 
+// Server के error जवाब का रूप (message और code दोनों हो सकते हैं)
+interface ApiError {
+  ok?: boolean;
+  code?: string;
+  message?: string;
+}
+
 // Razorpay checkout: या तो order (wallet top-up) या subscription (मासिक प्लान)
 interface RazorpayOptions {
   key: string;
@@ -40,6 +47,13 @@ interface RazorpayWindow extends Window {
 
 const CHECKOUT_SRC = "https://checkout.razorpay.com/v1/checkout.js";
 const PAID_PLANS: PaidPlan[] = ["starter", "premium", "business"];
+
+// top-up route के कोड का छोटा हिंदी संदेश (route सिर्फ़ code भेजता है)
+const TOPUP_CODE_HI: Record<string, string> = {
+  UNAUTHORIZED: "भुगतान के लिए पहले लॉग-इन करें।",
+  BAD_AMOUNT: "यह रकम मान्य नहीं है।",
+  ORDER_FAILED: "Razorpay पर भुगतान शुरू नहीं हो पाया। थोड़ी देर बाद दोबारा कोशिश करें।",
+};
 
 function loadCheckout(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -111,6 +125,14 @@ export function UpgradeSheet({
     setPendingKey(null);
   }
 
+  // Server का जवाब पढ़ें: message हो तो वही, वरना code का हिंदी, वरना सामान्य संदेश
+  async function readApiError(res: Response): Promise<string> {
+    const data = (await res.json().catch(() => null)) as ApiError | null;
+    if (data?.message) return data.message;
+    if (data?.code && TOPUP_CODE_HI[data.code]) return TOPUP_CODE_HI[data.code];
+    return t.payFail;
+  }
+
   // Razorpay checkout खोलें और handler/ondismiss जोड़ें
   function openRazorpay(options: Omit<RazorpayOptions, "handler" | "modal">): void {
     const Razorpay = (window as RazorpayWindow).Razorpay;
@@ -136,9 +158,19 @@ export function UpgradeSheet({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountPaise }),
       });
+      if (!res.ok) {
+        setMessage(await readApiError(res));
+        return;
+      }
       const data = (await res.json()) as { ok?: boolean; orderId?: string; amountPaise?: number; keyId?: string };
-      if (!res.ok || !data.ok || !data.orderId || !data.keyId) throw new Error("order failed");
-      if (!(await loadCheckout())) throw new Error("script failed");
+      if (!data.ok || !data.orderId || !data.keyId) {
+        setMessage(t.payFail);
+        return;
+      }
+      if (!(await loadCheckout())) {
+        setMessage("Razorpay की स्क्रिप्ट नहीं खुली। इंटरनेट जांचें और दोबारा कोशिश करें।");
+        return;
+      }
       openRazorpay({
         key: data.keyId,
         order_id: data.orderId,
@@ -148,7 +180,7 @@ export function UpgradeSheet({
         description: "वॉलेट में पैसे",
       });
     } catch {
-      setMessage(t.payFail);
+      setMessage("नेटवर्क की गड़बड़ी। दोबारा कोशिश करें।");
     } finally {
       end();
     }
@@ -164,15 +196,21 @@ export function UpgradeSheet({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, cycle: "monthly" }),
       });
+      if (!res.ok) {
+        // server का साफ़ संदेश (जैसे "यह प्लान अभी चालू नहीं हुआ है")
+        setMessage(await readApiError(res));
+        return;
+      }
       const data = (await res.json()) as {
         ok?: boolean;
         subscriptionId?: string;
         keyId?: string;
         checkoutUrl?: string | null;
-        code?: string;
+        message?: string;
       };
-      if (!res.ok || !data.ok || !data.subscriptionId || !data.keyId) {
-        throw new Error(data.code ?? "subscribe failed");
+      if (!data.ok || !data.subscriptionId || !data.keyId) {
+        setMessage(data.message ?? t.payFail);
+        return;
       }
       if (await loadCheckout()) {
         openRazorpay({
@@ -185,10 +223,10 @@ export function UpgradeSheet({
         // स्क्रिप्ट न खुले तो Razorpay के अपने पन्ने पर भेजें
         window.location.href = data.checkoutUrl;
       } else {
-        throw new Error("script failed");
+        setMessage("Razorpay की स्क्रिप्ट नहीं खुली। इंटरनेट जांचें और दोबारा कोशिश करें।");
       }
     } catch {
-      setMessage(t.payFail);
+      setMessage("नेटवर्क की गड़बड़ी। दोबारा कोशिश करें।");
     } finally {
       end();
     }
