@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { clearLocalChatCache } from "@/lib/offline-cache";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Dict } from "@/lib/i18n";
 
@@ -21,6 +22,8 @@ export function AccountActions({ dict }: { dict: Dict }) {
     try {
       const supabase = createSupabaseBrowserClient();
       await supabase.auth.signOut();
+      // फ़ोन में सेव की हुई चैट हटाएं, ताकि अगला व्यक्ति उन्हें न देखे
+      await clearLocalChatCache();
       router.replace("/login");
       router.refresh();
     } catch {
