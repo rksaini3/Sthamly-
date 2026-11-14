@@ -8,6 +8,7 @@ import { LangSwitch } from "@/components/nav/LangSwitch";
 import type { ChatSummary } from "@/lib/chats";
 import type { Lang } from "@/lib/i18n";
 import { LABELS, type Labels } from "@/lib/labels";
+import { forgetChatCache, loadChatList, saveChatList } from "@/lib/offline-cache";
 
 // ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन, कानूनी पन्ने और पूरी स्क्रीन वाला लाइव कैमरा)
 const HIDDEN_PREFIXES = ["/login", "/auth", "/privacy", "/terms", "/live"] as const;
@@ -30,7 +31,8 @@ type IconName =
   | "pencil"
   | "live"
   | "search"
-  | "globe";
+  | "globe"
+  | "share";
 
 // साइडबार में केवल ज़रूरी चीज़ें; बाकी प्रोफ़ाइल पर हैं
 type ItemKey = "live" | "gallery" | "saved" | "notes";
@@ -87,6 +89,7 @@ const PATHS: Record<IconName, string[]> = {
   plugins: ["M9 3v4M15 3v4", "M6 7h12v4a6 6 0 01-12 0z", "M12 17v4"],
   search: ["M11 4a7 7 0 100 14 7 7 0 000-14z", "M20 20l-4-4"],
   globe: ["M12 3a9 9 0 100 18 9 9 0 000-18z", "M3 12h18", "M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"],
+  share: ["M12 15V3", "M8 7l4-4 4 4", "M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"],
   staff: ["M16 11a3 3 0 100-6 3 3 0 000 6z", "M8 12a3 3 0 100-6 3 3 0 000 6z", "M2 20c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5", "M14.5 15.7c.5-.2 1-.2 1.5-.2 2.8 0 5.2 1.5 6 4.5"],
   pencil: ["M4 20l1-4L17 4l3 3L8 19z"],
   live: ["M3 7a2 2 0 012-2h9a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z", "M16 10l5-3v10l-5-3"],
@@ -120,6 +123,14 @@ function MenuIcon() {
   );
 }
 
+function CloseIcon() {
+  return (
+    <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
 function UserIcon() {
   return (
     <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -143,6 +154,8 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
   const [query, setQuery] = useState("");
   // इतिहास का हिस्सा हमेशा दिखे: लोड हो रहा / लॉग-इन चाहिए / गड़बड़ / ठीक
   const [historyState, setHistoryState] = useState<"loading" | "login" | "error" | "ok">("loading");
+  // किस बातचीत का "⋯" विकल्प-पटल खुला है
+  const [sheetFor, setSheetFor] = useState<string | null>(null);
 
   const loadChats = useCallback(async () => {
     try {
@@ -152,18 +165,16 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
         setHistoryState("login");
         return;
       }
-      if (!res.ok) {
-        setChats(null);
-        setHistoryState("error");
-        return;
-      }
+      if (!res.ok) throw new Error("chats failed");
       const data = (await res.json()) as { chats: ChatSummary[] };
       setChats(data.chats);
+      saveChatList(data.chats);
       setHistoryState("ok");
     } catch {
-      // इतिहास न आए तो भी बाकी मेन्यू चले
-      setChats(null);
-      setHistoryState("error");
+      // इंटरनेट नहीं: फ़ोन में सेव की हुई आख़िरी सूची दिखाएं
+      const saved = loadChatList<ChatSummary>();
+      setChats(saved);
+      setHistoryState(saved ? "ok" : "error");
     }
   }, []);
 
@@ -240,13 +251,36 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     }
   }
 
+  // साझा करना: फ़ोन का share मेन्यू, वरना लिंक कॉपी
+  async function shareChat(chat: ChatSummary) {
+    const url = `${window.location.origin}/voice?chat=${chat.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: chat.title, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+      }
+    } catch {
+      // उपयोगकर्ता ने बंद किया या कॉपी नहीं हुआ, कुछ नहीं करना
+    }
+  }
+
   async function removeChat(chat: ChatSummary) {
     if (!window.confirm(t.removeConfirm)) return;
     setChatError(null);
     try {
       const res = await fetch(`/api/chats/${chat.id}`, { method: "DELETE" });
-      if (!res.ok && res.status !== 404) throw new Error("delete failed");
-      setChats((list) => list?.filter((c) => c.id !== chat.id) ?? list);
+      // सिर्फ़ सर्वर से साफ़ "हट गई" (JSON) आए तभी स्क्रीन से हटाएं।
+      // पन्ना न मिले (404 HTML) तो गड़बड़ है, वरना चैट फिर से आ जाएगी।
+      const isJson = (res.headers.get("content-type") ?? "").includes("application/json");
+      const gone = res.ok || (res.status === 404 && isJson);
+      if (!gone) throw new Error("delete failed");
+      forgetChatCache(chat.id);
+      setChats((list) => {
+        const next = list?.filter((c) => c.id !== chat.id) ?? list;
+        if (next) saveChatList(next);
+        return next;
+      });
       // जो चैट अभी खुली है वही हटी तो खाली नई चैट खोलें
       if (activeChat === chat.id) startNew();
     } catch {
@@ -268,28 +302,16 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
         </Link>
         <button
           type="button"
-          className={`${styles.chatAct} ${chat.pinned ? styles.pinnedOn : ""}`}
-          aria-label={chat.pinned ? t.unpin : t.pin}
-          aria-pressed={chat.pinned}
-          onClick={() => void togglePin(chat)}
-        >
-          <Icon name="pin" size={18} />
-        </button>
-        <button
-          type="button"
           className={styles.chatAct}
-          aria-label={t.rename}
-          onClick={() => void renameChat(chat)}
+          aria-label="और विकल्प"
+          aria-haspopup="menu"
+          onClick={() => setSheetFor(chat.id)}
         >
-          <Icon name="pencil" size={18} />
-        </button>
-        <button
-          type="button"
-          className={styles.chatAct}
-          aria-label={t.remove}
-          onClick={() => void removeChat(chat)}
-        >
-          <Icon name="trash" size={18} />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <circle cx="5" cy="12" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="19" cy="12" r="1.8" />
+          </svg>
         </button>
       </div>
     );
@@ -299,6 +321,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
   const shown = q ? (chats ?? []).filter((c) => c.title.toLowerCase().includes(q)) : (chats ?? []);
   const pinned = shown.filter((c) => c.pinned);
   const recent = shown.filter((c) => !c.pinned);
+  const sheetChat = (chats ?? []).find((c) => c.id === sheetFor) ?? null;
 
   return (
     <>
@@ -438,6 +461,67 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
                 <UserIcon />
               </Link>
             </div>
+
+            {sheetChat && (
+              <>
+                <div className={styles.sheetScrim} onClick={() => setSheetFor(null)} />
+                <div className={styles.sheet} role="menu" aria-label={sheetChat.title}>
+                  <p className={styles.sheetTitle}>{sheetChat.title}</p>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.sheetItem}
+                    onClick={() => {
+                      const c = sheetChat;
+                      setSheetFor(null);
+                      void togglePin(c);
+                    }}
+                  >
+                    <Icon name="pin" size={20} />
+                    {sheetChat.pinned ? t.unpin : t.pin}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.sheetItem}
+                    onClick={() => {
+                      const c = sheetChat;
+                      setSheetFor(null);
+                      void renameChat(c);
+                    }}
+                  >
+                    <Icon name="pencil" size={20} />
+                    {t.rename}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={styles.sheetItem}
+                    onClick={() => {
+                      const c = sheetChat;
+                      setSheetFor(null);
+                      void shareChat(c);
+                    }}
+                  >
+                    <Icon name="share" size={20} />
+                    साझा करें
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={`${styles.sheetItem} ${styles.sheetDanger}`}
+                    onClick={() => {
+                      const c = sheetChat;
+                      setSheetFor(null);
+                      void removeChat(c);
+                    }}
+                  >
+                    <Icon name="trash" size={20} />
+                    {t.remove}
+                  </button>
+                </div>
+              </>
+            )}
           </aside>
         </div>
       )}
