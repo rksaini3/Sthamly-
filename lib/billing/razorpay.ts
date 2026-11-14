@@ -67,6 +67,21 @@ export async function createTopupOrder(input: {
   });
 }
 
+/**
+ * Order पढ़ें (उसके notes समेत)। Webhook में payment पर notes अक्सर नहीं आते,
+ * इसलिए top-up की पहचान order से होती है।
+ */
+export async function fetchOrder(orderId: string): Promise<{ id: string; notes?: Record<string, string> }> {
+  const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderId)}`, {
+    headers: { Authorization: authHeader() },
+  });
+  const json = (await res.json().catch(() => null)) as { id?: string; notes?: Record<string, string> } | null;
+  if (!res.ok || !json?.id) {
+    throw new Error(`Razorpay order fetch failed: ${res.status}`);
+  }
+  return { id: json.id, notes: json.notes };
+}
+
 export interface RazorpaySubscription {
   id: string;
   status: string;
