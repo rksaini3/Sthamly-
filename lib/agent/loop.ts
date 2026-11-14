@@ -70,8 +70,9 @@ function clip(text: string): string {
 async function askModel(prompt: string): Promise<string> {
   const provider = getAIProvider();
   const result = await provider.generateText({ prompt, maxTokens: 500 });
+  // logCost का step union में "agent" नहीं है, इसलिए "other" लिखते हैं और model में पहचान रखते हैं
   await logCost({
-    step: "agent",
+    step: "other",
     provider: provider.name,
     model: "agent",
     costPaise: result.costPaise,
