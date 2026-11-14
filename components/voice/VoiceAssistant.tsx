@@ -287,6 +287,7 @@ export function VoiceAssistant({
   lang = "hi",
   initialThreadId = null,
   initialMessages = [],
+  initialActions = [],
 }: {
   name: string;
   loggedIn: boolean;
@@ -294,6 +295,8 @@ export function VoiceAssistant({
   lang?: Lang;
   initialThreadId?: string | null;
   initialMessages?: InitialMessage[];
+  // reload के बाद भी मंज़ूरी के इंतज़ार वाले काम (सर्वर से)
+  initialActions?: ActionCardData[];
 }) {
   const router = useRouter();
   const t = LABELS[lang].va;
@@ -302,6 +305,8 @@ export function VoiceAssistant({
   const [messages, setMessages] = useState<Message[]>(() =>
     initialMessages.map((m, i) => ({ id: i + 1, role: m.role, text: m.text })),
   );
+  // reload पर मिले पेंडिंग काम: मंज़ूरी या रद्द होने पर इस सूची से हट जाते हैं
+  const [pendingActions, setPendingActions] = useState<ActionCardData[]>(initialActions);
   const [threadId, setThreadId] = useState<string | null>(initialThreadId);
   const [busy, setBusy] = useState<Busy>("idle");
   const [recording, setRecording] = useState(false);
@@ -338,6 +343,12 @@ export function VoiceAssistant({
     setMessages((prev) => [...prev, { id: newId(), role: "assistant", text }]);
   }
 
+  // मंज़ूरी का फ़ैसला हो गया: उस काम को पेंडिंग सूची से हटाएं और नतीजा चैट में लिखें
+  function decidePending(actionId: string, text: string) {
+    setPendingActions((prev) => prev.filter((a) => a.id !== actionId));
+    addBotNote(text);
+  }
+
   // इंटरनेट न हो और URL में ?chat= हो, तो उस बातचीत की फ़ोन में सेव की हुई कॉपी दिखाएं
   useEffect(() => {
     const urlChat = new URLSearchParams(window.location.search).get("chat");
@@ -363,6 +374,7 @@ export function VoiceAssistant({
   function startNewChat() {
     if (recording) return;
     setMessages([]);
+    setPendingActions([]);
     setThreadId(null);
     setDraft("");
     setError(null);
@@ -472,6 +484,7 @@ export function VoiceAssistant({
     const at = messages.findIndex((m) => m.id === id);
     if (at < 0) return;
     setMessages(messages.slice(0, at + 1));
+    setPendingActions([]);
     setThreadId(null);
     setDraft("");
     setError(null);
@@ -882,6 +895,20 @@ export function VoiceAssistant({
             </div>
           );
         })}
+
+        {/* reload के बाद बचे पेंडिंग काम: इतिहास से वापस आए, उसी तरह मंज़ूरी माँगते हुए */}
+        {pendingActions.length > 0 && (
+          <div className={styles.bubbleBot}>
+            {pendingActions.map((a) => (
+              <AgentActionCard
+                key={a.id}
+                action={a}
+                lang={lang}
+                onDecided={(text) => decidePending(a.id, text)}
+              />
+            ))}
+          </div>
+        )}
 
         <div ref={endRef} />
       </section>
