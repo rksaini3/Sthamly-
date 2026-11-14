@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useCallback, useState } from "react";
+import { UpgradeSheet } from "@/components/billing/UpgradeSheet";
 import {
   FIRST_TOPUP_BONUS_MIN_PAISE,
   FIRST_TOPUP_BONUS_PERCENT,
@@ -35,6 +39,10 @@ function priceText(plan: PricingPlan): string {
 }
 
 export default function PricingPage() {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const openSheet = useCallback(() => setSheetOpen(true), []);
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
+
   return (
     <main className="page stack">
       <h1 style={{ margin: 0 }}>प्लान और वॉलेट</h1>
@@ -42,19 +50,22 @@ export default function PricingPage() {
         मुफ़्त में शुरू करें। ज़रूरत हो तो प्लान लें या वॉलेट में पैसे डालें।
       </p>
 
-      {ORDER.map((plan) => {
-        return (
-          <section key={plan} className="card stack" style={{ gap: 8 }}>
-            <strong style={{ fontSize: "1.1rem" }}>{PLAN_LABEL[plan]}</strong>
-            <p style={{ margin: 0, fontWeight: 700 }}>{priceText(plan)}</p>
-            <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-              {PLAN_POINTS[plan].map((point) => (
-                <li key={point}>{point}</li>
-              ))}
-            </ul>
-          </section>
-        );
-      })}
+      {ORDER.map((plan) => (
+        <section key={plan} className="card stack" style={{ gap: 8 }}>
+          <strong style={{ fontSize: "1.1rem" }}>{PLAN_LABEL[plan]}</strong>
+          <p style={{ margin: 0, fontWeight: 700 }}>{priceText(plan)}</p>
+          <ul className="muted" style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+            {PLAN_POINTS[plan].map((point) => (
+              <li key={point}>{point}</li>
+            ))}
+          </ul>
+          {plan !== "free" && (
+            <button type="button" className="btn btn-block" onClick={openSheet}>
+              {PLAN_LABEL[plan]} प्लान लें
+            </button>
+          )}
+        </section>
+      ))}
 
       <section className="card stack" style={{ gap: 8 }}>
         <strong>वॉलेट से एक-एक काम</strong>
@@ -68,17 +79,24 @@ export default function PricingPage() {
         <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
           पहली बार {formatRupees(FIRST_TOPUP_BONUS_MIN_PAISE)} या उससे ज़्यादा डालने पर {FIRST_TOPUP_BONUS_PERCENT}% बोनस।
         </p>
+        <button type="button" className="btn btn-block" onClick={openSheet}>
+          वॉलेट में पैसे डालें
+        </button>
       </section>
 
-      <div className="card">
-        <p className="muted" style={{ margin: 0 }}>
-          ऑनलाइन भुगतान अभी शुरू नहीं हुआ है। जल्द ही यहीं से प्लान लिया और वॉलेट भरा जा सकेगा।
-        </p>
-      </div>
+      <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
+        भुगतान के लिए पहले{" "}
+        <Link href="/login?next=/pricing" style={{ color: "var(--accent)", fontWeight: 600 }}>
+          लॉग-इन करें
+        </Link>
+        ।
+      </p>
 
       <Link href="/my-posters" className="btn btn-block">
         मेरे बनाए पर वापस
       </Link>
+
+      <UpgradeSheet open={sheetOpen} onClose={closeSheet} lang="hi" limitReached={false} />
     </main>
   );
 }
