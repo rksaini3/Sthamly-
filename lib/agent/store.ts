@@ -1,3 +1,4 @@
+import type { Json } from "@/types/database";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 // ---- Types ----
@@ -34,6 +35,11 @@ export interface AgentAction {
 }
 
 // ---- Helpers ----
+
+// app का डेटा (जो JSON-सुरक्षित है) को database के Json type में रखें
+function asJson(value: unknown): Json {
+  return value as Json;
+}
 
 // DB की row (snake_case) को app के रूप (camelCase) में बदलें
 function toRun(row: {
@@ -130,7 +136,7 @@ export async function appendStep(input: {
   const { error } = await admin
     .from("agent_runs")
     .update({
-      steps,
+      steps: asJson(steps),
       step_count: steps.length,
       updated_at: new Date().toISOString(),
     })
@@ -173,7 +179,7 @@ export async function createAction(input: {
       run_id: input.runId,
       user_id: input.userId,
       tool: input.tool,
-      args: input.args,
+      args: asJson(input.args),
       summary: input.summary.slice(0, 300),
       status: "pending",
     })
@@ -214,7 +220,7 @@ export async function moveAction(input: {
     .from("agent_actions")
     .update({
       status: input.to,
-      result: input.result ?? null,
+      result: input.result ? asJson(input.result) : null,
       decided_at: new Date().toISOString(),
     })
     .eq("id", input.actionId)
