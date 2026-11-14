@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "@/components/billing/UpgradeSheet.module.css";
 import type { Lang } from "@/lib/i18n";
@@ -22,12 +22,15 @@ interface Snapshot {
   live: { used: number; included: number; pricePaise: number };
 }
 
+// Razorpay checkout: या तो order (wallet top-up) या subscription (मासिक प्लान)
 interface RazorpayOptions {
   key: string;
-  order_id: string;
-  amount: number;
-  currency: string;
   name: string;
+  order_id?: string;
+  subscription_id?: string;
+  amount?: number;
+  currency?: string;
+  description?: string;
   handler: () => void;
   modal?: { ondismiss?: () => void };
 }
@@ -65,7 +68,10 @@ export function UpgradeSheet({
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "login" | "error">("loading");
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // कौन सा बटन चल रहा है (जैसे "topup-50" या "plan-starter"). सिर्फ़ वही बटन बदलता है।
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  // दोबारा दबाने से दो checkout न खुलें (state से पहले ही रोकता है)
+  const busyRef = useRef(false);
 
   async function load() {
     setState("loading");
@@ -91,9 +97,39 @@ export function UpgradeSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  async function topup(amountPaise: number) {
-    setBusy(true);
+  // एक समय में एक ही भुगतान शुरू हो सकता है
+  function begin(key: string): boolean {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setPendingKey(key);
     setMessage(t.opening);
+    return true;
+  }
+
+  function end() {
+    busyRef.current = false;
+    setPendingKey(null);
+  }
+
+  // Razorpay checkout खोलें और handler/ondismiss जोड़ें
+  function openRazorpay(options: Omit<RazorpayOptions, "handler" | "modal">): void {
+    const Razorpay = (window as RazorpayWindow).Razorpay;
+    if (!Razorpay) throw new Error("no razorpay");
+    new Razorpay({
+      ...options,
+      handler: () => {
+        setMessage(t.paid);
+        // पैसा और प्लान webhook से आते हैं, इसलिए थोड़ी देर बाद ताज़ा करें
+        setTimeout(() => void load(), 3500);
+      },
+      modal: { ondismiss: () => setMessage(null) },
+    }).open();
+  }
+
+  // वॉलेट में पैसे डालना: order बनता है, फिर checkout
+  async function topup(amountPaise: number) {
+    const key = `topup-${amountPaise}`;
+    if (!begin(key)) return;
     try {
       const res = await fetch("/api/billing/topup", {
         method: "POST",
@@ -103,43 +139,58 @@ export function UpgradeSheet({
       const data = (await res.json()) as { ok?: boolean; orderId?: string; amountPaise?: number; keyId?: string };
       if (!res.ok || !data.ok || !data.orderId || !data.keyId) throw new Error("order failed");
       if (!(await loadCheckout())) throw new Error("script failed");
-      const Razorpay = (window as RazorpayWindow).Razorpay;
-      if (!Razorpay) throw new Error("no razorpay");
-      new Razorpay({
+      openRazorpay({
         key: data.keyId,
         order_id: data.orderId,
         amount: data.amountPaise ?? amountPaise,
         currency: "INR",
         name: "Sthamly",
-        handler: () => {
-          setMessage(t.paid);
-          // पैसा webhook से आता है, इसलिए थोड़ी देर बाद ताज़ा करें
-          setTimeout(() => void load(), 3500);
-        },
-        modal: { ondismiss: () => setMessage(null) },
-      }).open();
+        description: "वॉलेट में पैसे",
+      });
     } catch {
       setMessage(t.payFail);
     } finally {
-      setBusy(false);
+      end();
     }
   }
 
+  // मासिक प्लान: subscription बनता है, फिर Razorpay checkout उसी subscription के साथ खुलता है
   async function subscribe(plan: PaidPlan) {
-    setBusy(true);
-    setMessage(t.opening);
+    const key = `plan-${plan}`;
+    if (!begin(key)) return;
     try {
       const res = await fetch("/api/billing/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan, cycle: "monthly" }),
       });
-      const data = (await res.json()) as { ok?: boolean; checkoutUrl?: string | null };
-      if (!res.ok || !data.ok || !data.checkoutUrl) throw new Error("subscribe failed");
-      window.location.href = data.checkoutUrl;
+      const data = (await res.json()) as {
+        ok?: boolean;
+        subscriptionId?: string;
+        keyId?: string;
+        checkoutUrl?: string | null;
+        code?: string;
+      };
+      if (!res.ok || !data.ok || !data.subscriptionId || !data.keyId) {
+        throw new Error(data.code ?? "subscribe failed");
+      }
+      if (await loadCheckout()) {
+        openRazorpay({
+          key: data.keyId,
+          subscription_id: data.subscriptionId,
+          name: "Sthamly",
+          description: `${PLAN_LABEL[plan]} प्लान (मासिक)`,
+        });
+      } else if (data.checkoutUrl) {
+        // स्क्रिप्ट न खुले तो Razorpay के अपने पन्ने पर भेजें
+        window.location.href = data.checkoutUrl;
+      } else {
+        throw new Error("script failed");
+      }
     } catch {
       setMessage(t.payFail);
-      setBusy(false);
+    } finally {
+      end();
     }
   }
 
@@ -201,11 +252,21 @@ export function UpgradeSheet({
               <strong>{t.topupTitle}</strong>
               <p className={styles.small}>{t.topupSub}</p>
               <div className={styles.chips}>
-                {TOPUP_PRESETS_PAISE.map((paise) => (
-                  <button key={paise} type="button" className={styles.chip} disabled={busy} onClick={() => void topup(paise)}>
-                    {formatRupees(paise)}
-                  </button>
-                ))}
+                {TOPUP_PRESETS_PAISE.map((paise) => {
+                  const key = `topup-${paise}`;
+                  const running = pendingKey === key;
+                  return (
+                    <button
+                      key={paise}
+                      type="button"
+                      className={styles.chip}
+                      aria-busy={running}
+                      onClick={() => void topup(paise)}
+                    >
+                      {running ? "…" : formatRupees(paise)}
+                    </button>
+                  );
+                })}
               </div>
               <p className={styles.small}>{t.bonus.replace("₹100", formatRupees(FIRST_TOPUP_BONUS_MIN_PAISE))}</p>
             </section>
@@ -215,6 +276,7 @@ export function UpgradeSheet({
               {PAID_PLANS.map((plan) => {
                 const inc = INCLUDED_PER_DAY[plan];
                 const current = snap.plan === plan;
+                const running = pendingKey === `plan-${plan}`;
                 return (
                   <div key={plan} className={styles.plan}>
                     <div>
@@ -229,10 +291,11 @@ export function UpgradeSheet({
                     <button
                       type="button"
                       className={styles.planBtn}
-                      disabled={busy || current}
+                      aria-busy={running}
+                      disabled={current}
                       onClick={() => void subscribe(plan)}
                     >
-                      {current ? t.current : t.take}
+                      {current ? t.current : running ? "…" : t.take}
                     </button>
                   </div>
                 );
