@@ -1,11 +1,12 @@
 import { logCost } from "@/lib/cost";
-import { getServerEnv } from "@/lib/env";
 import type { Lang } from "@/lib/i18n";
 
 // लाइव कैमरा: कैमरे की एक तस्वीर और दुकानदार का सवाल मिलाकर जवाब।
-// Groq के vision model से (वही GROQ_API_KEY)। मॉडल बदलना हो तो GROQ_VISION_MODEL सेट करें।
-const BASE_URL = "https://api.groq.com/openai/v1";
-const DEFAULT_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+// Gemini के generateContent से (वही GEMINI_API_KEY जो लाइव के लिए पहले से है)।
+// Groq का vision model बंद हो चुका है, इसलिए उसे हटाया गया है।
+// मॉडल बदलना हो तो GEMINI_VISION_MODEL सेट करें।
+const BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_VISION_MODEL = "gemini-2.5-flash";
 const TIMEOUT_MS = 30_000;
 // अंदाज़ा: एक तस्वीर वाले सवाल का खर्च (paise)। असली हिसाब मिलने पर यहाँ सुधारें।
 const COST_PER_ASK_PAISE = 30;
@@ -37,8 +38,12 @@ const SYSTEM_EN = [
   "If asked your name, say you are Sthamly. Do not call yourself an assistant or name any AI model.",
 ].join("\n");
 
-interface ChatResponse {
-  choices?: { message?: { content?: string | null } }[];
+interface GeminiPart {
+  text?: string;
+}
+interface GeminiResponse {
+  candidates?: { content?: { parts?: GeminiPart[] } }[];
+  promptFeedback?: { blockReason?: string };
 }
 
 export async function askAboutImage(input: {
@@ -47,28 +52,40 @@ export async function askAboutImage(input: {
   history: LiveTurn[];
   lang: Lang;
 }): Promise<string> {
-  const { GROQ_API_KEY } = getServerEnv();
-  if (!GROQ_API_KEY) throw new Error("GROQ_API_KEY सेट नहीं है");
-  const model = process.env.GROQ_VISION_MODEL ?? DEFAULT_VISION_MODEL;
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY सेट नहीं है");
+  const model = process.env.GEMINI_VISION_MODEL ?? DEFAULT_VISION_MODEL;
 
-  const res = await fetch(`${BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${GROQ_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      max_tokens: 300,
-      temperature: 0.4,
-      messages: [
-        { role: "system", content: input.lang === "en" ? SYSTEM_EN : SYSTEM_HI },
-        ...input.history.map((h) => ({ role: h.role, content: h.content })),
-        {
-          role: "user",
-          content: [
-            { type: "text", text: input.text },
-            { type: "image_url", image_url: { url: input.imageDataUrl } },
-          ],
-        },
+  // data:image/jpeg;base64,XXXX से base64 हिस्सा निकालें (route पहले ही jpeg होना जांच चुका है)
+  const match = /^data:image\/jpeg;base64,(.+)$/.exec(input.imageDataUrl);
+  if (!match) throw new Error("तस्वीर का फ़ॉर्मेट सही नहीं है");
+  const imageBase64 = match[1];
+
+  // Gemini में बातचीत के रोल "user" और "model" होते हैं
+  const contents = [
+    ...input.history.map((h) => ({
+      role: h.role === "assistant" ? "model" : "user",
+      parts: [{ text: h.content }],
+    })),
+    {
+      role: "user",
+      parts: [
+        { text: input.text },
+        { inline_data: { mime_type: "image/jpeg", data: imageBase64 } },
       ],
+    },
+  ];
+
+  const res = await fetch(`${BASE_URL}/${model}:generateContent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: input.lang === "en" ? SYSTEM_EN : SYSTEM_HI }] },
+      contents,
+      generationConfig: { maxOutputTokens: 300, temperature: 0.4 },
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
@@ -78,10 +95,17 @@ export async function askAboutImage(input: {
     throw new Error(`vision request failed (${res.status}) ${detail.slice(0, 200)}`);
   }
 
-  const data = (await res.json()) as ChatResponse;
-  const reply = (data.choices?.[0]?.message?.content ?? "").trim();
+  const data = (await res.json()) as GeminiResponse;
+  if (data.promptFeedback?.blockReason) {
+    throw new Error(`vision blocked: ${data.promptFeedback.blockReason}`);
+  }
 
-  await logCost({ step: "other", provider: "groq", model, costPaise: COST_PER_ASK_PAISE, meta: { feature: "live" } });
+  const reply = (data.candidates?.[0]?.content?.parts ?? [])
+    .map((p) => p.text ?? "")
+    .join("")
+    .trim();
+
+  await logCost({ step: "other", provider: "gemini", model, costPaise: COST_PER_ASK_PAISE, meta: { feature: "live" } });
 
   return reply.replace(/^(Sthamly|असिस्टेंट|Assistant):\s*/, "");
 }
