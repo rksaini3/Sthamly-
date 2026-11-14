@@ -18,6 +18,11 @@ export const ROLE_INFO: Record<Role, { label: string; hint: string; live: boolea
     hint: "कैप्शन और hashtags",
     live: false,
   },
+  lawyer: {
+    label: "वकील",
+    hint: "कानूनी मसौदे और नोटिस (जल्द आएगा, अभी कानूनी सुरक्षा तैयार हो रही है)",
+    live: false,
+  },
   finance: {
     label: "फ़ाइनेंस शिक्षा (एडमिन)",
     hint: "शेयर और कंपनी विश्लेषण। केवल टीम के लिए, निजी।",
