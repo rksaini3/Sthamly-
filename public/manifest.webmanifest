@@ -1,9 +1,9 @@
 {
-  "id": "/feed",
+  "id": "/voice",
   "name": "Sthamly",
   "short_name": "Sthamly",
   "description": "दुकान की फोटो भेजें, रील और पोस्टर पाएं।",
-  "start_url": "/feed",
+  "start_url": "/voice",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
