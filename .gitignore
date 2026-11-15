@@ -1,7 +1,24 @@
+# dependencies और build
 node_modules
 .next
-next-env.d.ts
+out
 *.tsbuildinfo
+next-env.d.ts
+
+# secrets: कभी commit न हों
 .env
-.env.local
-dist
+.env.*
+!.env.example
+
+# Vercel और tooling
+.vercel
+coverage
+
+# logs और OS की फ़ाइलें
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# certificates और keys
+*.pem
