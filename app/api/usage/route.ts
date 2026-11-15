@@ -1,24 +1,36 @@
-import { NextResponse } from "next/server";
-import { getUsageSnapshot } from "@/lib/usage";
+import { NextResponse, type NextRequest } from "next/server";
+import { preflight, withCors } from "@/lib/cors";
+import { userFromBearer } from "@/lib/mobile-auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getWalletBalancePaise } from "@/lib/wallet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// आज का इस्तेमाल, प्लान और वॉलेट। "बढ़ाएँ" वाली शीट इसी से भरती है।
-export async function GET() {
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
+export async function OPTIONS(req: NextRequest) {
+  return preflight(req.headers.get("origin"));
+}
+
+export async function GET(req: NextRequest) {
+  const origin = req.headers.get("origin");
+
+  // पहले APK वाला रास्ता (Bearer), फिर web वाला (cookie)
+  let userId: string | null = (await userFromBearer(req))?.id ?? null;
+  if (!userId) {
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    userId = user?.id ?? null;
   }
-  try {
-    return NextResponse.json(await getUsageSnapshot(user.id));
-  } catch (error) {
-    // टेबल (0028) न बनी हो तो भी ऐप न रुके
-    console.error("usage snapshot failed", error);
-    return NextResponse.json({ error: { code: "USAGE_FAILED", message: "हिसाब अभी नहीं खुल पाया" } }, { status: 502 });
+
+  if (!userId) {
+    return withCors(
+      NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 }),
+      origin,
+    );
   }
+
+  const balancePaise = await getWalletBalancePaise(userId);
+  return withCors(NextResponse.json({ walletPaise: balancePaise }), origin);
 }
