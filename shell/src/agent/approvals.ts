@@ -74,7 +74,13 @@ export async function createApproval(
   const now = new Date();
   await store.run(
     "INSERT INTO approvals (kind, summary, payload, status, created_at, expires_at) VALUES (?, ?, ?, 'pending', ?, ?)",
-    [kind, summary.slice(0, 200), JSON.stringify(payload), now.toISOString(), new Date(now.getTime() + TTL_MS).toISOString()],
+    [
+      kind,
+      summary.slice(0, 200),
+      JSON.stringify(payload),
+      now.toISOString(),
+      new Date(now.getTime() + TTL_MS).toISOString(),
+    ],
   );
   const [row] = await store.query<{ id: number }>("SELECT last_insert_rowid() AS id");
   if (!row) throw new Error("मंज़ूरी का id नहीं मिला");
@@ -132,9 +138,9 @@ export async function decideApproval(store: Store, id: number, decision: "approv
       await setStatus(store, id, "done");
       return { ok: true, message: "हिसाब में दर्ज हो गया" };
     }
-    // poster: यहाँ सिर्फ़ मंज़ूरी है। बनाना और शेयर करना "पोस्टर" tab में, आपके हाथ से।
+    // poster: यहाँ सिर्फ़ मंज़ूरी है। बनाना और शेयर करना “पोस्टर” tab में, आपके हाथ से।
     await setStatus(store, id, "done");
-    return { ok: true, message: "पोस्टर की मंज़ूरी हो गई। "पोस्टर" tab में जाकर बनाएं और शेयर करें।" };
+    return { ok: true, message: "पोस्टर की मंज़ूरी हो गई। “पोस्टर” tab में जाकर बनाएं और शेयर करें।" };
   } catch (error) {
     await setStatus(store, id, "failed");
     return { ok: false, message: `नहीं हो पाया: ${String(error)}` };
