@@ -19,8 +19,12 @@ import type { Role } from "@/types/domain";
 
 // एक run में अधिकतम कदम (model की हर पुकार एक कदम है, गलत जवाब भी)
 const MAX_STEPS = 6;
-// tool का नतीजा model को भेजने से पहले छोटा किया जाता है
-const MAX_TOOL_TEXT = 400;
+// एक run में वेब खोज की सीमा (हर खोज का खर्च चैट से कई गुना है)
+const MAX_SEARCHES_PER_RUN = 1;
+// tool का नतीजा model को दिखाने के लिए (खोज का जवाब लंबा होता है)
+const MAX_OBSERVATION_TEXT = 900;
+// चैट में दिखने वाली और सेव होने वाली कदम की लाइन
+const MAX_VIEW_TEXT = 400;
 
 // ---- Types ----
 
@@ -62,8 +66,8 @@ function pick(lang: Lang, hi: string, en: string): string {
   return lang === "en" ? en : hi;
 }
 
-function clip(text: string): string {
-  return text.length > MAX_TOOL_TEXT ? `${text.slice(0, MAX_TOOL_TEXT)}…` : text;
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
 // model को एक बार पूछें और खर्च दर्ज करें
@@ -102,7 +106,13 @@ export async function runAgent(input: {
   const pack = packFor(role);
   const toolNames = allowedToolNames(role);
   const allowed = new Set(toolNames);
-  const ctx: AgentContext = { userId, threadId: input.threadId, lang };
+  // searchesLeft को tools घटाते हैं, इसलिए यह एक ही object पूरे run में चलता है
+  const ctx: AgentContext = {
+    userId,
+    threadId: input.threadId,
+    lang,
+    searchesLeft: MAX_SEARCHES_PER_RUN,
+  };
 
   // पुराने, समय निकल चुके मंज़ूरी-अनुरोध बंद करें (ये सहायक काम है, न हो तो भी चलेगा)
   try {
@@ -228,11 +238,13 @@ export async function runAgent(input: {
       result = { ok: false, message: pick(lang, "काम में गड़बड़ हुई", "Something went wrong") };
     }
 
-    const text = clip(result.ok ? result.text : result.message);
+    const full = result.ok ? result.text : result.message;
+    // चैट और रिकॉर्ड के लिए छोटा, model के लिए लंबा
+    const viewText = clip(full, MAX_VIEW_TEXT);
     const step: RunStep = {
       tool: tool.name,
       args: cleanArgs,
-      resultSummary: text,
+      resultSummary: viewText,
       at: new Date().toISOString(),
     };
 
@@ -243,8 +255,8 @@ export async function runAgent(input: {
       console.error("agent: step save failed", error);
     }
     steps.push(step);
-    views.push({ tool: tool.name, text });
-    observations.push(`${tool.name}: ${text}`);
+    views.push({ tool: tool.name, text: viewText });
+    observations.push(`${tool.name}: ${clip(full, MAX_OBSERVATION_TEXT)}`);
   }
 
   // सीमा तक पहुंच गए, और अंतिम जवाब नहीं मिला
