@@ -2,7 +2,7 @@ import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from "@cap
 import { Capacitor } from "@capacitor/core";
 
 const DB_NAME = "sthamly";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 // Android पर असली SQLite चल रहा है या नहीं (browser में नहीं)
 export const IS_NATIVE = Capacitor.isNativePlatform();
@@ -36,6 +36,20 @@ const MIGRATIONS: string[][] = [
      )`,
     `CREATE INDEX IF NOT EXISTS entries_party_idx ON entries(party_id)`,
   ],
+  // v2 -> v3: मंज़ूरी (हर paisa या public काम पहले यहाँ आता है)
+  [
+    `CREATE TABLE IF NOT EXISTS approvals (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       kind TEXT NOT NULL CHECK (kind IN ('ledger_entry', 'poster')),
+       summary TEXT NOT NULL,
+       payload TEXT NOT NULL,
+       status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'expired', 'done', 'failed')),
+       created_at TEXT NOT NULL,
+       expires_at TEXT NOT NULL,
+       decided_at TEXT
+     )`,
+    `CREATE INDEX IF NOT EXISTS approvals_status_idx ON approvals(status)`,
+  ],
 ];
 
 export interface Store {
@@ -44,7 +58,7 @@ export interface Store {
 }
 
 // Browser (dev) के लिए memory fallback। सिर्फ़ launch log समझता है;
-// हिसाब जैसी queries खाली लौटाता है, ताकि गलत डेटा न दिखे।
+// बाकी queries खाली लौटाता है, ताकि गलत डेटा न दिखे।
 function memoryStore(): Store {
   const events: { id: number; kind: string; at: string }[] = [];
   let nextId = 1;
