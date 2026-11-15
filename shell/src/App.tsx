@@ -1,7 +1,11 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { AgentScreen } from "./agent/AgentScreen";
+import { ApiError, getWalletPaise } from "./api";
+import { accessToken, supabase } from "./auth";
 import { IS_NATIVE, openStore, type Store } from "./db";
 import { LedgerScreen } from "./ledger/LedgerScreen";
+import { formatRupees } from "./ledger/money";
+import { LoginScreen } from "./login/LoginScreen";
 import { PosterScreen } from "./poster/PosterScreen";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
@@ -12,7 +16,7 @@ interface EventRow {
   at: string;
 }
 
-type View = "home" | "poster" | "ledger" | "agent";
+type View = "home" | "poster" | "ledger" | "agent" | "login";
 
 export function App() {
   const [view, setView] = useState<View>("home");
@@ -22,6 +26,10 @@ export function App() {
   const [online, setOnline] = useState<boolean>(navigator.onLine);
   const [apiStatus, setApiStatus] = useState<string>("अभी जांच नहीं हुई");
   const [error, setError] = useState<string | null>(null);
+  // null = अभी पता नहीं; true/false = पता चल गया
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [walletPaise, setWalletPaise] = useState<number | null>(null);
+  const [walletErr, setWalletErr] = useState<string | null>(null);
 
   // App खुलते ही: DB खोलें (migrations समेत), launch लिखें, फिर ताज़ा गिनती
   useEffect(() => {
@@ -45,6 +53,34 @@ export function App() {
       cancelled = true;
     };
   }, []);
+
+  // Login की स्थिति: शुरू में एक बार, फिर हर बदलाव पर (login, logout, token refresh)
+  useEffect(() => {
+    accessToken()
+      .then((t) => setLoggedIn(Boolean(t)))
+      .catch(() => setLoggedIn(false));
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoggedIn(Boolean(session));
+      // login हो गया तो login screen से होम पर
+      if (session) setView((v) => (v === "login" ? "home" : v));
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  // Login हो तो wallet बैलेंस लाएं
+  useEffect(() => {
+    if (loggedIn !== true) {
+      setWalletPaise(null);
+      setWalletErr(null);
+      return;
+    }
+    setWalletErr(null);
+    getWalletPaise()
+      .then(setWalletPaise)
+      .catch((e: unknown) => {
+        setWalletErr(e instanceof ApiError ? e.message : "बैलेंस नहीं मिला, इंटरनेट जांचें");
+      });
+  }, [loggedIn]);
 
   // Internet आए या जाए तो status बदले
   useEffect(() => {
@@ -70,6 +106,10 @@ export function App() {
     } catch (e) {
       setApiStatus(`पहुंच नहीं हुई (CORS या नेटवर्क): ${String(e)}`);
     }
+  }
+
+  async function logout() {
+    await supabase.auth.signOut();
   }
 
   return (
@@ -100,16 +140,47 @@ export function App() {
       {view === "poster" && <PosterScreen />}
       {view === "ledger" && <LedgerScreen store={store} />}
       {view === "agent" && <AgentScreen store={store} />}
+      {view === "login" && <LoginScreen onDone={() => setView("home")} />}
 
       {view === "home" && (
         <>
+          <section style={card}>
+            <strong>खाता</strong>
+            {loggedIn === null && <p style={muted}>जांच हो रही है...</p>}
+
+            {loggedIn === false && (
+              <>
+                <p style={muted}>
+                  वॉलेट, Razorpay भुगतान और AI सुविधाओं के लिए लॉग-इन करें। पोस्टर और हिसाब बिना लॉग-इन भी चलते हैं।
+                </p>
+                <button type="button" onClick={() => setView("login")} style={{ padding: "10px 16px", borderRadius: 999 }}>
+                  लॉग-इन करें
+                </button>
+              </>
+            )}
+
+            {loggedIn === true && (
+              <>
+                <p style={{ margin: "6px 0", fontSize: 16 }}>
+                  वॉलेट:{" "}
+                  <strong>
+                    {walletPaise !== null ? formatRupees(walletPaise) : (walletErr ?? "लोड हो रहा है...")}
+                  </strong>
+                </p>
+                <button type="button" onClick={logout} style={{ padding: "10px 16px", borderRadius: 999 }}>
+                  लॉग-आउट
+                </button>
+              </>
+            )}
+          </section>
+
           <section style={{ marginTop: 8 }}>
             <strong>स्थानीय डेटा (SQLite)</strong>
             <p style={{ margin: "4px 0" }}>
               launch की कुल गिनती: {count ?? "..."}
               {store ? "" : " (DB अभी खुल रहा है)"}
             </p>
-            {!IS_NATIVE && <p style={{ fontSize: 13, color: "#78716c" }}>Browser मोड: SQLite सिर्फ़ Android पर है।</p>}
+            {!IS_NATIVE && <p style={muted}>Browser मोड: SQLite सिर्फ़ Android पर है।</p>}
             <ul style={{ paddingLeft: 18, fontSize: 14 }}>
               {recent.map((r) => (
                 <li key={r.id}>
@@ -142,3 +213,15 @@ function tabStyle(active: boolean): CSSProperties {
     cursor: "pointer",
   };
 }
+
+const card: CSSProperties = {
+  marginTop: 8,
+  border: "1px solid #e5e5e5",
+  borderRadius: 12,
+  padding: 14,
+  background: "#fff",
+  display: "grid",
+  gap: 6,
+};
+
+const muted: CSSProperties = { margin: "4px 0", fontSize: 14, color: "#78716c" };
