@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PosterScreen } from "./poster/PosterScreen";
 import { openStore, type Store } from "./db";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
@@ -9,7 +10,10 @@ interface EventRow {
   at: string;
 }
 
+type View = "home" | "poster";
+
 export function App() {
+  const [view, setView] = useState<View>("home");
   const [store, setStore] = useState<Store | null>(null);
   const [count, setCount] = useState<number | null>(null);
   const [recent, setRecent] = useState<EventRow[]>([]);
@@ -52,7 +56,6 @@ export function App() {
     };
   }, []);
 
-  // Vercel API से CORS और पहुंच की जांच (Step 2 का तीसरा काम)
   async function checkApi() {
     if (!API_BASE) {
       setApiStatus("VITE_API_BASE सेट नहीं है");
@@ -63,7 +66,6 @@ export function App() {
       const res = await fetch(`${API_BASE}/api/health`, { cache: "no-store" });
       setApiStatus(res.ok ? `ठीक है (${res.status})` : `सर्वर ने ${res.status} दिया`);
     } catch (e) {
-      // CORS गलत हो तो भी यहीं आता है: browser नेटवर्क error छिपा देता है
       setApiStatus(`पहुंच नहीं हुई (CORS या नेटवर्क): ${String(e)}`);
     }
   }
@@ -76,29 +78,56 @@ export function App() {
         {online ? "Online" : "Offline: दुकान के काम फिर भी चलेंगे"}
       </p>
 
+      <nav style={{ display: "flex", gap: 8, margin: "12px 0" }}>
+        <button type="button" onClick={() => setView("home")} style={tabStyle(view === "home")}>
+          होम
+        </button>
+        <button type="button" onClick={() => setView("poster")} style={tabStyle(view === "poster")}>
+          पोस्टर
+        </button>
+      </nav>
+
       {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
 
-      <section style={{ marginTop: 16 }}>
-        <strong>स्थानीय डेटा (SQLite)</strong>
-        <p style={{ margin: "4px 0" }}>
-          launch की कुल गिनती: {count ?? "..."}
-          {store ? "" : " (DB अभी खुल रहा है)"}
-        </p>
-        <ul style={{ paddingLeft: 18, fontSize: 14 }}>
-          {recent.map((r) => (
-            <li key={r.id}>
-              #{r.id} {r.kind} {r.at}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {view === "poster" && <PosterScreen />}
 
-      <section style={{ marginTop: 16 }}>
-        <button type="button" onClick={checkApi} style={{ padding: "10px 16px", borderRadius: 999 }}>
-          सर्वर जांचें
-        </button>
-        <p style={{ margin: "8px 0", fontSize: 14 }}>{apiStatus}</p>
-      </section>
+      {view === "home" && (
+        <>
+          <section style={{ marginTop: 8 }}>
+            <strong>स्थानीय डेटा (SQLite)</strong>
+            <p style={{ margin: "4px 0" }}>
+              launch की कुल गिनती: {count ?? "..."}
+              {store ? "" : " (DB अभी खुल रहा है)"}
+            </p>
+            <ul style={{ paddingLeft: 18, fontSize: 14 }}>
+              {recent.map((r) => (
+                <li key={r.id}>
+                  #{r.id} {r.kind} {r.at}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section style={{ marginTop: 16 }}>
+            <button type="button" onClick={checkApi} style={{ padding: "10px 16px", borderRadius: 999 }}>
+              सर्वर जांचें
+            </button>
+            <p style={{ margin: "8px 0", fontSize: 14 }}>{apiStatus}</p>
+          </section>
+        </>
+      )}
     </main>
   );
+}
+
+function tabStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: "8px 16px",
+    borderRadius: 999,
+    border: active ? "2px solid #1B1A17" : "1px solid #d4d4d4",
+    background: active ? "#1B1A17" : "#fff",
+    color: active ? "#fff" : "#1B1A17",
+    fontWeight: 600,
+    cursor: "pointer",
+  };
 }
