@@ -16,9 +16,23 @@ const notoSans = Noto_Sans_Devanagari({
   variable: "--font-noto",
 });
 
+// साइट का असली पता (env में न हो तो sthamly.com)। साझा लिंक और sitemap इसी से बनते हैं।
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://sthamly.com").replace(/\/+$/, "");
+
+// सिर्फ़ वही बातें लिखी हैं जो आज सच में चालू हैं: बोलकर या लिखकर काम, पोस्टर और कैप्शन,
+// और बिना मंज़ूरी के खर्च या पब्लिश नहीं। आगे नए काम जुड़ें तो यहीं बदलें।
+const TITLE = "Sthamly | AI एजेंट जो आपका काम करके देता है";
+const DESCRIPTION =
+  "Sthamly एक AI एजेंट है। बोलिए या लिखिए, पोस्टर और कैप्शन तैयार। आपकी मंज़ूरी के बिना न कुछ खर्च होता है, न कुछ पब्लिश।";
+
 export const metadata: Metadata = {
-  title: "Sthamly",
-  description: "दुकान का ऑफ़र बताएं, पोस्टर और कैप्शन पाएं।",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: TITLE,
+    // आगे किसी पन्ने का अपना title हो तो "पन्ने का नाम | Sthamly" बनेगा
+    template: "%s | Sthamly",
+  },
+  description: DESCRIPTION,
   manifest: "/manifest.webmanifest",
   applicationName: "Sthamly",
   appleWebApp: {
@@ -29,6 +43,19 @@ export const metadata: Metadata = {
   icons: {
     icon: "/icons/icon-192.png",
     apple: "/icons/icon-192.png",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Sthamly",
+    title: TITLE,
+    description: DESCRIPTION,
+    url: SITE_URL,
+    locale: "hi_IN",
+  },
+  twitter: {
+    card: "summary",
+    title: TITLE,
+    description: DESCRIPTION,
   },
 };
 
