@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { searchWeb } from "@/lib/assistant/search";
 import { createJob } from "@/lib/jobs/create";
 import type { Lang } from "@/lib/i18n";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -9,6 +10,9 @@ export interface AgentContext {
   userId: string;
   threadId: string | null;
   lang: Lang;
+  // इस run में अभी कितनी वेब खोज बाकी है (loop बनाता है और हर खोज पर घटता है)।
+  // न दिया हो तो खोज पर कोई सीमा नहीं लगती (confirm route में यह नहीं होता)।
+  searchesLeft?: number;
 }
 
 export type ToolResult =
@@ -146,6 +150,41 @@ const listRecentJobs = defineTool({
   },
 });
 
+const webSearch = defineTool({
+  name: "web_search",
+  description:
+    "इंटरनेट से ताज़ा जानकारी खोजना, जैसे आज का बाज़ार, ट्रेंड, खबर या किसी चीज़ का हाल (सिर्फ़ पढ़ना)। एक बातचीत में एक ही बार चलता है, इसलिए पूरा सवाल एक बार में दो।",
+  argsHint: '{"query": "खोज का सवाल, साफ़ और पूरा (2 से 300 अक्षर)"}',
+  schema: z.object({ query: z.string().trim().min(2).max(300) }),
+  permission: "auto",
+  summarize: (args) => `इंटरनेट पर खोजा जाएगा: ${args.query}`,
+  async run(args, ctx) {
+    // एक run में खोज की सीमा (हर खोज का खर्च चैट से कई गुना है)
+    if (ctx.searchesLeft !== undefined) {
+      if (ctx.searchesLeft <= 0) {
+        return { ok: false, message: "इस बार की खोज हो चुकी है। अब तक मिली जानकारी से जवाब दो।" };
+      }
+      ctx.searchesLeft -= 1;
+    }
+
+    try {
+      const found = await searchWeb({ query: args.query, lang: ctx.lang });
+      if (!found.answer) return { ok: false, message: "इस बारे में ताज़ा जानकारी नहीं मिली।" };
+
+      const sources = found.sources.length > 0 ? `\nस्रोत: ${found.sources.join(", ")}` : "";
+      return {
+        ok: true,
+        text: `${found.answer}${sources}`,
+        data: { queries: found.queries, sources: found.sources },
+      };
+    } catch (error) {
+      // असली कारण logs में; user को सादा संदेश
+      console.error("web_search failed", error);
+      return { ok: false, message: "अभी इंटरनेट पर खोज नहीं हो पाई।" };
+    }
+  },
+});
+
 const createPoster = defineTool({
   name: "create_poster",
   description: "दुकान के लिए नया पोस्टर बनाना (इसमें credit लगता है, इसलिए मंज़ूरी चाहिए)",
@@ -200,13 +239,13 @@ const createPoster = defineTool({
 
 // ---- Registry ----
 
-export const TOOLS: AnyTool[] = [getJobStatus, listRecentJobs, createPoster];
+export const TOOLS: AnyTool[] = [getJobStatus, listRecentJobs, webSearch, createPoster];
 
 export function findTool(name: string): AnyTool | undefined {
   return TOOLS.find((t) => t.name === name);
 }
 
-// model को भेजने के लिए tools की सूची (protocol.ts इसी का इस्तेमाल करेगा)
+// model को भेजने के लिए tools की सूची
 export function toolCatalogText(): string {
   return TOOLS.map((t) => {
     const mode = t.permission === "confirm" ? " [मंज़ूरी चाहिए]" : "";
