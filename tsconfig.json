@@ -42,6 +42,9 @@
   ],
   "exclude": [
     "node_modules",
-    "shell"
+    "shell",
+    "tests",
+    "**/*.test.ts",
+    "**/*.test.tsx"
   ]
 }
