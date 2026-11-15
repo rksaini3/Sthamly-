@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
+import { IS_NATIVE, openStore, type Store } from "./db";
+import { LedgerScreen } from "./ledger/LedgerScreen";
 import { PosterScreen } from "./poster/PosterScreen";
-import { openStore, type Store } from "./db";
 
 const API_BASE = import.meta.env.VITE_API_BASE;
 
@@ -10,7 +11,7 @@ interface EventRow {
   at: string;
 }
 
-type View = "home" | "poster";
+type View = "home" | "poster" | "ledger";
 
 export function App() {
   const [view, setView] = useState<View>("home");
@@ -21,7 +22,7 @@ export function App() {
   const [apiStatus, setApiStatus] = useState<string>("अभी जांच नहीं हुई");
   const [error, setError] = useState<string | null>(null);
 
-  // App खुलते ही: DB खोलें, launch लिखें, फिर ताज़ा गिनती
+  // App खुलते ही: DB खोलें (migrations समेत), launch लिखें, फिर ताज़ा गिनती
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -85,11 +86,15 @@ export function App() {
         <button type="button" onClick={() => setView("poster")} style={tabStyle(view === "poster")}>
           पोस्टर
         </button>
+        <button type="button" onClick={() => setView("ledger")} style={tabStyle(view === "ledger")}>
+          हिसाब
+        </button>
       </nav>
 
       {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
 
       {view === "poster" && <PosterScreen />}
+      {view === "ledger" && <LedgerScreen store={store} />}
 
       {view === "home" && (
         <>
@@ -99,6 +104,7 @@ export function App() {
               launch की कुल गिनती: {count ?? "..."}
               {store ? "" : " (DB अभी खुल रहा है)"}
             </p>
+            {!IS_NATIVE && <p style={{ fontSize: 13, color: "#78716c" }}>Browser मोड: SQLite सिर्फ़ Android पर है।</p>}
             <ul style={{ paddingLeft: 18, fontSize: 14 }}>
               {recent.map((r) => (
                 <li key={r.id}>
@@ -120,7 +126,7 @@ export function App() {
   );
 }
 
-function tabStyle(active: boolean): React.CSSProperties {
+function tabStyle(active: boolean): CSSProperties {
   return {
     padding: "8px 16px",
     borderRadius: 999,
