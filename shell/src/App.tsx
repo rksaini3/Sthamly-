@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
+import { AgentScreen } from "./agent/AgentScreen";
 import { IS_NATIVE, openStore, type Store } from "./db";
 import { LedgerScreen } from "./ledger/LedgerScreen";
 import { PosterScreen } from "./poster/PosterScreen";
@@ -11,7 +12,7 @@ interface EventRow {
   at: string;
 }
 
-type View = "home" | "poster" | "ledger";
+type View = "home" | "poster" | "ledger" | "agent";
 
 export function App() {
   const [view, setView] = useState<View>("home");
@@ -79,7 +80,7 @@ export function App() {
         {online ? "Online" : "Offline: दुकान के काम फिर भी चलेंगे"}
       </p>
 
-      <nav style={{ display: "flex", gap: 8, margin: "12px 0" }}>
+      <nav style={{ display: "flex", gap: 8, margin: "12px 0", flexWrap: "wrap" }}>
         <button type="button" onClick={() => setView("home")} style={tabStyle(view === "home")}>
           होम
         </button>
@@ -89,12 +90,16 @@ export function App() {
         <button type="button" onClick={() => setView("ledger")} style={tabStyle(view === "ledger")}>
           हिसाब
         </button>
+        <button type="button" onClick={() => setView("agent")} style={tabStyle(view === "agent")}>
+          एजेंट
+        </button>
       </nav>
 
       {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
 
       {view === "poster" && <PosterScreen />}
       {view === "ledger" && <LedgerScreen store={store} />}
+      {view === "agent" && <AgentScreen store={store} />}
 
       {view === "home" && (
         <>
