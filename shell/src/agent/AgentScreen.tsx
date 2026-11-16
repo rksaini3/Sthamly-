@@ -31,7 +31,7 @@ export function AgentScreen({ store }: { store: Store | null }) {
   const loaded = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
 
-  function push(msg: Omit<Msg, "id">) {
+  function push(msg: Msg extends infer T ? T extends unknown ? Omit<T, "id"> : never : never) {
     const id = nextId.current++;
     setMessages((prev) => [...prev, { ...msg, id } as Msg]);
   }
