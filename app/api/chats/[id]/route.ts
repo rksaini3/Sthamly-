@@ -66,7 +66,46 @@ async function sessionFor(req: NextRequest): Promise<Session | null> {
   return user ? { userId: user.id, supabase } : null;
 }
 
-// एक बातचीत के संदेश (और उसकी जानकारी)। सिर्फ़ अपनी बातचीत: RLS से।
+// इस बातचीत की वे मंज़ूरियां जो अभी pending हैं (समय सीमा के अंदर)।
+// विफल हो तो खाली सूची: संदेश फिर भी खुलने चाहिए।
+async function pendingActionsFor(threadId: string, session: Session) {
+  try {
+    const { data: runs, error: runsError } = await session.supabase
+      .from("agent_runs")
+      .select("id")
+      .eq("thread_id", threadId)
+      .eq("user_id", session.userId)
+      .eq("status", "waiting_confirm")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (runsError) throw runsError;
+
+    const runIds = (runs ?? []).map((r) => r.id);
+    if (runIds.length === 0) return [];
+
+    const { data: actions, error: actionsError } = await session.supabase
+      .from("agent_actions")
+      .select("id, tool, summary, expires_at")
+      .eq("user_id", session.userId)
+      .in("run_id", runIds)
+      .eq("status", "pending")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: true });
+    if (actionsError) throw actionsError;
+
+    return (actions ?? []).map((a) => ({
+      id: a.id,
+      tool: a.tool,
+      summary: a.summary,
+      expiresAt: a.expires_at,
+    }));
+  } catch (error) {
+    console.error("chat read: pending actions failed", error);
+    return [];
+  }
+}
+
+// एक बातचीत के संदेश, उसकी जानकारी और pending मंज़ूरियां। सिर्फ़ अपनी बातचीत: RLS से।
 export async function GET(req: NextRequest, ctx: Ctx) {
   const origin = req.headers.get("origin");
   const { id } = await ctx.params;
@@ -101,6 +140,9 @@ export async function GET(req: NextRequest, ctx: Ctx) {
     return withCors(errorResponse(500, "READ_FAILED", "संदेश नहीं खुल पाए"), origin);
   }
 
+  // 3. अभी की pending मंज़ूरियां
+  const pendingActions = await pendingActionsFor(id, session);
+
   return withCors(
     NextResponse.json({
       chat: thread,
@@ -109,6 +151,7 @@ export async function GET(req: NextRequest, ctx: Ctx) {
         content: r.content,
         createdAt: r.created_at,
       })),
+      pendingActions,
     }),
     origin,
   );
