@@ -35,13 +35,15 @@ interface ChatResponse {
   actions: AgentAction[];
 }
 
-// /api/chats और /api/chats/[id] से आने वाले आकार
+// /api/chats की सूची
 interface ChatListResponse {
   chats?: { id: string }[];
 }
 
+// /api/chats/[id]: संदेश और अभी की pending मंज़ूरियां
 interface ChatDetailResponse {
   messages?: { role: "user" | "assistant"; content: string; createdAt: string }[];
+  pendingActions?: AgentAction[];
 }
 
 // server को भेजी जाने वाली बातचीत की सीमा (route में max 12 संदेश, हर 1000 अक्षर तक)
@@ -94,7 +96,7 @@ export function AgentScreen({ store }: { store: Store | null }) {
     setMessages((prev) => [...prev, { ...msg, id }]);
   }
 
-  // App खुलने पर: सबसे नई बातचीत के संदेश वापस दिखें
+  // App खुलने पर: सबसे नई बातचीत के संदेश और उसकी pending मंज़ूरियां वापस दिखें
   useEffect(() => {
     if (historyStarted.current) return;
     historyStarted.current = true;
@@ -137,13 +139,21 @@ export function AgentScreen({ store }: { store: Store | null }) {
       if (!detail?.messages) return;
 
       threadId.current = latest.id;
+
+      // पहले पुराने संदेश, फिर उस बातचीत की pending मंज़ूरियां (जिन पर "मंज़ूरी दें" दबाना है)
       const rows: Msg[] = detail.messages.map((m) => ({
         id: nextId.current++,
         role: m.role === "user" ? "user" : "bot",
         text: m.content,
       }));
-      // पुराने संदेश ऊपर, और पहले से दिख रहे हिसाब वाले cards नीचे
-      setMessages((prev) => [...rows, ...prev]);
+      const approvals: Msg[] = (detail.pendingActions ?? []).map((a) => ({
+        id: nextId.current++,
+        role: "bot",
+        text: a.summary,
+        server: { actionId: a.id, expiresAt: a.expiresAt, state: "idle" },
+      }));
+
+      setMessages((prev) => [...rows, ...approvals, ...prev]);
     } catch {
       // इतिहास न खुले तो नई बातचीत से चलेगा
     } finally {
@@ -151,11 +161,14 @@ export function AgentScreen({ store }: { store: Store | null }) {
     }
   }
 
-  // नई बातचीत: text वाले संदेश हटेंगे, पर हिसाब के खुले cards रहेंगे (वो DB में अभी भी pending हैं)
+  // नई बातचीत: text वाले संदेश हटेंगे, पर खुले हिसाब और pending server cards रहेंगे
+  // (वो DB में अभी भी मंज़ूरी के इंतज़ार में हैं)
   function startNewChat() {
     if (busy || historyLoading) return;
     threadId.current = null;
-    setMessages((prev) => prev.filter((m) => m.ledger?.open));
+    setMessages((prev) =>
+      prev.filter((m) => m.ledger?.open || (m.server && m.server.state === "idle")),
+    );
   }
 
   // server को भेजने के लिए: सिर्फ़ text वाले संदेश, पुराने से नए क्रम में
