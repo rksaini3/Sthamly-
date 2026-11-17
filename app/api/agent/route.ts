@@ -3,7 +3,9 @@ import { z } from "zod";
 import { runAgent, type LoopOutcome } from "@/lib/agent/loop";
 import type { ProtocolTurn } from "@/lib/agent/protocol";
 import { titleFromMessage } from "@/lib/chats";
+import { preflight, withCors } from "@/lib/cors";
 import { LANG_COOKIE, parseLang } from "@/lib/i18n";
+import { userFromBearer } from "@/lib/mobile-auth";
 import { allowRequest } from "@/lib/rate-limit";
 import { checkUsage, recordUsage } from "@/lib/usage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -33,25 +35,49 @@ function errorResponse(status: number, code: string, message: string) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    return await handleAgent(req);
-  } catch (error) {
-    console.error("agent route: unexpected error", error);
-    return errorResponse(500, "INTERNAL", "एजेंट में गड़बड़ हुई, थोड़ी देर बाद दोबारा कोशिश करें");
-  }
+// Preflight: Android app (Capacitor) पहले OPTIONS भेजता है
+export async function OPTIONS(req: NextRequest) {
+  return preflight(req.headers.get("origin"));
 }
 
-async function handleAgent(req: NextRequest) {
-  // 1. Login जांच
+export async function POST(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  let res: NextResponse;
+  try {
+    res = await handleAgent(req);
+  } catch (error) {
+    console.error("agent route: unexpected error", error);
+    res = errorResponse(500, "INTERNAL", "एजेंट में गड़बड़ हुई, थोड़ी देर बाद दोबारा कोशिश करें");
+  }
+  return withCors(res, origin);
+}
+
+/**
+ * दो तरीकों से user पहचानें:
+ * 1. Android app: Authorization: Bearer <token>
+ * 2. Web app: login cookie (same-origin)
+ */
+async function currentUserId(req: NextRequest): Promise<string | null> {
+  const fromBearer = await userFromBearer(req).catch((error: unknown) => {
+    console.error("agent route: bearer check failed", error);
+    return null;
+  });
+  if (fromBearer) return fromBearer.id;
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return errorResponse(401, "UNAUTHORIZED", "पहले लॉग-इन करें");
+  return user?.id ?? null;
+}
+
+async function handleAgent(req: NextRequest) {
+  // 1. Login जांच (Bearer या cookie)
+  const userId = await currentUserId(req);
+  if (!userId) return errorResponse(401, "UNAUTHORIZED", "पहले लॉग-इन करें");
 
   // 2. Rate limit (body पढ़ने से पहले)
-  const allowed = await allowRequest(`agent:${user.id}`, RATE_WINDOW_SECONDS, RATE_MAX_RUNS);
+  const allowed = await allowRequest(`agent:${userId}`, RATE_WINDOW_SECONDS, RATE_MAX_RUNS);
   if (!allowed) {
     return errorResponse(429, "RATE_LIMITED", "बहुत जल्दी-जल्दी काम भेजे जा रहे हैं, थोड़ा रुकें");
   }
@@ -77,7 +103,7 @@ async function handleAgent(req: NextRequest) {
   // 4. इस्तेमाल की सीमा (चैट वाली ही, एजेंट का हर run एक चैट गिना जाए)
   let willPayPaise = 0;
   try {
-    const usage = await checkUsage(user.id, "chat");
+    const usage = await checkUsage(userId, "chat");
     if (!usage.ok) {
       return NextResponse.json(
         {
@@ -104,7 +130,7 @@ async function handleAgent(req: NextRequest) {
   let outcome: LoopOutcome;
   try {
     outcome = await runAgent({
-      userId: user.id,
+      userId,
       threadId,
       lang,
       goal: last.content,
@@ -115,11 +141,13 @@ async function handleAgent(req: NextRequest) {
     return errorResponse(502, "AGENT_FAILED", "काम शुरू नहीं हो पाया, दोबारा कोशिश करें");
   }
 
-  // 7. Run हो गया: इस्तेमाल दर्ज करें (मंज़ूरी के इंतज़ार वाला run भी एक चैट है)
-  try {
-    await recordUsage(user.id, "chat", willPayPaise);
-  } catch (error) {
-    console.error("agent route: usage record failed", error);
+  // 7. Run हो गया: इस्तेमाल दर्ज करें। सिर्फ़ सफल जवाब पर, विफल run पर वॉलेट नहीं कटेगा।
+  if (outcome.kind !== "failed") {
+    try {
+      await recordUsage(userId, "chat", willPayPaise);
+    } catch (error) {
+      console.error("agent route: usage record failed", error);
+    }
   }
 
   // 8. जवाब: user को reply, कदमों की सूची, और मंज़ूरी के काम (अगर हों)
