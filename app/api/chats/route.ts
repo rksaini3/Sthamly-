@@ -1,29 +1,307 @@
-import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { NextResponse, type NextRequest } from "next/server";
+import { z } from "zod";
+import { runAgent, type ActionView, type StepView } from "@/lib/agent/loop";
+import { replyToChat } from "@/lib/assistant/chat";
+import { titleFromMessage } from "@/lib/chats";
+import { preflight, withCors } from "@/lib/cors";
+import { getPublicEnv } from "@/lib/env";
+import { LANG_COOKIE, parseLang, type Lang } from "@/lib/i18n";
+import { userFromBearer } from "@/lib/mobile-auth";
+import { isRole } from "@/lib/roles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkUsage, recordUsage } from "@/lib/usage";
+import type { Role } from "@/types/domain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// बातचीतों की सूची: पिन की हुई पहले, फिर सबसे नई
-export async function GET() {
+// DB के लिए client: web (cookie) या Android (Bearer) दोनों में RLS इसी user के token से चले
+type DbClient = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
+interface Session {
+  userId: string;
+  supabase: DbClient;
+}
+
+const bodySchema = z.object({
+  // पुरानी बातचीत जारी रखनी हो तो उसकी id (न हो तो नई बातचीत बनती है)
+  threadId: z.uuid().optional(),
+  // "फिर से लिखें": वही सवाल दोबारा, इतिहास में सवाल दूसरी बार न जुड़े
+  regenerate: z.boolean().optional(),
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().trim().min(1).max(1000),
+      }),
+    )
+    .min(1)
+    .max(12),
+});
+
+function errorResponse(status: number, code: string, message: string) {
+  return NextResponse.json({ error: { code, message } }, { status });
+}
+
+// Preflight: Android app (Capacitor) पहले OPTIONS भेजता है
+export async function OPTIONS(req: NextRequest) {
+  return preflight(req.headers.get("origin"));
+}
+
+export async function POST(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  let res: NextResponse;
+  try {
+    res = await handleChat(req);
+  } catch (error) {
+    console.error("voice chat: unexpected error", error);
+    res = errorResponse(500, "INTERNAL", "जवाब नहीं बन पाया, दोबारा कोशिश करें");
+  }
+  return withCors(res, origin);
+}
+
+/**
+ * user और उसका DB client पहचानें:
+ * 1. Android app: Authorization: Bearer <token> (client भी उसी token से बनता है)
+ * 2. Web app: login cookie (same-origin, पुराना तरीका)
+ */
+async function sessionFor(req: NextRequest): Promise<Session | null> {
+  const bearer = await userFromBearer(req).catch((error: unknown) => {
+    console.error("voice chat: bearer check failed", error);
+    return null;
+  });
+
+  if (bearer) {
+    const env = getPublicEnv();
+    const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+    const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    // type में फ़र्क है, पर runtime पर वही API है
+    return { userId: bearer.id, supabase: supabase as unknown as DbClient };
+  }
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
+  return user ? { userId: user.id, supabase } : null;
+}
+
+// profiles से भूमिका: न मिले या गलत हो तो null (यानी दुकानदार वाला सामान्य रास्ता)
+async function roleOf(userId: string, supabase: DbClient): Promise<Role | null> {
+  try {
+    const { data } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
+    return isRole(data?.role) ? data.role : null;
+  } catch (error) {
+    console.error("voice chat: role read failed", error);
+    return null;
+  }
+}
+
+async function handleChat(req: NextRequest) {
+  // 1. Login जांच
+  const session = await sessionFor(req);
+  if (!session) return errorResponse(401, "UNAUTHORIZED", "पहले लॉग-इन करें");
+  const { userId, supabase } = session;
+
+  // 2. Body जांच
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return errorResponse(400, "BAD_REQUEST", "सही जानकारी भेजें");
+  }
+  const parsed = bodySchema.safeParse(raw);
+  if (!parsed.success) return errorResponse(400, "VALIDATION_FAILED", "संदेश सही नहीं है");
+
+  const messages = parsed.data.messages;
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "user") {
+    return errorResponse(400, "BAD_ORDER", "आखिरी संदेश आपका होना चाहिए");
   }
 
-  const { data, error } = await supabase
-    .from("chat_threads")
-    .select("id, title, pinned, updated_at")
-    .order("pinned", { ascending: false })
-    .order("updated_at", { ascending: false })
-    .limit(60);
+  const lang: Lang = parseLang(req.cookies.get(LANG_COOKIE)?.value);
+  const role = await roleOf(userId, supabase);
 
-  if (error) {
-    console.error("chats list failed", error);
-    return NextResponse.json({ error: { code: "LIST_FAILED", message: "इतिहास नहीं खुल पाया" } }, { status: 500 });
+  // 3. इस्तेमाल की सीमा: रोज़ की मुफ़्त सीमा के बाद वॉलेट से, पैसे न हों तो रुकें।
+  let willPayPaise = 0;
+  try {
+    const usage = await checkUsage(userId, "chat");
+    if (!usage.ok) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "LIMIT_REACHED",
+            message: "आज की मुफ़्त बातचीत पूरी हो गई। जारी रखने के लिए वॉलेट भरें या प्लान लें।",
+          },
+          limit: { kind: "chat", plan: usage.plan, walletPaise: usage.walletPaise, pricePaise: usage.pricePaise },
+        },
+        { status: 402 },
+      );
+    }
+    willPayPaise = usage.willPayPaise;
+  } catch (error) {
+    // हिसाब की टेबल न बनी हो तो भी चैट चलती रहे
+    console.error("voice chat: usage check failed", error);
   }
-  return NextResponse.json({ chats: data ?? [] });
+
+  // 4. इतिहास में सेव: सहायक काम है, विफल हो तो भी जवाब जाए
+  let threadId: string | null = null;
+  let title: string | null = null;
+  try {
+    if (parsed.data.threadId) {
+      const { data: existing } = await supabase
+        .from("chat_threads")
+        .select("id, title")
+        .eq("id", parsed.data.threadId)
+        .maybeSingle();
+      if (existing) {
+        threadId = existing.id;
+        title = existing.title;
+      }
+    }
+    if (!threadId) {
+      const { data: created, error: createError } = await supabase
+        .from("chat_threads")
+        .insert({ user_id: userId, title: titleFromMessage(last.content) })
+        .select("id, title")
+        .single();
+      if (createError) throw createError;
+      threadId = created.id;
+      title = created.title;
+    }
+    if (!parsed.data.regenerate) {
+      const { error: userMsgError } = await supabase
+        .from("chat_messages")
+        .insert({ thread_id: threadId, user_id: userId, role: "user", content: last.content });
+      if (userMsgError) throw userMsgError;
+    }
+  } catch (error) {
+    console.error("voice chat: history save failed", error);
+    threadId = null;
+  }
+
+  // 5. जवाब: पहले agent (भूमिका के tools के साथ), विफल हो तो सादा सवाल-जवाब
+  const outcome = await answer({ userId, threadId, lang, role, messages });
+
+  // 6. इस्तेमाल दर्ज करें (जवाब मिल गया, चाहे agent से हो या fallback से)
+  try {
+    await recordUsage(userId, "chat", willPayPaise);
+  } catch (error) {
+    console.error("voice chat: usage record failed", error);
+  }
+
+  if (!outcome.reply) {
+    return errorResponse(502, "EMPTY", "जवाब नहीं मिला, दोबारा पूछें");
+  }
+
+  // 7. जवाब इतिहास में सेव करें और बातचीत को "हाल की" सूची में ऊपर लाएं
+  if (threadId) {
+    try {
+      const { error: replyError } = await supabase.from("chat_messages").insert({
+        thread_id: threadId,
+        user_id: userId,
+        role: "assistant",
+        content: outcome.reply.slice(0, 4000),
+      });
+      if (replyError) console.error("voice chat: reply save failed", replyError);
+
+      const { error: touchError } = await supabase
+        .from("chat_threads")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", threadId);
+      if (touchError) console.error("voice chat: thread touch failed", touchError);
+    } catch (error) {
+      console.error("voice chat: reply save failed", error);
+    }
+  }
+
+  return NextResponse.json({
+    reply: outcome.reply,
+    threadId,
+    title,
+    runId: outcome.runId,
+    status: outcome.status,
+    steps: outcome.steps,
+    actions: outcome.actions,
+  });
+}
+
+// ---- जवाब बनाना: agent पहले, फिर सादा सवाल-जवाब ----
+
+interface Answer {
+  reply: string;
+  runId: string | null;
+  status: "done" | "waiting_confirm" | "chat";
+  steps: StepView[];
+  actions: ActionView[];
+}
+
+async function answer(input: {
+  userId: string;
+  threadId: string | null;
+  lang: Lang;
+  role: Role | null;
+  messages: { role: "user" | "assistant"; content: string }[];
+}): Promise<Answer> {
+  // आखिरी संदेश खाली नहीं हो सकता (ऊपर जांच हो चुकी है), फिर भी type-safe रहने के लिए guard
+  const last = input.messages[input.messages.length - 1];
+  if (!last) {
+    return { reply: "", runId: null, status: "chat", steps: [], actions: [] };
+  }
+  const history = input.messages.slice(0, -1);
+
+  try {
+    const outcome = await runAgent({
+      userId: input.userId,
+      threadId: input.threadId,
+      lang: input.lang,
+      goal: last.content,
+      history,
+      role: input.role,
+    });
+
+    if (outcome.kind === "reply") {
+      return { reply: outcome.reply, runId: outcome.runId, status: "done", steps: outcome.steps, actions: [] };
+    }
+    if (outcome.kind === "waiting") {
+      return {
+        reply: outcome.reply,
+        runId: outcome.runId,
+        status: "waiting_confirm",
+        steps: outcome.steps,
+        actions: outcome.actions,
+      };
+    }
+
+    // agent पूरा न कर पाया: सादा सवाल-जवाब से कोशिश करें
+    const chatReply = await safeChat(input.messages, input.lang, input.role);
+    return {
+      reply: chatReply || outcome.reply,
+      runId: outcome.runId,
+      status: "chat",
+      steps: outcome.steps,
+      actions: [],
+    };
+  } catch (error) {
+    console.error("voice chat: agent failed, using chat fallback", error);
+    const chatReply = await safeChat(input.messages, input.lang, input.role);
+    return { reply: chatReply, runId: null, status: "chat", steps: [], actions: [] };
+  }
+}
+
+async function safeChat(
+  messages: { role: "user" | "assistant"; content: string }[],
+  lang: Lang,
+  role: Role | null,
+): Promise<string> {
+  try {
+    return await replyToChat(messages, lang, role);
+  } catch (error) {
+    console.error("voice chat: fallback chat failed", error);
+    return "";
+  }
 }
