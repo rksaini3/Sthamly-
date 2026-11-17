@@ -173,4 +173,96 @@ export async function runAgent(input: {
     // 3. अंतिम जवाब: बात खत्म
     if (decision.type === "final") {
       await setRunStatus({ runId, userId, status: "done" }).catch((e) =>
-        console.error
+        console.error("agent: done status save", e),
+      );
+      return { kind: "reply", runId, reply: finish(decision.reply), steps: views };
+    }
+
+    // 4. tool इस भूमिका के लिए मान्य है या नहीं
+    if (!allowed.has(decision.tool)) {
+      observations.push(`यह tool इस भूमिका में उपलब्ध नहीं है: ${decision.tool}। बिना tool के जवाब दो।`);
+      continue;
+    }
+
+    // 5. tool मौजूद है या नहीं, और arguments सही हैं या नहीं
+    const tool = findTool(decision.tool);
+    if (!tool) {
+      observations.push(`tool नहीं मिला: ${decision.tool}`);
+      continue;
+    }
+    const args = tool.parse(decision.args);
+    if (!args.ok) {
+      observations.push(`${tool.name} के arguments गलत हैं: ${args.message}`);
+      continue;
+    }
+    const cleanArgs = args.args as Record<string, unknown>;
+
+    // 6. मंज़ूरी वाला काम: अभी नहीं चलेगा, pending बनेगा और loop रुकेगा
+    if (tool.permission === "confirm") {
+      const summary = tool.summarize(args.args);
+      const action = await createAction({
+        runId,
+        userId,
+        tool: tool.name,
+        args: cleanArgs,
+        summary,
+      });
+      await setRunStatus({ runId, userId, status: "waiting_confirm" }).catch((e) =>
+        console.error("agent: waiting status save", e),
+      );
+      return {
+        kind: "waiting",
+        runId,
+        reply: finish(
+          decision.say ??
+            pick(lang, "यह काम करने से पहले आपकी मंज़ूरी चाहिए।", "I need your approval before doing this."),
+        ),
+        steps: views,
+        actions: [
+          {
+            id: action.id,
+            tool: tool.name,
+            summary,
+            expiresAt: action.expiresAt,
+          },
+        ],
+      };
+    }
+
+    // 7. बिना मंज़ूरी वाला काम: अभी चलाएं
+    let result: ToolResult;
+    try {
+      result = await tool.run(args.args, ctx);
+    } catch (error) {
+      console.error("agent: tool failed", tool.name, error);
+      result = { ok: false, message: pick(lang, "काम में गड़बड़ हुई", "Something went wrong") };
+    }
+
+    const full = result.ok ? result.text : result.message;
+    // chat में सिर्फ़ छोटी लाइन दिखती है और रिकॉर्ड में भी वही जाती है
+    const viewText = clip(full, MAX_VIEW_TEXT);
+    const step: RunStep = {
+      tool: tool.name,
+      args: cleanArgs,
+      resultSummary: viewText,
+      at: new Date().toISOString(),
+    };
+
+    try {
+      await appendStep({ runId, userId, step, currentSteps: steps });
+    } catch (error) {
+      // कदम का रिकॉर्ड न बने तो भी काम आगे चले
+      console.error("agent: step save failed", error);
+    }
+    steps.push(step);
+    views.push({ tool: tool.name, text: viewText });
+
+    // model के लिए: पहले लंबा text (छोटा किया हुआ), फिर तकनीकी data (जैसे jobId) पूरा।
+    // data छोटा होता है, इसलिए उसे काटा नहीं जाता, ताकि id न कटे।
+    const dataLine = result.ok && result.data ? `\ndata: ${JSON.stringify(result.data)}` : "";
+    observations.push(`${tool.name}: ${clip(full, MAX_OBSERVATION_TEXT)}${dataLine}`);
+  }
+
+  // सीमा तक पहुंच गए, और अंतिम जवाब नहीं मिला
+  return fail();
+}
