@@ -35,6 +35,15 @@ interface ChatResponse {
   actions: AgentAction[];
 }
 
+// /api/chats और /api/chats/[id] से आने वाले आकार
+interface ChatListResponse {
+  chats?: { id: string }[];
+}
+
+interface ChatDetailResponse {
+  messages?: { role: "user" | "assistant"; content: string; createdAt: string }[];
+}
+
 // server को भेजी जाने वाली बातचीत की सीमा (route में max 12 संदेश, हर 1000 अक्षर तक)
 const MAX_HISTORY_MESSAGES = 11;
 const MAX_MESSAGE_CHARS = 1000;
@@ -71,16 +80,27 @@ export function AgentScreen({ store }: { store: Store | null }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // पुरानी बातचीत खुल रही हो तो नया संदेश न जाए (वरना threadId टकरा जाएगी)
+  const [historyLoading, setHistoryLoading] = useState(true);
   const nextId = useRef(1);
   const loaded = useRef(false);
+  const historyStarted = useRef(false);
   const bottom = useRef<HTMLDivElement>(null);
-  // बातचीत की id: पहले संदेश पर server बनाता है, फिर वही लौटती है और यहीं रखी जाती है
+  // बातचीत की id: पहले संदेश पर server बनाता है, या पुरानी बातचीत खुलने पर वही लेते हैं
   const threadId = useRef<string | null>(null);
 
   function push(msg: Omit<Msg, "id">) {
     const id = nextId.current++;
     setMessages((prev) => [...prev, { ...msg, id }]);
   }
+
+  // App खुलने पर: सबसे नई बातचीत के संदेश वापस दिखें
+  useEffect(() => {
+    if (historyStarted.current) return;
+    historyStarted.current = true;
+    void loadLatestThread();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // App खुलने पर: पहले से खुली हिसाब की मंज़ूरियां card के रूप में वापस दिखें
   // (poster वाली पुरानी मंज़ूरियां अब server से होती हैं, इसलिए उन्हें नहीं दिखाते)
@@ -100,6 +120,43 @@ export function AgentScreen({ store }: { store: Store | null }) {
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length]);
+
+  // ---- पुरानी बातचीत ----
+
+  async function loadLatestThread() {
+    try {
+      const listRes = await authedFetch("/api/chats");
+      if (!listRes.ok) return;
+      const list = (await listRes.json().catch(() => null)) as ChatListResponse | null;
+      const latest = list?.chats?.[0];
+      if (!latest) return;
+
+      const detailRes = await authedFetch(`/api/chats/${latest.id}`);
+      if (!detailRes.ok) return;
+      const detail = (await detailRes.json().catch(() => null)) as ChatDetailResponse | null;
+      if (!detail?.messages) return;
+
+      threadId.current = latest.id;
+      const rows: Msg[] = detail.messages.map((m) => ({
+        id: nextId.current++,
+        role: m.role === "user" ? "user" : "bot",
+        text: m.content,
+      }));
+      // पुराने संदेश ऊपर, और पहले से दिख रहे हिसाब वाले cards नीचे
+      setMessages((prev) => [...rows, ...prev]);
+    } catch {
+      // इतिहास न खुले तो नई बातचीत से चलेगा
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  // नई बातचीत: text वाले संदेश हटेंगे, पर हिसाब के खुले cards रहेंगे (वो DB में अभी भी pending हैं)
+  function startNewChat() {
+    if (busy || historyLoading) return;
+    threadId.current = null;
+    setMessages((prev) => prev.filter((m) => m.ledger?.open));
+  }
 
   // server को भेजने के लिए: सिर्फ़ text वाले संदेश, पुराने से नए क्रम में
   function historyFor(prior: Msg[]) {
@@ -243,7 +300,7 @@ export function AgentScreen({ store }: { store: Store | null }) {
 
   async function send() {
     const text = input.trim();
-    if (!store || busy || text.length < 2) return;
+    if (!store || busy || historyLoading || text.length < 2) return;
     setInput("");
     const prior = messages;
     push({ role: "user", text });
@@ -301,8 +358,24 @@ export function AgentScreen({ store }: { store: Store | null }) {
 
   return (
     <section style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          onClick={startNewChat}
+          disabled={busy || historyLoading}
+          style={ghost(busy || historyLoading)}
+        >
+          नई बातचीत
+        </button>
+      </div>
+
       <div style={{ display: "grid", gap: 8, minHeight: 200 }}>
-        {messages.length === 0 && <p style={{ color: "#78716c", fontSize: 14, margin: 0 }}>{HELP}</p>}
+        {historyLoading && (
+          <p style={{ color: "#78716c", fontSize: 14, margin: 0 }}>पुरानी बातचीत खुल रही है…</p>
+        )}
+        {!historyLoading && messages.length === 0 && (
+          <p style={{ color: "#78716c", fontSize: 14, margin: 0 }}>{HELP}</p>
+        )}
         {messages.map((m) => (
           <div key={m.id} style={m.role === "user" ? userBubble : botBubble}>
             <span style={{ whiteSpace: "pre-wrap" }}>{m.text}</span>
@@ -333,3 +406,113 @@ export function AgentScreen({ store }: { store: Store | null }) {
         ))}
         <div ref={bottom} />
       </div>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void send();
+          }}
+          placeholder="जैसे: udhaar Ramesh 500 chini, या poster Diwali sale"
+          maxLength={300}
+          disabled={historyLoading}
+          style={{ flex: 1, padding: "12px 14px", borderRadius: 999, border: "1px solid #d4d4d4", fontSize: 16, font: "inherit" }}
+        />
+        <button
+          type="button"
+          onClick={() => void send()}
+          disabled={busy || historyLoading}
+          style={primary(busy || historyLoading)}
+        >
+          भेजें
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// server की मंज़ूरी के बटन: समय निकल गया हो या फ़ैसला हो चुका हो, तो बटन नहीं
+function ServerActionButtons({
+  msg,
+  onDecide,
+}: {
+  msg: Msg;
+  onDecide: (msgId: number, actionId: string, decision: "approve" | "reject") => void;
+}) {
+  const server = msg.server!;
+  const expired = new Date(server.expiresAt).getTime() <= Date.now();
+
+  if (server.state === "busy") {
+    return <p style={{ margin: "8px 0 0", color: "#78716c", fontSize: 14 }}>हो रहा है…</p>;
+  }
+  if (server.state !== "idle") {
+    const label: Record<Exclude<ServerState, "idle" | "busy">, string> = {
+      done: "काम हो गया",
+      rejected: "काम रद्द किया गया",
+      failed: "काम नहीं हो पाया",
+      expired: "समय निकल गया, काम दोबारा माँगें",
+    };
+    return <p style={{ margin: "8px 0 0", color: "#78716c", fontSize: 14 }}>{label[server.state]}</p>;
+  }
+  if (expired) {
+    return <p style={{ margin: "8px 0 0", color: "#78716c", fontSize: 14 }}>समय निकल गया, काम दोबारा माँगें</p>;
+  }
+
+  return (
+    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+      <button type="button" onClick={() => onDecide(msg.id, server.actionId, "approve")} style={primary(false)}>
+        मंज़ूरी दें
+      </button>
+      <button type="button" onClick={() => onDecide(msg.id, server.actionId, "reject")} style={ghost(false)}>
+        रद्द करें
+      </button>
+    </div>
+  );
+}
+
+const userBubble: CSSProperties = {
+  justifySelf: "end",
+  maxWidth: "85%",
+  padding: "10px 14px",
+  borderRadius: 16,
+  background: "#1B1A17",
+  color: "#fff",
+  fontSize: 15,
+};
+
+const botBubble: CSSProperties = {
+  justifySelf: "start",
+  maxWidth: "90%",
+  padding: "10px 14px",
+  borderRadius: 16,
+  background: "#fff",
+  border: "1px solid #e5e5e5",
+  fontSize: 15,
+};
+
+function primary(disabled: boolean): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 999,
+    border: "none",
+    background: "#1B1A17",
+    color: "#fff",
+    fontWeight: 700,
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+  };
+}
+
+function ghost(disabled: boolean): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 999,
+    border: "1px solid #d4d4d4",
+    background: "#fff",
+    color: "#1B1A17",
+    fontWeight: 600,
+    cursor: disabled ? "default" : "pointer",
+    opacity: disabled ? 0.6 : 1,
+  };
+}
