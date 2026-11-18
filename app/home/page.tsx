@@ -11,6 +11,8 @@ import type { Role } from "@/types/domain";
 
 export const dynamic = "force-dynamic";
 
+type Supabase = Awaited<ReturnType<typeof createSupabaseServerClient>>;
+
 // user की दुकानों के हाल के पोस्टर (सिर्फ़ उसी के, shop_id से छाना हुआ)
 async function recentPostersFor(userId: string): Promise<{ id: string; status: string }[]> {
   try {
@@ -40,6 +42,32 @@ async function recentPostersFor(userId: string): Promise<{ id: string; status: s
   }
 }
 
+// भूमिका: न हो या गलत हो तो दुकानदार मानें
+async function roleFor(userId: string, supabase: Supabase): Promise<Role> {
+  try {
+    const { data } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
+    return isRole(data?.role) ? data.role : "shopkeeper";
+  } catch (error) {
+    console.error("home: role read failed", error);
+    return "shopkeeper";
+  }
+}
+
+// सेव की हुई पसंद (न हो तो शुरुआती layout)
+async function savedLayoutFor(userId: string, supabase: Supabase): Promise<unknown> {
+  try {
+    const { data: row } = await supabase
+      .from("user_layouts")
+      .select("items")
+      .eq("user_id", userId)
+      .maybeSingle();
+    return row?.items ?? null;
+  } catch (error) {
+    console.error("home: layout read failed", error);
+    return null;
+  }
+}
+
 export default async function HomePage() {
   const lang = parseLang((await cookies()).get(LANG_COOKIE)?.value);
 
@@ -49,32 +77,17 @@ export default async function HomePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/home");
 
-  // भूमिका: न हो या गलत हो तो दुकानदार मानें
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const roleValue = profile?.role;
-  const role: Role = isRole(roleValue) ? roleValue : "shopkeeper";
-
-  // सेव की हुई पसंद (न हो तो शुरुआती layout)
-  let saved: unknown = null;
-  try {
-    const { data: row } = await supabase
-      .from("user_layouts")
-      .select("items")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    saved = row?.items ?? null;
-  } catch (error) {
-    console.error("home: layout read failed", error);
-  }
+  // तीनों जानकारी एक साथ लाएं (पहले एक के बाद एक आती थीं, इसलिए होम देर से खुलता था)
+  const [role, saved, recentPosters] = await Promise.all([
+    roleFor(user.id, supabase),
+    savedLayoutFor(user.id, supabase),
+    recentPostersFor(user.id),
+  ]);
 
   const layout = mergeLayout(role, saved);
 
   const data: AdaptiveData = {
-    recentPosters: await recentPostersFor(user.id),
+    recentPosters,
     festivals: upcomingFestivals(new Date(), lang),
     // सलाह का स्रोत बाद में जुड़ेगा (अभी खाली, तो tip_card नहीं दिखेगा)
     tip: null,
