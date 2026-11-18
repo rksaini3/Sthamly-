@@ -35,8 +35,8 @@ type IconName =
   | "share"
   | "home";
 
-// साइडबार में केवल ज़रूरी चीज़ें; बाकी प्रोफ़ाइल पर हैं
-type ItemKey = "live" | "gallery" | "saved" | "notes";
+// साइडबार में केवल ज़रूरी चीज़ें और "जोड़ें" (Connect); बाकी प्रोफ़ाइल पर हैं
+type ItemKey = "live" | "gallery" | "saved" | "notes" | "connect";
 
 interface DrawerItem {
   href: string;
@@ -55,6 +55,7 @@ const ITEMS: DrawerItem[] = [
   { href: "/images", key: "gallery", icon: "images" },
   { href: "/my-posters", key: "saved", icon: "library" },
   { href: "/notebook", key: "notes", icon: "notebook" },
+  { href: "/soon/apps", key: "connect", icon: "plugins" },
 ];
 
 // तारीख़ के हिसाब से समूह: आज, कल, पिछले 7 दिन, पुराना
