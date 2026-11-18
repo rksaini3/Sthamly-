@@ -483,6 +483,19 @@ export type Database = {
         },
         "user_id" | "connector_id" | "access_ciphertext" | "access_iv" | "access_tag" | "expires_at"
       >;
+
+      // Projects: chats और posters का समूह (migration 0008). यूज़र अपने देख/बना सकता है।
+      projects: Table<
+        {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          created_at: string;
+          updated_at: string;
+        },
+        "user_id" | "name"
+      >;
     };
 
     Views: {};
