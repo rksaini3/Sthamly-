@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import styles from "@/components/library/Library.module.css";
 import { CaptionActions } from "@/components/library/CaptionActions";
 import { NotebookAutoToggle } from "@/components/library/NotebookAutoToggle";
+import { NotebookExportButton } from "@/components/library/NotebookExportButton";
 import { NotebookItemActions } from "@/components/library/NotebookItemActions";
 import { NotebookNotes } from "@/components/library/NotebookNotes";
 import { formatDate } from "@/lib/format";
@@ -67,6 +68,9 @@ export default async function NotebookPage() {
 
       {/* चैट के जवाब और हाथ से लिखे नोट: हर role के लिए */}
       <NotebookNotes lang={lang} />
+
+      {/* पूरी नोटबुक CSV में डाउनलोड: हर role के लिए */}
+      <NotebookExportButton />
 
       {/* पोस्टर: सिर्फ़ दुकानदार के लिए */}
       {isShopkeeper && (
