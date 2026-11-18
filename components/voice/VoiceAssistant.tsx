@@ -197,6 +197,22 @@ function PencilIcon() {
   );
 }
 
+// संदेश edit करने के शब्द (हिंदी/English)
+const EDIT_TEXT = {
+  hi: { edit: "बदलें", send: "भेजें", cancel: "रद्द करें", label: "संदेश बदलें" },
+  en: { edit: "Edit", send: "Send", cancel: "Cancel", label: "Edit message" },
+} as const;
+
+const EDIT_AREA = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #d4d4d4",
+  font: "inherit",
+  fontSize: 15,
+} as const;
+
 // ऊपर वाली गोली (ChatGPT जैसी): नई बातचीत (पेंसिल) और मेन्यू (तीन डॉट)
 const CHAT_PILL = {
   display: "flex",
@@ -324,6 +340,8 @@ export function VoiceAssistant({
   // "बढ़ाएँ" शीट: बटन से या सीमा पूरी होने पर अपने-आप खुलती है
   const [sheetOpen, setSheetOpen] = useState(false);
   const [limitHit, setLimitHit] = useState(false);
+  // user का संदेश edit हो रहा हो तो उसका id और नया मसौदा
+  const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
 
   const idRef = useRef(initialMessages.length);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -394,13 +412,17 @@ export function VoiceAssistant({
   }, [messages.length, busy]);
 
   // जवाब माँगना। regenerate=true हो तो वही सवाल दोबारा, इतिहास में सवाल दोबारा नहीं जुड़ता।
-  async function requestReply(history: { role: "user" | "assistant"; content: string }[], regenerate: boolean) {
+  async function requestReply(
+    history: { role: "user" | "assistant"; content: string }[],
+    regenerate: boolean,
+    thread: string | null = threadId,
+  ) {
     setBusy("replying");
     try {
       const res = await fetch("/api/voice/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...(threadId ? { threadId } : {}), messages: history, ...(regenerate ? { regenerate: true } : {}) }),
+        body: JSON.stringify({ ...(thread ? { threadId: thread } : {}), messages: history, ...(regenerate ? { regenerate: true } : {}) }),
       });
       if (res.status === 402) {
         // आज की मुफ़्त सीमा पूरी: बढ़ाएँ शीट खोलें
@@ -489,6 +511,28 @@ export function VoiceAssistant({
     setDraft("");
     setError(null);
     window.history.replaceState(null, "", "/voice");
+  }
+
+  // user का संदेश बदलकर फिर से भेजें: उसके बाद का सब हट जाता है और नया जवाब बनता है।
+  // पुरानी बातचीत जैसी की तैसी रहती है; नया जवाब नई बातचीत में जाता है।
+  async function resendEdited(id: number, raw: string) {
+    if (busy !== "idle") return;
+    const text = raw.trim();
+    if (text.length < 2) {
+      setError(t.errWriteOrSpeak);
+      return;
+    }
+    const at = messages.findIndex((m) => m.id === id);
+    if (at < 0) return;
+    const userMsg: Message = { id: newId(), role: "user", text };
+    const next = [...messages.slice(0, at), userMsg];
+    setEditing(null);
+    setError(null);
+    setPendingActions([]);
+    setThreadId(null);
+    setMessages(next);
+    window.history.replaceState(null, "", "/voice");
+    await requestReply(toHistory(next), false, null);
   }
 
   // किसी एक संदेश से ऑफ़र समझना
@@ -812,17 +856,56 @@ export function VoiceAssistant({
 
         {messages.map((m) => {
           if (m.role === "user") {
+            const L = EDIT_TEXT[lang];
+            // edit चालू: संदेश की जगह लिखने की जगह, भेजें या रद्द
+            if (editing?.id === m.id) {
+              return (
+                <div key={m.id} className={styles.userWrap}>
+                  <textarea
+                    value={editing.text}
+                    onChange={(e) => setEditing({ id: m.id, text: e.target.value })}
+                    rows={3}
+                    maxLength={1000}
+                    aria-label={L.label}
+                    style={EDIT_AREA}
+                  />
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button type="button" className={styles.btnGhost} onClick={() => setEditing(null)}>
+                      {L.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.btnGhost}
+                      onClick={() => void resendEdited(m.id, editing.text)}
+                      disabled={busy !== "idle"}
+                    >
+                      {L.send}
+                    </button>
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={m.id} className={styles.userWrap}>
                 <div className={styles.bubbleUser}>{m.text}</div>
-                <button
-                  type="button"
-                  className={styles.btnGhost}
-                  onClick={() => void makeOffer(m.text)}
-                  disabled={busy !== "idle"}
-                >
-                  {t.makeOffer}
-                </button>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className={styles.btnGhost}
+                    onClick={() => setEditing({ id: m.id, text: m.text })}
+                    disabled={busy !== "idle"}
+                  >
+                    {L.edit}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.btnGhost}
+                    onClick={() => void makeOffer(m.text)}
+                    disabled={busy !== "idle"}
+                  >
+                    {t.makeOffer}
+                  </button>
+                </div>
               </div>
             );
           }
