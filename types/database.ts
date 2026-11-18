@@ -450,6 +450,39 @@ export type Database = {
           },
         ]
       >;
+
+      // Connectors: user kis service se jura hai, token ke bina (migration 0007)
+      // user sirf apna status padh sakta hai, likhta server hai
+      connector_connections: Table<
+        {
+          id: string;
+          user_id: string;
+          connector_id: string;
+          status: "active" | "revoked" | "error";
+          granted_scopes: string[];
+          created_at: string;
+          updated_at: string;
+        },
+        "user_id" | "connector_id"
+      >;
+
+      // Encrypted tokens (migration 0007). Koi policy nahi: sirf server (service role) padhta hai.
+      connector_tokens: Table<
+        {
+          id: string;
+          user_id: string;
+          connector_id: string;
+          access_ciphertext: string;
+          access_iv: string;
+          access_tag: string;
+          refresh_ciphertext: string | null;
+          refresh_iv: string | null;
+          refresh_tag: string | null;
+          expires_at: string;
+          updated_at: string;
+        },
+        "user_id" | "connector_id" | "access_ciphertext" | "access_iv" | "access_tag" | "expires_at"
+      >;
     };
 
     Views: {};
