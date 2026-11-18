@@ -412,6 +412,44 @@ export type Database = {
         },
         "user_id"
       >;
+
+      // नोटबुक के नोट: चैट जवाब, पोस्टर, या हाथ से लिखा (migration 0012)
+      // search एक generated column है, इसलिए उसे कभी insert/update में नहीं भेजते।
+      notebook_notes: Table<
+        {
+          id: string;
+          user_id: string;
+          kind: "chat" | "poster" | "manual";
+          thread_id: string | null;
+          source_message_id: string | null;
+          job_id: string | null;
+          title: string;
+          question: string | null;
+          content: string;
+          tags: string[];
+          pinned: boolean;
+          created_at: string;
+          updated_at: string;
+          search: string | null;
+        },
+        "user_id" | "title" | "content",
+        [
+          {
+            foreignKeyName: "notebook_notes_thread_id_fkey";
+            columns: ["thread_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_threads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notebook_notes_job_id_fkey";
+            columns: ["job_id"];
+            isOneToOne: false;
+            referencedRelation: "jobs";
+            referencedColumns: ["id"];
+          },
+        ]
+      >;
     };
 
     Views: {};
