@@ -12,20 +12,35 @@ export interface ChatTurn {
 
 // डिफ़ॉल्ट (दुकानदार और बिना pack वाली भूमिकाएं)
 const SYSTEM_HI = [
-  "तुम Sthamly हो। तुम छोटे दुकानदारों (मिठाई, सैलून, कोचिंग, क्लिनिक) के सहायक हो।",
+  "तुम Sthamly agent हो। तुम छोटे कारोबारियों और आम उपयोगकर्ताओं की मदद करते हो, जैसे मिठाई, सैलून, कोचिंग, क्लिनिक, या कोई भी रोज़ का काम।",
   "user जिस भाषा और लिपि में लिखे (हिंदी, हिंग्लिश या English), जवाब उसी में दो। साफ़ न हो तो हिंग्लिश। सरल और छोटे वाक्य रखो।",
-  "सवाल का सीधा जवाब दो। दुकान के पोस्टर, ऑफर, प्रचार और घोषणा में मदद करो।",
+  "सवाल का सीधा जवाब दो। पोस्टर, ऑफर, प्रचार, घोषणा और रोज़ के सवालों में मदद करो।",
   "जो बात पक्की पता न हो (जैसे आज के बाज़ार या ट्रेंड की ताज़ा जानकारी), उसे अंदाज़े से मत बताओ। साफ़ कहो कि ताज़ा जानकारी तुम्हारे पास नहीं है, और जो सामान्य बात पता है वह बताओ।",
-  "नाम पूछे जाने पर कहो कि तुम Sthamly हो। खुद को असिस्टेंट, बॉट या AI मॉडल का नाम मत दो।",
+  "नाम, निर्माता या किसी AI मॉडल/कंपनी के बारे में पूछे जाने पर सिर्फ़ इतना कहो कि तुम Sthamly हो। खुद को असिस्टेंट, बॉट या किसी AI मॉडल या कंपनी का नाम मत दो।",
 ].join("\n");
 
 const SYSTEM_EN = [
-  "You are Sthamly. You help small shopkeepers (sweet shops, salons, coaching centres, clinics).",
+  "You are the Sthamly agent. You help small businesses and everyday users (sweet shops, salons, coaching centres, clinics, and more).",
   "Reply in the same language and script the user writes in (Hindi, Hinglish or English). If it is unclear, use Hinglish. Keep sentences short and simple.",
-  "Answer the question directly. Help with shop posters, offers, promotion and announcements.",
+  "Answer the question directly. Help with posters, offers, promotion, announcements and everyday questions.",
   "If you are not sure of something (for example today's market or trend information), do not guess. Say plainly that you do not have current information, and share only the general knowledge you are sure of.",
-  "If asked your name, say you are Sthamly. Do not call yourself an assistant or name any AI model.",
+  "If asked your name, maker or the AI model or company behind you, only say you are Sthamly. Do not call yourself an assistant, bot, or name any AI model or company.",
 ].join("\n");
+
+// "तुम्हें किसने बनाया", "who made you" जैसे सवाल: मॉडल से पूछे बिना सीधा जवाब
+const WHO_MADE_RE =
+  /किसने (तुम्हें|आपको|तुम्हे|तुझे|तुमको|आपको)|तुम्हें किसने|आपको किसने|किसने बनाया|किसने बनाई|किसने बनाए|तुम कौन हो|आप कौन हैं|who (made|created|built|trained) you|who are you|what (model|ai) are you|which (model|ai) are you/i;
+
+// जवाब में अगर किसी AI कंपनी या मॉडल का नाम आ जाए, तो वह जवाब नहीं जाएगा
+const VENDOR_RE =
+  /\b(openai|anthropic|claude|groq|gemini|llama|mistral|gpt|chatgpt|deepseek|google ai)\b|ओपनएआई|ओपन ?एआई|क्लाउड|जेमिनी|मिस्ट्रल/i;
+
+// साफ़ पहचान वाला जवाब (हिंदी/हिंग्लिश या English)
+function identityReply(lang: Lang): string {
+  return lang === "en"
+    ? "I am the Sthamly agent, here to help with posters, offers, promotion and everyday questions."
+    : "मैं Sthamly agent हूं, पोस्टर, ऑफर, प्रचार और रोज़ के सवालों में मदद करने के लिए।";
+}
 
 // सिस्टम प्रॉम्प्ट: भूमिका का pack हो तो उसका persona, वरना डिफ़ॉल्ट
 function systemText(lang: Lang, role: Role | null | undefined): string {
@@ -56,6 +71,10 @@ export async function replyToChat(
   lang: Lang = "hi",
   role: Role | null = null,
 ): Promise<string> {
+  // निर्माता वाले सवाल का जवाब सीधे: मॉडल से पूछने की ज़रूरत नहीं
+  const lastUser = history[history.length - 1]?.content ?? "";
+  if (WHO_MADE_RE.test(lastUser)) return identityReply(lang);
+
   const pack = packFor(role);
   const provider = getAIProvider();
   const result = await provider.generateText({
@@ -70,9 +89,13 @@ export async function replyToChat(
     costPaise: result.costPaise,
   });
 
-  const text = (result.text ?? "").trim().replace(/^(Sthamly|असिस्टेंट|Assistant):\s*/, "");
+  let text = (result.text ?? "").trim().replace(/^(Sthamly|असिस्टेंट|Assistant):\s*/, "");
+
+  // मॉडल ने अपनी कंपनी या मॉडल का नाम बताया, तो वह जवाब नहीं जाएगा
+  if (VENDOR_RE.test(text)) return identityReply(lang);
 
   // खाली जवाब पर सूचना न जोड़ें; pack हो तो हर जवाब की जांच और सूचना
   if (!pack || text.length === 0) return text;
-  return guardReply(pack, text, lang).text;
+  text = guardReply(pack, text, lang).text;
+  return text;
 }
