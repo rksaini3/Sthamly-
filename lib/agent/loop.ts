@@ -24,8 +24,8 @@ const MAX_STEPS = 6;
 const MAX_SEARCHES_PER_RUN = 1;
 // ये tools एक run में सिर्फ़ एक बार चलते हैं (सफल हो या विफल), ताकि model बार-बार न पूछे
 const SINGLE_USE_TOOLS = new Set<string>(["web_search"]);
-// tool का नतीजा model को दिखाने के लिए (खोज का जवाब लंबा होता है)
-const MAX_OBSERVATION_TEXT = 900;
+// tool का नतीजा model को दिखाने के लिए (खोज का पूरा जवाब model तक पहुंचे)
+const MAX_OBSERVATION_TEXT = 2500;
 // चैट में दिखने वाली और सेव होने वाली कदम की लाइन
 const MAX_VIEW_TEXT = 400;
 
@@ -76,7 +76,7 @@ function clip(text: string, max: number): string {
 // model को एक बार पूछें और खर्च दर्ज करें
 async function askModel(prompt: string): Promise<string> {
   const provider = getAIProvider();
-  const result = await provider.generateText({ prompt, maxTokens: 500 });
+  const result = await provider.generateText({ prompt, maxTokens: 1200 });
   // logCost का step union में "agent" नहीं है, इसलिए "other" लिखते हैं और model में पहचान रखते हैं
   await logCost({
     step: "other",
@@ -174,7 +174,14 @@ export async function runAgent(input: {
     let raw: string;
     try {
       raw = await askModel(
-        buildAgentPrompt({ goal, history, observations, lang, allowedTools: available }),
+        buildAgentPrompt({
+          goal,
+          history,
+          observations,
+          lang,
+          allowedTools: available,
+          persona: pack?.persona[lang],
+        }),
       );
     } catch (error) {
       console.error("agent: model call failed", error);
