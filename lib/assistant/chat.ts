@@ -27,9 +27,9 @@ const SYSTEM_EN = [
   "If asked your name, maker or the AI model or company behind you, only say you are Sthamly. Do not call yourself an assistant, bot, or name any AI model or company.",
 ].join("\n");
 
-// "तुम्हें किसने बनाया", "who made you" जैसे सवाल: मॉडल से पूछे बिना सीधा जवाब
+// "तुम्हें किसने बनाया", "who made you", "Tumko kisne bnaya" जैसे सवाल: मॉडल से पूछे बिना सीधा जवाब
 const WHO_MADE_RE =
-  /किसने (तुम्हें|आपको|तुम्हे|तुझे|तुमको|आपको)|तुम्हें किसने|आपको किसने|किसने बनाया|किसने बनाई|किसने बनाए|तुम कौन हो|आप कौन हैं|who (made|created|built|trained) you|who are you|what (model|ai) are you|which (model|ai) are you/i;
+  /किसने (तुम्हें|आपको|तुम्हे|तुझे|तुमको|आपको)|तुम्हें किसने|आपको किसने|किसने बनाया|किसने बनाई|किसने बनाए|तुम कौन हो|आप कौन हैं|who (made|created|built|trained) you|who are you|what (model|ai) are you|which (model|ai) are you|kisne (tumhe|tumko|tujhe|aapko|aapne|tumne|bnaya|banaya|banayi|bnayi|banaye|banai)|tum kaun ho|tum kon ho|aap kaun ho|tumhara (maker|creator)|who('s| is) (your|the) (maker|creator)/i;
 
 // जवाब में अगर किसी AI कंपनी या मॉडल का नाम आ जाए, तो वह जवाब नहीं जाएगा
 const VENDOR_RE =
