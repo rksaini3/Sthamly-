@@ -1,3 +1,4 @@
+import { kickWorker } from "@/lib/jobs/kick";
 import { PRICE_PAISE } from "@/lib/pricing";
 import { refundCredits, reserveCredits } from "@/lib/quota";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -121,6 +122,7 @@ export async function createJob(input: CreateJobInput): Promise<CreateJobResult>
     });
 
     if (quota.allowed) {
+      kickWorker();
       return { ok: true, jobId: job.id, remaining: quota.remaining };
     }
 
@@ -146,6 +148,7 @@ export async function createJob(input: CreateJobInput): Promise<CreateJobResult>
       return { ok: false, code: "QUOTA_EXCEEDED" };
     }
 
+    kickWorker();
     return { ok: true, jobId: job.id, remaining: quota.remaining };
   } catch (error) {
     console.error("createJob: credit reserve failed", job.id, error);
