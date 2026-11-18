@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
-import { findTool, type AgentContext, type ToolResult } from "@/lib/agent/tools";
+import { findTool, type AgentContext, type AnyTool, type ToolResult } from "@/lib/agent/tools";
+import { connectorToolsFor } from "@/lib/agent/connector-tools";
 import {
   appendStep,
   getAction,
@@ -10,7 +11,7 @@ import {
   type RunStep,
 } from "@/lib/agent/store";
 import { preflight, withCors } from "@/lib/cors";
-import { LANG_COOKIE, parseLang } from "@/lib/i18n";
+import { LANG_COOKIE, parseLang, type Lang } from "@/lib/i18n";
 import { userFromBearer } from "@/lib/mobile-auth";
 import { allowRequest } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -67,6 +68,18 @@ async function currentUserId(req: NextRequest): Promise<string | null> {
   return user?.id ?? null;
 }
 
+/**
+ * Tool ढूंढें: पहले built-in (poster, status, search), फिर user के connected connectors के tools।
+ * Connector tool सिर्फ़ तभी मिलेगा जब connection अभी active हो और scopes मौजूद हों,
+ * इसलिए मंज़ूरी के बाद connection हट चुका हो तो tool नहीं चलेगा।
+ */
+async function findAnyTool(userId: string, lang: Lang, name: string): Promise<AnyTool | undefined> {
+  const builtin = findTool(name);
+  if (builtin) return builtin;
+  const connectorTools = await connectorToolsFor(userId, lang);
+  return connectorTools.find((t) => t.name === name);
+}
+
 async function handleConfirm(req: NextRequest) {
   // 1. Login जांच (Bearer या cookie)
   const userId = await currentUserId(req);
@@ -118,7 +131,7 @@ async function handleConfirm(req: NextRequest) {
   const claimed = await moveAction({ actionId, userId, from: "pending", to: "approved" });
   if (!claimed) return errorResponse(409, "ALREADY_DECIDED", "इस काम पर पहले ही फ़ैसला हो चुका है");
 
-  const tool = findTool(action.tool);
+  const tool = await findAnyTool(userId, lang, action.tool);
   if (!tool) {
     await moveAction({ actionId, userId, from: "pending", to: "failed" }).catch(() => undefined);
     return errorResponse(500, "TOOL_MISSING", "यह काम अब उपलब्ध नहीं है");
