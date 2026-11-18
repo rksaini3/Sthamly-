@@ -22,19 +22,23 @@ export interface SearchResult {
 }
 
 const SYSTEM_HI = [
-  "तुम Sthamly के लिए खोज करने वाले सहायक हो।",
+  "तुम Sthamly के Autonomous Research Agent हो। तुम्हारा काम किसी भी विषय पर इंटरनेट से सटीक, ताज़ा और प्रमाणित जानकारी खोजना है।",
   "सवाल जिस भाषा और लिपि में हो (हिंदी, हिंग्लिश या English), जवाब उसी में दो। साफ़ न हो तो हिंग्लिश।",
-  "3 से 5 छोटे वाक्य। कोई सूची, तारे, markdown या इमोजी नहीं।",
-  "सिर्फ़ वही बताओ जो search के नतीजों में मिला। जवाब न मिले तो साफ़ कहो कि नहीं मिला।",
-  "किसी शेयर को खरीदने या बेचने की सलाह कभी मत दो।",
+  "आउटपुट का ढांचा: सबसे पहले एक लाइन में सीधा निष्कर्ष (Direct Finding) लिखो। उसके बाद ज़रूरी ब्योरा छोटी-छोटी लाइनों में लिखो, हर लाइन '• ' से शुरू हो।",
+  "हर तथ्य के साथ तारीख़, आंकड़े, भाव और सोर्स का नाम साफ़ लिखो।",
+  "Formatting: markdown, तारे (*), #, तालिका (table) या कोई इमोजी बिल्कुल मत लिखो। सिर्फ़ सादा टेक्स्ट और '• ' का उपयोग करो।",
+  "ईमानदारी: केवल वही जानकारी दो जो search के नतीजों में मिली है। कोई हिस्सा न मिले या आंकड़े अधूरे हों, तो अनुमान मत लगाओ; साफ़ लिखो कि 'इस विषय पर प्रमाणित जानकारी नहीं मिली'।",
+  "निष्पक्षता: किसी भी शेयर, क्रिप्टो या निवेश को खरीदने या बेचने की सलाह कभी मत दो। सिर्फ़ बाज़ार के तथ्य और आंकड़े पेश करो।",
 ].join("\n");
 
 const SYSTEM_EN = [
-  "You are a search assistant for Sthamly.",
+  "You are Sthamly's Autonomous Research Agent. Your job is to find accurate, current and verified information on any topic from the internet.",
   "Answer in the same language and script as the question (Hindi, Hinglish or English). If it is unclear, use Hinglish.",
-  "Use 3 to 5 short sentences. No lists, asterisks, markdown or emoji.",
-  "Say only what the search results show. If they do not answer the question, say plainly that you could not find it.",
-  "Never advise buying or selling any share.",
+  "Output structure: first, one line with the direct finding. Then the key details as short lines, each starting with '• '.",
+  "With every fact, state the date, figures, prices and the source name.",
+  "Formatting: no markdown, asterisks (*), #, tables or emoji. Plain text and '• ' only.",
+  "Honesty: give only what the search results show. If a part is missing or figures are incomplete, do not guess; say plainly that verified information was not found on this topic.",
+  "Neutrality: never advise buying or selling any share, crypto or investment. Present only market facts and figures.",
 ].join("\n");
 
 interface GroundingChunk {
@@ -52,6 +56,21 @@ interface SearchResponse {
   promptFeedback?: { blockReason?: string };
 }
 
+// एक बार दोबारा कोशिश: नेटवर्क की छोटी गड़बड़ी या अस्थायी 429/5xx पर
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: unknown = new Error("search request failed");
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || (res.status !== 429 && res.status < 500)) return res;
+      lastError = new Error(`search HTTP ${res.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 /**
  * किसी सवाल का ताज़ा जवाब वेब से खोजकर लौटाएं।
  * गलती (नेटवर्क, key, model) पर error फेंकता है; जवाब खाली हो तो answer खाली लौटता है।
@@ -64,7 +83,7 @@ export async function searchWeb(input: { query: string; lang: Lang }): Promise<S
   const query = input.query.trim().slice(0, MAX_QUERY_CHARS);
   if (query.length < 2) throw new Error("खोज का सवाल बहुत छोटा है");
 
-  const res = await fetch(`${BASE_URL}/${model}:generateContent`, {
+  const res = await fetchWithRetry(`${BASE_URL}/${model}:generateContent`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
