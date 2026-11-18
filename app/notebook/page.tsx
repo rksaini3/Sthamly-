@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import styles from "@/components/library/Library.module.css";
 import { CaptionActions } from "@/components/library/CaptionActions";
+import { NotebookItemActions } from "@/components/library/NotebookItemActions";
 import { ComingSoon } from "@/components/roles/ComingSoon";
 import { formatDate } from "@/lib/format";
 import { loadLibrary } from "@/lib/library";
@@ -39,6 +40,24 @@ export default async function NotebookPage() {
 
   const items = await loadLibrary(supabase);
 
+  // नोटबुक से हटाए गए काम (hidden_from_notebook = true) इस सूची में नहीं दिखेंगे।
+  // अगर यह जांच विफल हो, तो सब दिखाएं (काम न छूटे)।
+  const ids = items.map((i) => i.jobId);
+  let hiddenIds = new Set<string>();
+  if (ids.length > 0) {
+    const { data: hiddenRows, error: hiddenError } = await supabase
+      .from("jobs")
+      .select("id")
+      .eq("hidden_from_notebook", true)
+      .in("id", ids);
+    if (hiddenError) {
+      console.error("notebook: hidden lookup failed", hiddenError);
+    } else {
+      hiddenIds = new Set((hiddenRows ?? []).map((r) => r.id));
+    }
+  }
+  const visible = items.filter((item) => !hiddenIds.has(item.jobId));
+
   return (
     <main className="page stack">
       <h1 style={{ margin: 0 }}>{t.title}</h1>
@@ -46,7 +65,7 @@ export default async function NotebookPage() {
         {t.sub}
       </p>
 
-      {items.length === 0 && (
+      {visible.length === 0 && (
         <div className="card stack">
           <p className="muted" style={{ margin: 0 }}>
             {t.empty}
@@ -57,7 +76,7 @@ export default async function NotebookPage() {
         </div>
       )}
 
-      {items.map((item) => (
+      {visible.map((item) => (
         <div key={item.jobId} className={`card ${styles.item}`}>
           {item.posterUrl ? (
             <a href={item.posterUrl} target="_blank" rel="noreferrer" aria-label={t.open}>
@@ -74,6 +93,13 @@ export default async function NotebookPage() {
               {item.occasion ? `${item.occasion} · ` : ""}
               {formatDate(item.createdAt, lang)} · {statusLabel[item.status]}
             </p>
+
+            {item.failureReason && (
+              <p role="status" style={{ margin: "4px 0 0", fontSize: 13, color: "var(--danger)" }}>
+                {item.failureReason}
+              </p>
+            )}
+
             {item.caption && <p className={styles.caption}>{item.caption}</p>}
             {item.caption && (
               <CaptionActions
@@ -83,11 +109,19 @@ export default async function NotebookPage() {
                 whatsappLabel={t.whatsapp}
               />
             )}
+
+            <NotebookItemActions
+              jobId={item.jobId}
+              status={item.status}
+              offerText={item.offerText}
+              occasion={item.occasion}
+              caption={item.caption}
+            />
           </div>
         </div>
       ))}
 
-      {items.length > 0 && (
+      {visible.length > 0 && (
         <Link href="/my-posters" className="btn btn-block">
           {t.more}
         </Link>
