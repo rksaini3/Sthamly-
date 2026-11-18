@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@google/genai";
 import type { Lang } from "@/lib/i18n";
@@ -175,6 +174,7 @@ export function LiveView({ lang, shop }: { lang: Lang; shop: ShopContext | null 
   const [muted, setMuted] = useState(false);
   const [showWarn, setShowWarn] = useState(false);
   const [log, setLog] = useState<{ role: "you" | "ai"; text: string }[]>([]);
+  const [showLog, setShowLog] = useState(false);
 
   const sessionRef = useRef<Session | null>(null);
   const micRef = useRef<{ stream: MediaStream; ctx: AudioContext } | null>(null);
@@ -415,7 +415,7 @@ export function LiveView({ lang, shop }: { lang: Lang; shop: ShopContext | null 
       playCtxRef.current = new AudioContext({ sampleRate: OUT_RATE });
       await playCtxRef.current.resume();
 
-      const ai = new GoogleGenAI({ apiKey: data.token });
+      const ai = new GoogleGenAI({ apiKey: data.token, httpOptions: { apiVersion: "v1alpha" } });
       const session = await ai.live.connect({
         model: data.model,
         config: {
@@ -458,161 +458,151 @@ export function LiveView({ lang, shop }: { lang: Lang; shop: ShopContext | null 
           ? t.error
           : t.idle;
 
-  const dotColor = status === "live" ? (muted ? "#f59e0b" : "#22c55e") : status === "error" ? "#ef4444" : "#9ca3af";
+  const live = status === "live";
+  const busy = status === "connecting";
+  const greet = shop
+    ? lang === "en" ? `Hi ${shop.name}` : `नमस्ते, ${shop.name}`
+    : lang === "en" ? "Hi there" : "नमस्ते";
+  const prompt = lang === "en" ? "Let's get into it" : "चलिए, बात करते हैं";
+  const pillText = busy ? t.connecting : live ? (muted ? t.muted : t.listening) : t.start;
 
   return (
-    <main style={{ maxWidth: 560, margin: "0 auto", padding: "16px 16px 32px", minHeight: "100dvh", boxSizing: "border-box" }}>
-      <style>{`@keyframes sthPulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.06);opacity:1}}`}</style>
+    <main style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", background: "#000", color: "#fff", position: "relative", overflow: "hidden", boxSizing: "border-box" }}>
+      <style>{`@keyframes sthPulse{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.07);opacity:1}}@keyframes sthGlow{0%{background-position:0% 50%}100%{background-position:100% 50%}}`}</style>
 
-      <h1 style={{ fontSize: 22, margin: "8px 0 4px" }}>{t.title}</h1>
-      <p style={{ opacity: 0.7, margin: "0 0 12px", fontSize: 15 }}>{t.sub}</p>
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg,#000 45%,#0b1f55 100%)", pointerEvents: "none" }} />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12 }}>
-        <span style={{ width: 10, height: 10, borderRadius: 999, background: dotColor, display: "inline-block" }} />
-        <span>{statusText}</span>
-        <span style={{ opacity: 0.6, marginLeft: "auto" }}>{shopLine}</span>
-      </div>
-
-      <video
-        ref={previewRef}
-        muted
-        playsInline
-        style={{
-          width: "100%",
-          borderRadius: 14,
-          background: "#000",
-          display: source ? "block" : "none",
-          marginBottom: 12,
-        }}
-      />
-
-      {!source && (
-        <div style={{ display: "flex", justifyContent: "center", margin: "24px 0" }}>
-          <div
-            style={{
-              width: 160,
-              height: 160,
-              borderRadius: "50%",
-              background: "radial-gradient(circle at 30% 30%, #fde68a, #f97316 55%, #B5451B)",
-              boxShadow: status === "live" && !muted ? "0 0 40px rgba(249,115,22,.45)" : "none",
-              animation: status === "live" && !muted ? "sthPulse 2.4s ease-in-out infinite" : "none",
-              opacity: status === "idle" ? 0.5 : 1,
-            }}
-          />
-        </div>
-      )}
-
-      {showWarn && (
-        <div
-          role="dialog"
-          aria-label={t.warnTitle}
-          style={{ border: "1px solid #f59e0b", background: "#fffbeb", color: "#1f2937", borderRadius: 12, padding: 14, marginBottom: 12 }}
-        >
-          <p style={{ margin: "0 0 8px", fontWeight: 700 }}>{t.warnTitle}</p>
-          <p style={{ margin: "0 0 12px", fontSize: 14 }}>{t.warnText}</p>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" onClick={() => startScreen().catch(() => setError(t.noSupport))} style={btn("#B5451B")}>
-              {t.warnOk}
-            </button>
-            <button type="button" onClick={() => setShowWarn(false)} style={btn("#6b7280")}>
-              {t.cancel}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0" }}>
-        <button
-          type="button"
-          onClick={() => toggleCamera()}
-          disabled={status === "connecting"}
-          style={btn(source === "camera" ? "#B5451B" : "#374151")}
-        >
-          {source === "camera" ? `${t.camera} बंद` : t.camera}
+      <header style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 16px 0" }}>
+        <span style={{ fontSize: 18, fontWeight: 600 }}>Sthamly</span>
+        <button type="button" onClick={() => setShowLog((v) => !v)} aria-label={t.transcript} style={iconBtn(false)}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
         </button>
-        <button
-          type="button"
-          onClick={() => (source === "screen" ? stopScreen() : setShowWarn(true))}
-          disabled={status === "connecting"}
-          style={btn(source === "screen" ? "#B5451B" : "#374151")}
-        >
-          {source === "screen" ? t.stopScreen : t.screen}
-        </button>
-        {status === "live" && (
-          <button type="button" onClick={toggleMute} style={btn(muted ? "#b45309" : "#374151")}>
-            {muted ? t.unmute : t.mute}
-          </button>
+      </header>
+
+      <section style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 20px", textAlign: "center" }}>
+        <video
+          ref={previewRef}
+          muted
+          playsInline
+          style={{ width: "100%", maxHeight: "55vh", borderRadius: 20, background: "#111", display: source ? "block" : "none", marginBottom: 12 }}
+        />
+
+        {!source && (
+          <>
+            <div
+              style={{
+                width: 120,
+                height: 120,
+                borderRadius: "50%",
+                background: "conic-gradient(from 180deg,#4285f4,#9b72cb,#d96570,#f5a623,#34a853,#4285f4)",
+                opacity: busy ? 0.6 : live ? 1 : 0.85,
+                animation: live && !muted ? "sthPulse 2.4s ease-in-out infinite" : "none",
+                filter: live && !muted ? "blur(0px)" : "blur(0px)",
+              }}
+            />
+            <h2 style={{ fontSize: 28, fontWeight: 500, margin: "32px 0 4px", color: "#e8eaed" }}>{greet}</h2>
+            <p style={{ fontSize: 28, fontWeight: 500, margin: 0, color: "#7d8590" }}>{prompt}</p>
+            <p style={{ fontSize: 13, color: "#7d8590", margin: "14px 0 0" }}>{shopLine}</p>
+          </>
         )}
-      </div>
+      </section>
 
-      <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "12px 0" }}>
-        {!isLive ? (
-          status === "error" ? (
-            <button type="button" onClick={start} style={btn("#B5451B")}>
-              {t.retry}
-            </button>
-          ) : (
-            <button type="button" onClick={start} style={btn("#B5451B")}>
-              {t.start}
-            </button>
-          )
-        ) : (
-          <button type="button" onClick={teardown} style={btn("#b91c1c")}>
-            {t.end}
-          </button>
-        )}
-      </div>
-
-      {error && (
-        <p role="alert" style={{ color: "#b00020", fontSize: 15 }}>
-          {error}
-        </p>
-      )}
-
-      {log.length > 0 && (
-        <section style={{ marginTop: 16 }}>
-          <p style={{ fontWeight: 700, margin: "0 0 8px" }}>{t.transcript}</p>
+      {showLog && (
+        <div role="region" aria-label={t.transcript} style={{ position: "absolute", top: 56, left: 12, right: 12, bottom: 150, background: "rgba(20,22,28,.97)", borderRadius: 18, padding: 14, overflowY: "auto", zIndex: 5 }}>
+          <p style={{ fontWeight: 600, margin: "0 0 10px" }}>{t.transcript}</p>
+          {log.length === 0 && <p style={{ color: "#7d8590", fontSize: 14 }}>{t.privacy}</p>}
           <div style={{ display: "grid", gap: 8 }}>
             {log.map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  justifySelf: m.role === "you" ? "end" : "start",
-                  background: m.role === "you" ? "#f3f4f6" : "#FCEEDF",
-                  color: "#111827",
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  fontSize: 15,
-                  maxWidth: "85%",
-                  whiteSpace: "pre-wrap",
-                }}
-              >
-                <b>{m.role === "you" ? `${t.you}: ` : `${t.ai}: `}</b>
+              <div key={i} style={{ justifySelf: m.role === "you" ? "end" : "start", background: m.role === "you" ? "#2b3440" : "#1c2a44", padding: "8px 12px", borderRadius: 14, fontSize: 15, maxWidth: "85%", whiteSpace: "pre-wrap" }}>
+                <b style={{ color: "#9aa0a6" }}>{m.role === "you" ? `${t.you}: ` : `${t.ai}: `}</b>
                 {m.text}
               </div>
             ))}
           </div>
-        </section>
+        </div>
       )}
 
-      <p style={{ fontSize: 12, opacity: 0.6, marginTop: 24 }}>{t.privacy}</p>
-      {status === "idle" && !shop && (
-        <p style={{ fontSize: 13 }}>
-          <Link href="/onboarding">{t.noShop}</Link>
-        </p>
+      {showWarn && (
+        <div role="dialog" aria-label={t.warnTitle} style={{ position: "absolute", left: 14, right: 14, bottom: 150, background: "#1f2328", border: "1px solid #3c4043", borderRadius: 18, padding: 16, zIndex: 6 }}>
+          <p style={{ margin: "0 0 8px", fontWeight: 700 }}>{t.warnTitle}</p>
+          <p style={{ margin: "0 0 14px", fontSize: 14, color: "#c4c7c5" }}>{t.warnText}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => startScreen().catch(() => setError(t.noSupport))} style={btn("#8ab4f8", "#0b1f55")}>{t.warnOk}</button>
+            <button type="button" onClick={() => setShowWarn(false)} style={btn("#3c4043", "#e8eaed")}>{t.cancel}</button>
+          </div>
+        </div>
       )}
+
+      {error && (
+        <div role="alert" style={{ position: "absolute", left: 14, right: 14, bottom: 150, background: "#3c1d1d", color: "#f5b5b5", borderRadius: 14, padding: "10px 14px", fontSize: 14, zIndex: 6 }}>
+          {error}
+          {status === "error" && (
+            <button type="button" onClick={start} style={{ marginLeft: 10, background: "none", border: "none", color: "#8ab4f8", fontWeight: 600, cursor: "pointer" }}>{t.retry}</button>
+          )}
+        </div>
+      )}
+
+      <footer style={{ position: "relative", padding: "12px 14px 24px" }}>
+        <p style={{ fontSize: 11, color: "#7d8590", textAlign: "center", margin: "0 0 10px" }}>{t.privacy}</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#1f2328", borderRadius: 999, padding: 8 }}>
+          <button type="button" onClick={() => toggleCamera()} disabled={busy} aria-label={t.camera} style={iconBtn(source === "camera")}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>
+          </button>
+          <button type="button" onClick={() => (source === "screen" ? stopScreen() : setShowWarn(true))} disabled={busy} aria-label={t.screen} style={iconBtn(source === "screen")}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M12 13V8M9 11l3-3 3 3M8 20h8" /></svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => { if (!live && !busy) start(); }}
+            disabled={live || busy}
+            style={{ flex: 1, height: 56, borderRadius: 999, border: "none", color: "#fff", fontSize: 16, fontWeight: 600, cursor: live || busy ? "default" : "pointer", background: "linear-gradient(90deg,#1f2328,#0b1f55,#4285f4,#1f2328)", backgroundSize: "200% 100%", animation: live ? "sthGlow 3s linear infinite" : "none" }}
+          >
+            {pillText}
+          </button>
+          {live && (
+            <button type="button" onClick={toggleMute} aria-label={muted ? t.unmute : t.mute} style={iconBtn(muted)}>
+              {muted ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 3l18 18M9 9v2a3 3 0 0 0 5 2.2M15 9V6a3 3 0 0 0-5.7-1.3M5 11a7 7 0 0 0 11.5 5.3M12 18v3" /></svg>
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>
+              )}
+            </button>
+          )}
+          {(live || busy) && (
+            <button type="button" onClick={teardown} aria-label={t.end} style={iconBtn(false, "#b3261e")}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          )}
+        </div>
+      </footer>
     </main>
   );
 }
 
-function btn(bg: string): CSSProperties {
+function btn(bg: string, color = "#fff"): CSSProperties {
   return {
     background: bg,
-    color: "#fff",
+    color,
     border: "none",
     borderRadius: 10,
     padding: "10px 16px",
     fontSize: 15,
+    cursor: "pointer",
+  };
+}
+
+function iconBtn(active: boolean, bg?: string): CSSProperties {
+  return {
+    width: 56,
+    height: 56,
+    minWidth: 56,
+    borderRadius: "50%",
+    border: "none",
+    background: bg ?? (active ? "#e8eaed" : "#2b3035"),
+    color: active && !bg ? "#111" : "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
   };
 }
