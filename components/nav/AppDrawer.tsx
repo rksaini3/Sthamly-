@@ -33,27 +33,66 @@ type IconName =
   | "search"
   | "globe"
   | "share"
-  | "home";
+  | "home"
+  | "chevron";
 
-// साइडबार में केवल ज़रूरी चीज़ें और "जोड़ें" (Connect); बाकी प्रोफ़ाइल पर हैं
-type ItemKey = "gallery" | "notes" | "connect";
-
-interface DrawerItem {
-  href: string;
-  icon: IconName;
-  // lib/labels.ts का key (ज़्यादातर सूची के लिए)
-  key?: ItemKey;
-  // सीधा लेबल, जब नाम lib/labels.ts में न हो (जैसे "होम")
-  label?: { hi: string; en: string };
+interface Bilingual {
+  hi: string;
+  en: string;
 }
 
-// ड्रॉअर की सूची। नाम छोटे हैं और lib/labels.ts से दोनों भाषाओं में आते हैं।
-// "जल्द आएगा" वाले पन्ने /soon/... पर खुलते हैं।
-const ITEMS: DrawerItem[] = [
-  { href: "/home", icon: "home", label: { hi: "होम", en: "Home" } },
-  { href: "/images", key: "gallery", icon: "images" },
-  { href: "/notebook", key: "notes", icon: "notebook" },
-  { href: "/soon/apps", key: "connect", icon: "plugins" },
+interface SidebarChild {
+  href: string;
+  label: Bilingual;
+}
+
+interface SidebarSection {
+  id: string;
+  label: Bilingual;
+  icon: IconName;
+  // सीधा लिंक (बिना उप-सूची के)
+  href?: string;
+  // उप-सूची (खुलने वाला हिस्सा)
+  children?: SidebarChild[];
+  // false हो तो सेक्शन अभी नहीं दिखेगा (जैसे Projects जब तक उसका पन्ना न बने)
+  enabled: boolean;
+}
+
+// साइडबार का ढांचा। नया सेक्शन यहीं जुड़ेगा, बाकी कोड नहीं बदलेगा।
+// launch के बाद: Projects को enabled: true करें, Agents के उप-सूची में role packs जोड़ें।
+const SECTIONS: SidebarSection[] = [
+  {
+    id: "projects",
+    label: { hi: "प्रोजेक्ट", en: "Projects" },
+    icon: "projects",
+    href: "/projects",
+    enabled: false,
+  },
+  {
+    id: "library",
+    label: { hi: "लाइब्रेरी", en: "Library" },
+    icon: "library",
+    enabled: true,
+    children: [
+      { href: "/my-posters", label: { hi: "मीडिया (पोस्टर)", en: "Media (posters)" } },
+      { href: "/notebook", label: { hi: "दस्तावेज़ और नोट्स", en: "Documents & notes" } },
+      { href: "/images", label: { hi: "अपलोड", en: "Uploads" } },
+    ],
+  },
+  {
+    id: "agents",
+    label: { hi: "एजेंट", en: "Agents" },
+    icon: "staff",
+    href: "/role",
+    enabled: true,
+  },
+  {
+    id: "apps",
+    label: { hi: "ऐप्स", en: "Apps" },
+    icon: "plugins",
+    href: "/soon/apps",
+    enabled: true,
+  },
 ];
 
 // तारीख़ के हिसाब से समूह: आज, कल, पिछले 7 दिन, पुराना
@@ -98,6 +137,7 @@ const PATHS: Record<IconName, string[]> = {
   pencil: ["M4 20l1-4L17 4l3 3L8 19z"],
   live: ["M3 7a2 2 0 012-2h9a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z", "M16 10l5-3v10l-5-3"],
   home: ["M3 11l9-7 9 7", "M5 10v10h14V10", "M10 20v-5h4v5"],
+  chevron: ["M9 6l6 6-6 6"],
 };
 
 function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
@@ -128,14 +168,6 @@ function MenuIcon() {
   );
 }
 
-function CloseIcon() {
-  return (
-    <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M6 6l12 12M18 6L6 18" />
-    </svg>
-  );
-}
-
 function UserIcon() {
   return (
     <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -161,6 +193,8 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
   const [historyState, setHistoryState] = useState<"loading" | "login" | "error" | "ok">("loading");
   // किस बातचीत का "⋯" विकल्प-पटल खुला है
   const [sheetFor, setSheetFor] = useState<string | null>(null);
+  // कौन-से सेक्शन की उप-सूची हाथ से खोली गई है (जिसमें खुला पन्ना है, वह अपने आप खुलती है)
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
 
   const loadChats = useCallback(async () => {
     try {
@@ -217,6 +251,10 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     close();
     // हर बार नया मान, ताकि चैट पन्ना नए सिरे से खुले
     router.push(`/voice?n=${Date.now()}`);
+  }
+
+  function toggleSection(id: string) {
+    setExpandedIds((list) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]));
   }
 
   async function togglePin(chat: ChatSummary) {
@@ -322,6 +360,68 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     );
   }
 
+  // एक सेक्शन की पंक्ति: या तो सीधा लिंक, या उप-सूची वाला बटन
+  function sectionBlock(section: SidebarSection) {
+    if (!section.enabled) return null;
+
+    const label = lang === "en" ? section.label.en : section.label.hi;
+
+    // सीधा लिंक
+    if (!section.children) {
+      const active = section.href ? matches(pathname, section.href) : false;
+      return (
+        <Link
+          key={section.id}
+          href={section.href ?? "/"}
+          className={`${styles.link} ${active ? styles.active : ""}`}
+          aria-current={active ? "page" : undefined}
+          onClick={close}
+        >
+          <Icon name={section.icon} />
+          {label}
+        </Link>
+      );
+    }
+
+    // उप-सूची वाला सेक्शन: अगर कोई उप-पन्ना खुला है तो सेक्शन अपने आप खुला रहे
+    const hasActiveChild = section.children.some((c) => matches(pathname, c.href));
+    const isOpen = hasActiveChild || expandedIds.includes(section.id);
+
+    return (
+      <div key={section.id}>
+        <button
+          type="button"
+          className={`${styles.link} ${hasActiveChild ? styles.active : ""}`}
+          aria-expanded={isOpen}
+          onClick={() => toggleSection(section.id)}
+          style={{ width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+        >
+          <Icon name={section.icon} />
+          <span style={{ flex: 1 }}>{label}</span>
+          <span style={{ display: "inline-flex", transform: isOpen ? "rotate(90deg)" : "none", transition: "transform 150ms" }}>
+            <Icon name="chevron" size={18} />
+          </span>
+        </button>
+        {isOpen &&
+          section.children.map((child) => {
+            const active = matches(pathname, child.href);
+            return (
+              <Link
+                key={child.href}
+                href={child.href}
+                className={`${styles.link} ${active ? styles.active : ""}`}
+                aria-current={active ? "page" : undefined}
+                onClick={close}
+                style={{ paddingLeft: 52, fontSize: "0.95em" }}
+              >
+                {lang === "en" ? child.label.en : child.label.hi}
+              </Link>
+            );
+          })}
+      </div>
+    );
+  }
+
   const q = query.trim().toLowerCase();
   const shown = q ? (chats ?? []).filter((c) => c.title.toLowerCase().includes(q)) : (chats ?? []);
   const pinned = shown.filter((c) => c.pinned);
@@ -380,28 +480,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
 
             <div className={styles.scroll}>
               <nav className={styles.list} aria-label={t.mainList}>
-                {ITEMS.map((item) => {
-                  const active = matches(pathname, item.href);
-                  const text = item.label
-                    ? lang === "en"
-                      ? item.label.en
-                      : item.label.hi
-                    : item.key
-                      ? t[item.key]
-                      : item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`${styles.link} ${active ? styles.active : ""}`}
-                      aria-current={active ? "page" : undefined}
-                      onClick={close}
-                    >
-                      <Icon name={item.icon} />
-                      {text}
-                    </Link>
-                  );
-                })}
+                {SECTIONS.map(sectionBlock)}
                 {/* भाषा: बाकी सूची जैसी ही पंक्ति, दाईं ओर हिं | EN */}
                 <div className={styles.link} style={{ justifyContent: "space-between", cursor: "default" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 12 }}>
@@ -463,7 +542,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
               </div>
             </div>
 
-            {/* नीचे (ChatGPT जैसा): बाईं ओर नीला "चैट" बटन, दाईं ओर प्रोफ़ाइल का गोला */}
+            {/* नीचे: बाईं ओर नीला "चैट" बटन, दाईं ओर प्रोफ़ाइल का गोला */}
             <div className={styles.footer}>
               <button type="button" className={styles.newPill} onClick={startNew}>
                 <Icon name="new" size={20} />
