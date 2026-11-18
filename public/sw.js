@@ -1,18 +1,24 @@
-// Sthamly service worker
-// - ऐप की फ़ाइलें (JS, CSS, आइकन) एक बार आने पर फ़ोन में रहती हैं, ताकि ऑफ़लाइन में पन्ना खुले।
+// Sthamly service worker (v3)
+// - ऐप की फ़ाइलें (JS, CSS, आइकन) एक बार आने पर फ़ोन में रहती हैं।
 // - पन्ना खोलने पर नेटवर्क से ताज़ा आता है और उसकी कॉपी रखी जाती है।
-//   नेटवर्क न हो तो वही पुरानी कॉपी दिखती है, जिसमें पहले की बातचीत भी होती है।
-// - चैट की सूची (/api/chats) भी यही तरीका अपनाती है।
-// - लॉग-आउट पर runtime cache हटती है (components/account/AccountActions.tsx में)।
+//   नेटवर्क न हो या सर्वर बंद हो तो सेव की हुई कॉपी दिखती है।
+// - लॉग-आउट पर runtime cache हटती है (lib/offline-cache.ts)।
 
-const STATIC_CACHE = "sthamly-static-v2";
+const STATIC_CACHE = "sthamly-static-v3";
 const RUNTIME_CACHE = "sthamly-runtime-v2";
 const OFFLINE_URL = "/offline.html";
-const SHELL_URL = "/voice";
+// offline में ये पन्ने पहले से सेव हों तो वही खुलते हैं
+const FALLBACK_PAGES = ["/home", "/voice"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(STATIC_CACHE).then((cache) => cache.add(OFFLINE_URL)));
-  self.skipWaiting();
+  event.waitUntil(
+    caches
+      .open(STATIC_CACHE)
+      .then((cache) => cache.add(OFFLINE_URL))
+      // offline पन्ना न जुड़े तो भी service worker इंस्टॉल हो, वरना कुछ भी नहीं चलता
+      .catch((error) => console.error("sw: offline page cache failed", error))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -32,13 +38,13 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // पन्ना खोलना: नेटवर्क पहले, न मिले तो सेव की हुई कॉपी
+  // पन्ना खोलना: नेटवर्क पहले, न मिले या सर्वर बंद हो तो सेव की हुई कॉपी
   if (req.mode === "navigate") {
     event.respondWith(navigate(req));
     return;
   }
 
-  // ऐप की फ़ाइलें: सेव हों तो वहीं से (ये हर संस्करण पर बदलती हैं, इसलिए नाम में hash है)
+  // ऐप की फ़ाइलें: सेव हों तो वहीं से (नाम में hash है, इसलिए बदलें तो नई फ़ाइल)
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
     event.respondWith(cacheFirst(req));
     return;
@@ -54,21 +60,30 @@ async function navigate(req) {
   const cache = await caches.open(RUNTIME_CACHE);
   try {
     const res = await fetch(req);
-    if (res.ok && !res.redirected) {
-      cache.put(req, res.clone());
+    // 5xx (सर्वर बंद/गड़बड़) को भी "ऑफ़लाइन" मानें
+    if (res.status < 500) {
+      if (res.ok && !res.redirected) cache.put(req, res.clone());
+      return res;
     }
-    return res;
+    throw new Error(`server ${res.status}`);
   } catch {
-    // 1) यही पन्ना (जैसे /voice?chat=...) पहले खुला था तो वही
-    // 2) वरना ऐप का मुख्य पन्ना, जो चैट की सेव की हुई जानकारी से खुलता है
-    // 3) कुछ भी न हो तो "इंटरनेट नहीं है" पन्ना
-    const hit =
-      (await cache.match(req)) ||
-      (await cache.match(SHELL_URL)) ||
-      (await (await caches.open(STATIC_CACHE)).match(OFFLINE_URL));
-    if (hit) return hit;
-    return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    return offlineFallback(req, cache);
   }
+}
+
+async function offlineFallback(req, cache) {
+  // 1) यही पन्ना पहले खुला था तो वही
+  const same = await cache.match(req);
+  if (same) return same;
+  // 2) वरना होम या चैट का सेव पन्ना
+  for (const path of FALLBACK_PAGES) {
+    const hit = await cache.match(path);
+    if (hit) return hit;
+  }
+  // 3) कुछ भी न हो तो "इंटरनेट नहीं है" पन्ना
+  const page = await (await caches.open(STATIC_CACHE)).match(OFFLINE_URL);
+  if (page) return page;
+  return new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
 }
 
 async function cacheFirst(req) {
