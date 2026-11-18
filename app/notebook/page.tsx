@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import styles from "@/components/library/Library.module.css";
 import { CaptionActions } from "@/components/library/CaptionActions";
+import { NotebookAutoToggle } from "@/components/library/NotebookAutoToggle";
 import { NotebookItemActions } from "@/components/library/NotebookItemActions";
 import { ComingSoon } from "@/components/roles/ComingSoon";
 import { formatDate } from "@/lib/format";
@@ -64,6 +65,8 @@ export default async function NotebookPage() {
       <p className="muted" style={{ margin: 0 }}>
         {t.sub}
       </p>
+
+      <NotebookAutoToggle />
 
       {visible.length === 0 && (
         <div className="card stack">
