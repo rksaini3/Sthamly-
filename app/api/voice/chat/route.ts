@@ -240,6 +240,11 @@ async function answer(input: {
       };
     }
 
+    // खोज हो चुकी हो पर जवाब न बना: साफ़ संदेश दें (सादा सवाल-जवाब से सामान्य greeting आ जाता है)
+    if (outcome.steps.some((s) => s.tool === "web_search")) {
+      return { reply: outcome.reply, runId: outcome.runId, status: "done", steps: outcome.steps, actions: [] };
+    }
+
     // agent पूरा न कर पाया: सादा सवाल-जवाब से कोशिश करें
     const chatReply = await safeChat(input.messages, input.lang, input.role);
     return {
