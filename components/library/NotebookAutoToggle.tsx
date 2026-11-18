@@ -2,8 +2,8 @@
 
 import { useEffect, useState, type CSSProperties } from "react";
 
-// चैट से अपने आप नोटबुक में जुड़ना: चालू/बंद का स्विच।
-// बंद करने पर आगे की चैट वाली पोस्टर एंट्री नोटबुक में नहीं आएगी (पुरानी नहीं हटेंगी)।
+// चैट के जवाब अपने आप नोटबुक में जुड़ें: चालू/बंद का स्विच।
+// बंद करने पर आगे के चैट जवाब नोटबुक में नहीं आएंगे। पुराने नोट नहीं हटेंगे।
 export function NotebookAutoToggle() {
   const [auto, setAuto] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,11 +55,11 @@ export function NotebookAutoToggle() {
     <section className="card" style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ display: "grid", gap: 2 }}>
-          <strong style={{ fontSize: 15 }}>चैट से अपने आप नोटबुक में जोड़ें</strong>
+          <strong style={{ fontSize: 15 }}>चैट के जवाब अपने आप नोटबुक में जोड़ें</strong>
           <span className="muted" style={{ fontSize: 13 }}>
             {auto === false
-              ? "बंद है: चैट से बने नए पोस्टर नोटबुक में नहीं आएंगे।"
-              : "चालू है: चैट से बने पोस्टर नोटबुक में अपने आप आएंगे।"}
+              ? "बंद है: चैट के नए जवाब नोटबुक में नहीं आएंगे। पुराने नोट वैसे ही रहेंगे।"
+              : "चालू है: चैट का हर जवाब नोटबुक में अपने आप आएगा।"}
           </span>
         </div>
 
@@ -67,7 +67,7 @@ export function NotebookAutoToggle() {
           type="button"
           role="switch"
           aria-checked={auto === true}
-          aria-label="चैट से अपने आप नोटबुक में जोड़ें"
+          aria-label="चैट के जवाब अपने आप नोटबुक में जोड़ें"
           onClick={toggle}
           disabled={loading || busy}
           style={switchStyle(auto === true, loading || busy)}
