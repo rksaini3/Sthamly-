@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="hi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>इंटरनेट नहीं है</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ffffff;
+      color: #111827;
+      font-family: system-ui, -apple-system, "Noto Sans Devanagari", sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #111827; color: #f9fafb; }
+    }
+    main { padding: 16px; max-width: 420px; text-align: center; }
+    h1 { font-size: 22px; margin: 0 0 12px; }
+    p { font-size: 16px; line-height: 1.6; margin: 0 0 20px; opacity: 0.85; }
+    .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    button, a.btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 22px;
+      font-size: 16px;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      background: #111827;
+      color: #ffffff;
+    }
+    a.btn { background: transparent; color: inherit; border: 1px solid currentColor; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>इंटरनेट नहीं है</h1>
+    <p>आपकी पिछली बातचीत फ़ोन में सेव है। इंटरनेट आने पर फिर कोशिश करें।</p>
+    <div class="row">
+      <button type="button" onclick="location.reload()">फिर कोशिश करें</button>
+      <a class="btn" href="/voice">चैट खोलें</a>
+    </div>
+  </main>
+</body>
+</html>
