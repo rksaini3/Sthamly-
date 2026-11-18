@@ -18,6 +18,11 @@ export const ROLE_INFO: Record<Role, { label: string; hint: string; live: boolea
     hint: "कैप्शन, हुक और hashtags",
     live: true,
   },
+  ecommerce: {
+    label: "ई-कॉमर्स सेलर",
+    hint: "प्रोडक्ट लिस्टिंग, शीर्षक, विवरण, कीवर्ड और ऑफ़र का टेक्स्ट",
+    live: true,
+  },
   lawyer: {
     label: "वकील",
     hint: "कानूनी मसौदे और नोटिस (जल्द आएगा, अभी कानूनी सुरक्षा तैयार हो रही है)",
