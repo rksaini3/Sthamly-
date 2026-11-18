@@ -36,7 +36,7 @@ type IconName =
   | "home";
 
 // साइडबार में केवल ज़रूरी चीज़ें और "जोड़ें" (Connect); बाकी प्रोफ़ाइल पर हैं
-type ItemKey = "live" | "gallery" | "saved" | "notes" | "connect";
+type ItemKey = "gallery" | "notes" | "connect";
 
 interface DrawerItem {
   href: string;
@@ -51,9 +51,7 @@ interface DrawerItem {
 // "जल्द आएगा" वाले पन्ने /soon/... पर खुलते हैं।
 const ITEMS: DrawerItem[] = [
   { href: "/home", icon: "home", label: { hi: "होम", en: "Home" } },
-  { href: "/live", key: "live", icon: "live" },
   { href: "/images", key: "gallery", icon: "images" },
-  { href: "/my-posters", key: "saved", icon: "library" },
   { href: "/notebook", key: "notes", icon: "notebook" },
   { href: "/soon/apps", key: "connect", icon: "plugins" },
 ];
