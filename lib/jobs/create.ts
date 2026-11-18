@@ -15,6 +15,8 @@ export interface CreateJobInput {
   wantReel?: boolean;
   // बैच का हिस्सा हो तो उसकी ID, नहीं तो खाली
   batchId?: string | null;
+  // चैट या वॉइस से बना काम हो तो true। इसी पर "चैट से नोटबुक में जोड़ना" वाली सेटिंग लागू होती है।
+  fromChat?: boolean;
 }
 
 export type CreateJobResult =
@@ -27,6 +29,29 @@ async function markFailed(jobId: string, reason: string): Promise<void> {
     .from("jobs")
     .update({ status: "failed", error: reason, finished_at: new Date().toISOString() })
     .eq("id", jobId);
+}
+
+/**
+ * यूज़र ने चैट से नोटबुक में अपने आप जुड़ना बंद किया है या नहीं।
+ * न पढ़ा जा सके तो चालू माना जाता है (जैसा पहले था), ताकि कोई काम न छूटे।
+ */
+async function notebookAutoOn(userId: string): Promise<boolean> {
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data, error } = await admin
+      .from("profiles")
+      .select("notebook_auto")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) {
+      console.error("createJob: notebook setting read failed", error);
+      return true;
+    }
+    return data?.notebook_auto ?? true;
+  } catch (error) {
+    console.error("createJob: notebook setting read threw", error);
+    return true;
+  }
 }
 
 /**
@@ -56,12 +81,17 @@ export async function createJob(input: CreateJobInput): Promise<CreateJobResult>
   }
   if (!shop) return { ok: false, code: "SHOP_NOT_FOUND" };
 
+  // चैट से बना काम, और यूज़र ने नोटबुक में जुड़ना बंद किया है: तो यह काम नोटबुक में न दिखे।
+  // काम, पोस्टर और हिसाब सब सामान्य रहते हैं, बस नोटबुक की सूची में नहीं आता।
+  const hiddenFromNotebook = input.fromChat === true ? !(await notebookAutoOn(input.userId)) : false;
+
   const { data: job, error: jobError } = await admin
     .from("jobs")
     .insert({
       shop_id: shop.id,
       batch_id: input.batchId ?? null,
       status: "queued",
+      hidden_from_notebook: hiddenFromNotebook,
       input: {
         // category और नाम DB से लिए, क्लाइंट से नहीं
         shopName: shop.name,
