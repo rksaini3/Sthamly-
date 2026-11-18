@@ -199,9 +199,41 @@ function PencilIcon() {
 
 // संदेश edit करने के शब्द (हिंदी/English)
 const EDIT_TEXT = {
-  hi: { edit: "बदलें", send: "भेजें", cancel: "रद्द करें", label: "संदेश बदलें" },
-  en: { edit: "Edit", send: "Send", cancel: "Cancel", label: "Edit message" },
+  hi: { edit: "संदेश बदलें", copy: "कॉपी करें", send: "भेजें", cancel: "रद्द करें", label: "संदेश बदलें" },
+  en: { edit: "Edit message", copy: "Copy", send: "Send", cancel: "Cancel", label: "Edit message" },
 } as const;
+
+// user संदेश के नीचे छोटे आइकन (ChatGPT की तरह): कॉपी और बदलें
+const USER_ACTION = {
+  width: 32,
+  height: 32,
+  border: "none",
+  borderRadius: 8,
+  background: "transparent",
+  color: "var(--muted, #6b6b6b)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+} as const;
+
+function CopySmallIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function EditSmallIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 20h4L19 9l-4-4L4 16z" />
+      <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}
 
 const EDIT_AREA = {
   width: "100%",
@@ -888,14 +920,27 @@ export function VoiceAssistant({
             return (
               <div key={m.id} className={styles.userWrap}>
                 <div className={styles.bubbleUser}>{m.text}</div>
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     type="button"
-                    className={styles.btnGhost}
+                    style={USER_ACTION}
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(m.text).catch(() => undefined);
+                    }}
+                    aria-label={L.copy}
+                    title={L.copy}
+                  >
+                    <CopySmallIcon />
+                  </button>
+                  <button
+                    type="button"
+                    style={USER_ACTION}
                     onClick={() => setEditing({ id: m.id, text: m.text })}
                     disabled={busy !== "idle"}
+                    aria-label={L.edit}
+                    title={L.edit}
                   >
-                    {L.edit}
+                    <EditSmallIcon />
                   </button>
                   <button
                     type="button"
