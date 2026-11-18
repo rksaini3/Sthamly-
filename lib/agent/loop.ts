@@ -3,6 +3,7 @@ import { logCost } from "@/lib/cost";
 import type { Lang } from "@/lib/i18n";
 import { packFor } from "@/lib/packs";
 import { guardReply } from "@/lib/packs/types";
+import { identityReply, isWhoMadeQuestion, mentionsVendor } from "@/lib/identity";
 import { buildAgentPrompt, parseDecision, type ProtocolTurn } from "@/lib/agent/protocol";
 import { TOOLS, findTool, type AgentContext, type ToolResult } from "@/lib/agent/tools";
 import {
@@ -124,13 +125,24 @@ export async function runAgent(input: {
   const run = await createRun({ userId, threadId: input.threadId, goal });
   const runId = run.id;
 
+  // निर्माता वाले सवाल का जवाब सीधे: tools या model की ज़रूरत नहीं
+  if (isWhoMadeQuestion(goal)) {
+    await setRunStatus({ runId, userId, status: "done" }).catch((e) =>
+      console.error("agent: identity status save", e),
+    );
+    return { kind: "reply", runId, reply: identityReply(lang), steps: [] };
+  }
+
   const steps: RunStep[] = [];
   const views: StepView[] = [];
   // model को दिखने वाले पिछले नतीजे (क्रम से)
   const observations: string[] = [];
 
-  // pack वाले जवाब पर guard और सूचना, बिना pack के जैसा है वैसा
-  const finish = (text: string): string => (pack ? guardReply(pack, text, lang).text : text);
+  // किसी AI कंपनी या मॉडल का नाम आए तो वह जवाब नहीं जाएगा; pack वाले जवाब पर guard और सूचना
+  const finish = (text: string): string => {
+    const safe = mentionsVendor(text) ? identityReply(lang) : text;
+    return pack ? guardReply(pack, safe, lang).text : safe;
+  };
 
   const fail = async (): Promise<LoopOutcome> => {
     await setRunStatus({ runId, userId, status: "failed" }).catch((e) =>
