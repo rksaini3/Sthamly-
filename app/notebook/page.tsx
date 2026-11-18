@@ -70,9 +70,23 @@ export default async function NotebookPage() {
       {/* चैट के जवाब और हाथ से लिखे नोट: हर role के लिए */}
       <NotebookNotes lang={lang} />
 
-      {/* डाउनलोड: CSV (Excel के लिए) और Word (पढ़ने के लिए), हर role के लिए */}
+      {/* डाउनलोड: CSV (Excel के लिए), Word (पढ़ने के लिए), और PDF (प्रिंट पन्ने से) */}
       <NotebookExportButton />
       <NotebookWordButton />
+
+      <section className="card" style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "grid", gap: 2 }}>
+          <strong style={{ fontSize: 15 }}>PDF में सेव करें</strong>
+          <span className="muted" style={{ fontSize: 13 }}>
+            प्रिंट पन्ना खुलेगा। वहां "PDF के लिए प्रिंट करें" दबाकर "Save as PDF" चुनें।
+          </span>
+        </div>
+        <div>
+          <Link href="/notebook/print" className="btn btn-block">
+            प्रिंट पन्ना खोलें
+          </Link>
+        </div>
+      </section>
 
       {/* पोस्टर: सिर्फ़ दुकानदार के लिए */}
       {isShopkeeper && (
