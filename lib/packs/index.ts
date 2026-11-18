@@ -1,5 +1,6 @@
 import type { Role } from "@/types/domain";
 import { creatorPack } from "@/lib/packs/creator";
+import { ecommercePack } from "@/lib/packs/ecommerce";
 import { lawyerPack } from "@/lib/packs/lawyer";
 import { studentPack } from "@/lib/packs/student";
 import type { DomainPack, PackRegistry } from "@/lib/packs/types";
@@ -8,6 +9,7 @@ import type { DomainPack, PackRegistry } from "@/lib/packs/types";
 // जिस भूमिका का pack न हो, उसके लिए null मिलेगा और सामान्य सवाल-जवाब चलेगा।
 const REGISTRY: PackRegistry = {
   creator: creatorPack,
+  ecommerce: ecommercePack,
   student: studentPack,
   lawyer: lawyerPack,
 };
