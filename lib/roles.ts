@@ -11,12 +11,12 @@ export const ROLE_INFO: Record<Role, { label: string; hint: string; live: boolea
   student: {
     label: "छात्र",
     hint: "पढ़ाई में मदद: नोट्स, सारांश, प्रश्नोत्तर",
-    live: false,
+    live: true,
   },
   creator: {
     label: "क्रिएटर",
-    hint: "कैप्शन और hashtags",
-    live: false,
+    hint: "कैप्शन, हुक और hashtags",
+    live: true,
   },
   lawyer: {
     label: "वकील",
