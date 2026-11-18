@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { Webhook } from "standardwebhooks";
-import { sendOtpViaMsg91 } from "@/lib/sms/msg91";
+import { sendOtp } from "@/lib/sms/otp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,10 +38,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await sendOtpViaMsg91({ phone, otp });
+    await sendOtp({ phone, otp });
   } catch (error) {
     // OTP कभी log नहीं होता, सिर्फ़ कारण
-    console.error("sms hook: MSG91 send failed", error instanceof Error ? error.message : "unknown");
+    console.error("sms hook: OTP send failed", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ error: { message: "sms send failed" } }, { status: 502 });
   }
 
