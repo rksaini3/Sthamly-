@@ -218,6 +218,8 @@ const createPoster = defineTool({
       photoPaths: [],
       language: args.language,
       wantReel: false,
+      // चैट/एजेंट से बना काम: नोटबुक की "चैट से अपने आप जोड़ें" सेटिंग इसी पर लागू होगी
+      fromChat: true,
     });
 
     if (!result.ok) {
