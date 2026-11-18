@@ -22,6 +22,8 @@ import type { Role } from "@/types/domain";
 const MAX_STEPS = 6;
 // एक run में वेब खोज की सीमा (हर खोज का खर्च चैट से कई गुना है)
 const MAX_SEARCHES_PER_RUN = 1;
+// ये tools एक run में सिर्फ़ एक बार चलते हैं (सफल हो या विफल), ताकि model बार-बार न पूछे
+const SINGLE_USE_TOOLS = new Set<string>(["web_search"]);
 // tool का नतीजा model को दिखाने के लिए (खोज का जवाब लंबा होता है)
 const MAX_OBSERVATION_TEXT = 900;
 // चैट में दिखने वाली और सेव होने वाली कदम की लाइन
@@ -137,6 +139,8 @@ export async function runAgent(input: {
   const views: StepView[] = [];
   // model को दिखने वाले पिछले नतीजे (क्रम से)
   const observations: string[] = [];
+  // इस run में जो single-use tool चल चुके हैं
+  const spent = new Set<string>();
 
   // किसी AI कंपनी या मॉडल का नाम आए तो वह जवाब नहीं जाएगा; pack वाले जवाब पर guard और सूचना
   const finish = (text: string): string => {
@@ -209,6 +213,14 @@ export async function runAgent(input: {
     }
     const cleanArgs = args.args as Record<string, unknown>;
 
+    // 5b. single-use tool दोबारा: नहीं चलेगा, model को सीधे जवाब देने को कहें
+    if (SINGLE_USE_TOOLS.has(tool.name) && spent.has(tool.name)) {
+      observations.push(
+        `${tool.name} इस बातचीत में एक बार चल चुका है, दोबारा नहीं चलेगा। अब मिली जानकारी (या न मिलने की बात) से final जवाब दो।`,
+      );
+      continue;
+    }
+
     // 6. मंज़ूरी वाला काम: अभी नहीं चलेगा, pending बनेगा और loop रुकेगा
     if (tool.permission === "confirm") {
       const summary = tool.summarize(args.args);
@@ -249,6 +261,8 @@ export async function runAgent(input: {
       console.error("agent: tool failed", tool.name, error);
       result = { ok: false, message: pick(lang, "काम में गड़बड़ हुई", "Something went wrong") };
     }
+
+    if (SINGLE_USE_TOOLS.has(tool.name)) spent.add(tool.name);
 
     const full = result.ok ? result.text : result.message;
     // chat में सिर्फ़ छोटी लाइन दिखती है और रिकॉर्ड में भी वही जाती है
