@@ -8,7 +8,6 @@ import { userFromBearer } from "@/lib/mobile-auth";
 import { allowRequest } from "@/lib/rate-limit";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { checkUsage } from "@/lib/usage";
 import type { Language } from "@/types/domain";
 
 export const runtime = "nodejs";
@@ -138,27 +137,8 @@ async function handleRetry(req: NextRequest, ctx: Ctx) {
     return errorResponse(400, "NO_OFFER", "पहले ऑफ़र लिखें, फिर पोस्टर बनेगा");
   }
 
-  // 7. पैसे की जांच पहले (वॉलेट/कोटा कम हो तो साफ़ बताएं)
-  // createJob भी जांचता है, यह बस यूज़र को पहले ही सही संदेश देने के लिए है।
-  try {
-    const usage = await checkUsage(userId, "poster");
-    if (!usage.ok) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "LIMIT_REACHED",
-            message: "पोस्टर का कोटा या वॉलेट बैलेंस पूरा हो गया है। वॉलेट भरें या प्लान लें।",
-          },
-          limit: { kind: "poster", plan: usage.plan, walletPaise: usage.walletPaise, pricePaise: usage.pricePaise },
-        },
-        { status: 402 },
-      );
-    }
-  } catch (error) {
-    console.error("job retry: usage check failed", error);
-  }
-
-  // 8. नया काम बनाएं (credit की पूरी जांच createJob में होती है)
+  // 7. नया काम बनाएं। credit की पूरी जांच (कोटा, फिर वॉलेट) createJob में होती है,
+  // इसलिए यहां अलग से जांच नहीं करते।
   const created = await createJob({
     userId,
     shopId: job.shop_id,
@@ -167,11 +147,20 @@ async function handleRetry(req: NextRequest, ctx: Ctx) {
     photoPaths,
     language: language as Language,
     batchId: job.batch_id ?? null,
+    // "फिर से बनाएं" नोटबुक से जुड़ा काम है, इसलिए नोटबुक की चैट वाली सेटिंग यहां लागू नहीं होती
   });
 
   if (!created.ok) {
     if (created.code === "QUOTA_EXCEEDED") {
-      return errorResponse(402, "LIMIT_REACHED", "पोस्टर का कोटा या वॉलेट बैलेंस पूरा हो गया है");
+      return NextResponse.json(
+        {
+          error: {
+            code: "LIMIT_REACHED",
+            message: "पोस्टर का कोटा या वॉलेट बैलेंस पूरा हो गया है। वॉलेट भरें या प्लान लें।",
+          },
+        },
+        { status: 402 },
+      );
     }
     if (created.code === "SHOP_NOT_FOUND" || created.code === "FORBIDDEN") {
       return errorResponse(404, "NOT_FOUND", "दुकान नहीं मिली");
@@ -179,7 +168,7 @@ async function handleRetry(req: NextRequest, ctx: Ctx) {
     return errorResponse(500, "INTERNAL", "पोस्टर दोबारा नहीं बन पाया, दोबारा कोशिश करें");
   }
 
-  // 9. पुराना काम नोटबुक से छुपाएं, अगर वह विफल था (हटता नहीं, इतिहास में रहता है)
+  // 8. पुराना काम नोटबुक से छुपाएं, अगर वह विफल था (हटता नहीं, इतिहास में रहता है)
   if (job.status === "failed") {
     const { error: hideError } = await admin
       .from("jobs")
