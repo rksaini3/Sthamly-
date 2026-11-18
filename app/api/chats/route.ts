@@ -8,8 +8,8 @@ import { preflight, withCors } from "@/lib/cors";
 import { getPublicEnv } from "@/lib/env";
 import { LANG_COOKIE, parseLang, type Lang } from "@/lib/i18n";
 import { userFromBearer } from "@/lib/mobile-auth";
+import { saveChatNote } from "@/lib/notebook-save";
 import { isRole } from "@/lib/roles";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkUsage, recordUsage } from "@/lib/usage";
 import type { Role } from "@/types/domain";
@@ -41,11 +41,6 @@ const bodySchema = z.object({
     .max(12),
 });
 
-// नोट की सीमाएं (migration 0012 के check के हिसाब से)
-const NOTE_QUESTION_MAX = 4000;
-const NOTE_CONTENT_MAX = 50000;
-const NOTE_TITLE_MAX = 60;
-
 function errorResponse(status: number, code: string, message: string) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
@@ -53,6 +48,41 @@ function errorResponse(status: number, code: string, message: string) {
 // Preflight: Android app (Capacitor) पहले OPTIONS भेजता है
 export async function OPTIONS(req: NextRequest) {
   return preflight(req.headers.get("origin"));
+}
+
+// ---- बातचीत की सूची: हाल की पहले, पिन वाली सबसे ऊपर (ऐप का "पिछला" हिस्सा) ----
+
+const LIST_LIMIT = 100;
+
+export async function GET(req: NextRequest) {
+  const origin = req.headers.get("origin");
+  let res: NextResponse;
+  try {
+    res = await handleList(req);
+  } catch (error) {
+    console.error("chats: list unexpected error", error);
+    res = errorResponse(500, "INTERNAL", "इतिहास नहीं खुल पाया");
+  }
+  return withCors(res, origin);
+}
+
+async function handleList(req: NextRequest): Promise<NextResponse> {
+  const session = await sessionFor(req);
+  if (!session) return errorResponse(401, "UNAUTHORIZED", "पहले लॉग-इन करें");
+
+  // RLS से सिर्फ़ अपनी बातचीत
+  const { data, error } = await session.supabase
+    .from("chat_threads")
+    .select("id, title, pinned, updated_at")
+    .order("pinned", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(LIST_LIMIT);
+
+  if (error) {
+    console.error("chats: list failed", error);
+    return errorResponse(500, "READ_FAILED", "इतिहास नहीं खुल पाया");
+  }
+  return NextResponse.json({ chats: data ?? [] });
 }
 
 export async function POST(req: NextRequest) {
@@ -240,55 +270,6 @@ async function handleChat(req: NextRequest) {
     steps: outcome.steps,
     actions: outcome.actions,
   });
-}
-
-/**
- * चैट के सवाल-जवाब को नोटबुक नोट के रूप में सेव करें।
- * - सेटिंग (profiles.notebook_auto) बंद हो तो कुछ नहीं होता।
- * - यह सहायक काम है: विफल हो तो सिर्फ़ log होता है, चैट का जवाब नहीं रुकता।
- * - Admin client से लिखते हैं, इसलिए user_id हमेशा इसी user का रखते हैं।
- */
-async function saveChatNote(input: {
-  userId: string;
-  threadId: string | null;
-  question: string;
-  answer: string;
-}): Promise<void> {
-  try {
-    const admin = createSupabaseAdminClient();
-
-    const { data: profile, error: profileError } = await admin
-      .from("profiles")
-      .select("notebook_auto")
-      .eq("id", input.userId)
-      .maybeSingle();
-    if (profileError) {
-      console.error("voice chat: notebook setting read failed", profileError);
-    }
-    // सेटिंग न पढ़ी जा सके तो चालू माना जाता है (जैसा डिफ़ॉल्ट है)
-    const auto = profileError ? true : (profile?.notebook_auto ?? true);
-    if (!auto) return;
-
-    const question = input.question.slice(0, NOTE_QUESTION_MAX);
-    const content = input.answer.slice(0, NOTE_CONTENT_MAX);
-    const title = (question.trim() || content.split("\n")[0] || "बिना नाम")
-      .trim()
-      .slice(0, NOTE_TITLE_MAX);
-
-    const { error } = await admin.from("notebook_notes").insert({
-      user_id: input.userId,
-      kind: "chat",
-      thread_id: input.threadId,
-      title,
-      question,
-      content,
-      tags: [],
-      pinned: false,
-    });
-    if (error) console.error("voice chat: notebook note save failed", error);
-  } catch (error) {
-    console.error("voice chat: notebook note save threw", error);
-  }
 }
 
 // ---- जवाब बनाना: agent पहले, फिर सादा सवाल-जवाब ----
