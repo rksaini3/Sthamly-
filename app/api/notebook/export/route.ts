@@ -116,7 +116,7 @@ async function handleExport(req: NextRequest): Promise<NextResponse> {
       .join(","),
   );
 
-  // BOM: Excel में हिंदी अक्षर सही दिखें
+  // BOM ("\uFEFF"): Excel में हिंदी अक्षर सही दिखें
   const csv = "\uFEFF" + [header.map((h) => csvCell(h)).join(","), ...rows].join("\r\n");
 
   const today = dateOnly(new Date().toISOString());
