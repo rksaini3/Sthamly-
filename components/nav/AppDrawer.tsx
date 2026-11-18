@@ -13,6 +13,9 @@ import { forgetChatCache, loadChatList, saveChatList } from "@/lib/offline-cache
 // ☰ इन पन्नों पर नहीं दिखेगा (लॉगिन, कानूनी पन्ने और पूरी स्क्रीन वाला लाइव कैमरा)
 const HIDDEN_PREFIXES = ["/login", "/auth", "/privacy", "/terms", "/live"] as const;
 
+// साइडबार में शुरू में कितनी हाल की चैट दिखें (बाकी "और दिखाएं" से)
+const RECENT_LIMIT = 6;
+
 type IconName =
   | "new"
   | "notebook"
@@ -54,19 +57,19 @@ interface SidebarSection {
   href?: string;
   // उप-सूची (खुलने वाला हिस्सा)
   children?: SidebarChild[];
-  // false हो तो सेक्शन अभी नहीं दिखेगा (जैसे Projects जब तक उसका पन्ना न बने)
+  // false हो तो सेक्शन नहीं दिखेगा
   enabled: boolean;
 }
 
 // साइडबार का ढांचा। नया सेक्शन यहीं जुड़ेगा, बाकी कोड नहीं बदलेगा।
-// launch के बाद: Projects को enabled: true करें, Agents के उप-सूची में role packs जोड़ें।
+// Library के तीनों links असली पन्ने हैं; नाम पुराने नाम के साथ ताकि पहचान बनी रहे।
 const SECTIONS: SidebarSection[] = [
   {
     id: "projects",
     label: { hi: "प्रोजेक्ट", en: "Projects" },
     icon: "projects",
     href: "/projects",
-    enabled: false,
+    enabled: true,
   },
   {
     id: "library",
@@ -74,23 +77,23 @@ const SECTIONS: SidebarSection[] = [
     icon: "library",
     enabled: true,
     children: [
-      { href: "/my-posters", label: { hi: "मीडिया (पोस्टर)", en: "Media (posters)" } },
-      { href: "/notebook", label: { hi: "दस्तावेज़ और नोट्स", en: "Documents & notes" } },
-      { href: "/images", label: { hi: "अपलोड", en: "Uploads" } },
+      { href: "/images", label: { hi: "गैलरी (पोस्टर की तस्वीरें)", en: "Gallery (poster images)" } },
+      { href: "/my-posters", label: { hi: "सेव्ड पोस्टर (स्थिति और प्रकाशन)", en: "Saved posters (status and publish)" } },
+      { href: "/notebook", label: { hi: "नोट्स (चैट जवाब और लिखे नोट)", en: "Notes (chat answers and written notes)" } },
     ],
   },
   {
     id: "agents",
     label: { hi: "एजेंट", en: "Agents" },
     icon: "staff",
-    href: "/role",
+    href: "/agents",
     enabled: true,
   },
   {
     id: "apps",
     label: { hi: "ऐप्स", en: "Apps" },
     icon: "plugins",
-    href: "/soon/apps",
+    href: "/apps",
     enabled: true,
   },
 ];
@@ -195,6 +198,8 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
   const [sheetFor, setSheetFor] = useState<string | null>(null);
   // कौन-से सेक्शन की उप-सूची हाथ से खोली गई है (जिसमें खुला पन्ना है, वह अपने आप खुलती है)
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  // हाल की सारी चैट दिखानी हैं या सिर्फ़ शुरुआती
+  const [showAllRecent, setShowAllRecent] = useState(false);
 
   const loadChats = useCallback(async () => {
     try {
@@ -237,6 +242,7 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
     setChatError(null);
     setSearching(false);
     setQuery("");
+    setShowAllRecent(false);
     setActiveChat(new URLSearchParams(window.location.search).get("chat"));
     void loadChats();
   }, [open, loadChats]);
@@ -425,7 +431,10 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
   const q = query.trim().toLowerCase();
   const shown = q ? (chats ?? []).filter((c) => c.title.toLowerCase().includes(q)) : (chats ?? []);
   const pinned = shown.filter((c) => c.pinned);
-  const recent = shown.filter((c) => !c.pinned);
+  const allRecent = shown.filter((c) => !c.pinned);
+  // शुरू में सिर्फ़ कुछ चैट, बाकी "और दिखाएं" से (खोज में सब दिखें)
+  const recent = showAllRecent || q ? allRecent : allRecent.slice(0, RECENT_LIMIT);
+  const hiddenCount = allRecent.length - recent.length;
   const sheetChat = (chats ?? []).find((c) => c.id === sheetFor) ?? null;
 
   return (
@@ -515,10 +524,10 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
                     {t.historyError}
                   </p>
                 )}
-                {historyState === "ok" && q && recent.length === 0 && pinned.length === 0 && (
+                {historyState === "ok" && q && allRecent.length === 0 && pinned.length === 0 && (
                   <p className={styles.empty}>{t.noMatch}</p>
                 )}
-                {historyState === "ok" && !q && recent.length === 0 && pinned.length === 0 && (
+                {historyState === "ok" && !q && allRecent.length === 0 && pinned.length === 0 && (
                   <p className={styles.empty}>{t.noChats}</p>
                 )}
                 {GROUP_ORDER.map((g) => {
@@ -533,6 +542,24 @@ export function AppDrawer({ lang = "hi" }: { lang?: Lang }) {
                     </div>
                   );
                 })}
+
+                {/* बाकी चैट: पहले कुछ दिखती हैं, फिर एक बटन से पूरी सूची */}
+                {historyState === "ok" && !q && allRecent.length > RECENT_LIMIT && (
+                  <button
+                    type="button"
+                    className={styles.empty}
+                    onClick={() => setShowAllRecent((v) => !v)}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent)", fontWeight: 600, textAlign: "left", padding: "8px 0" }}
+                  >
+                    {showAllRecent
+                      ? lang === "en"
+                        ? "Show less"
+                        : "कम दिखाएं"
+                      : lang === "en"
+                        ? `Show ${hiddenCount} more`
+                        : `${hiddenCount} और दिखाएं`}
+                  </button>
+                )}
 
                 {chatError && (
                   <p role="alert" className={styles.empty} style={{ color: "var(--danger)" }}>
