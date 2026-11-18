@@ -1,10 +1,14 @@
 import type { Role } from "@/types/domain";
+import { creatorPack } from "@/lib/packs/creator";
 import { lawyerPack } from "@/lib/packs/lawyer";
+import { studentPack } from "@/lib/packs/student";
 import type { DomainPack, PackRegistry } from "@/lib/packs/types";
 
 // सभी packs एक जगह। नया pack जोड़ना = यहां एक पंक्ति।
 // जिस भूमिका का pack न हो, उसके लिए null मिलेगा और सामान्य सवाल-जवाब चलेगा।
 const REGISTRY: PackRegistry = {
+  creator: creatorPack,
+  student: studentPack,
   lawyer: lawyerPack,
 };
 
