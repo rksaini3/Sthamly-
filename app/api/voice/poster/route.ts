@@ -70,6 +70,8 @@ async function handle(req: NextRequest) {
     photoPaths: [],
     language: "hinglish",
     wantReel: false,
+    // चैट से बना काम: नोटबुक की "चैट से अपने आप जोड़ें" सेटिंग इसी पर लागू होगी
+    fromChat: true,
   });
   if (!created.ok) {
     if (created.code === "QUOTA_EXCEEDED") {
