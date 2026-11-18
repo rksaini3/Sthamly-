@@ -22,7 +22,9 @@ const TEXT_MODEL = "anthropic/claude-haiku-5.5";
 
 // लागत paise में। ये अनुमान हैं।
 export const FAL_MODELS = {
-  image: { id: "fal-ai/flux/schnell", costPaise: 15, verified: false },
+  // verified: fal.ai के आधिकारिक docs (flux-schnell) से endpoint और input जांचे गए।
+  // दाम अभी अनुमान है, असली बिल देखकर costPaise सुधारें।
+  image: { id: "fal-ai/flux/schnell", costPaise: 15, verified: true },
   video: { id: "REPLACE/video-model", costPaise: 450, verified: false },
   text: { id: "openrouter/router", costPaise: 5, verified: false },
   audio: { id: "fal-ai/whisper", costPaise: 5, verified: false },
@@ -131,7 +133,14 @@ export const falProvider: AIProvider = {
 
     const output = await runModel<FalOutput>(
       FAL_MODELS.image.id,
-      { prompt: req.prompt, aspect_ratio: req.size },
+      {
+        prompt: req.prompt,
+        // Flux schnell में aspect_ratio नहीं होता, size preset से तय होता है
+        image_size: req.size === "4:5" ? "portrait_4_3" : "square_hd",
+        num_images: 1,
+        output_format: "jpeg",
+        enable_safety_checker: true,
+      },
       TIMEOUT_MS.image,
     );
     const url = pickUrl(output, (o) => o.images?.[0]?.url, "image");
