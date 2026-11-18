@@ -66,6 +66,8 @@ export type Database = {
           user_id: string;
           title: string;
           pinned: boolean;
+          // यह chat किस project में है (migration 0015). null मतलब किसी project में नहीं।
+          project_id: string | null;
           created_at: string;
           updated_at: string;
         },
