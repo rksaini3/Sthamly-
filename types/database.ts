@@ -34,6 +34,8 @@ export type Database = {
           plan: PlanTier;
           created_at: string;
           deleted_at: string | null;
+          // चैट से अपने आप नोटबुक में जुड़ना चालू है या नहीं (migration 0011)
+          notebook_auto: boolean;
         },
         "id"
       >;
@@ -139,6 +141,8 @@ export type Database = {
           finished_at: string | null;
           created_at: string;
           updated_at: string | null;
+          // नोटबुक की सूची से छुपा हुआ काम (मिटता नहीं) (migration 0011)
+          hidden_from_notebook: boolean;
         },
         "shop_id",
         [
