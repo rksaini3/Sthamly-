@@ -52,7 +52,7 @@ export async function POST() {
   const now = Date.now();
 
   try {
-    const client = new GoogleGenAI({ apiKey });
+    const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1alpha" } });
     const token = await client.authTokens.create({
       config: {
         uses: 1,
