@@ -2,7 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 
-// नोटबुक की सभी entries (चैट नोट और पोस्टर) एक CSV फ़ाइल में डाउनलोड करें।
+// नोटबुक के सारे नोट एक CSV फ़ाइल में डाउनलोड करें।
 // Web पर cookie से login चलता है, इसलिए same-origin fetch काफ़ी है।
 export function NotebookExportButton() {
   const [busy, setBusy] = useState(false);
@@ -44,7 +44,7 @@ export function NotebookExportButton() {
       <div style={{ display: "grid", gap: 2 }}>
         <strong style={{ fontSize: 15 }}>नोटबुक डाउनलोड करें</strong>
         <span className="muted" style={{ fontSize: 13 }}>
-          सारे नोट और पोस्टर की जानकारी एक फ़ाइल में। Excel या Google Sheets में खुलती है।
+          सारे नोट एक फ़ाइल में: तारीख, सवाल और जवाब। Excel या Google Sheets में खुलती है।
         </span>
       </div>
 
