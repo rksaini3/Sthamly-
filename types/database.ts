@@ -6,7 +6,7 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-type Role = "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator" | "lawyer" | "finance";
+type Role = "user" | "practitioner" | "admin" | "shopkeeper" | "student" | "creator" | "ecommerce" | "lawyer" | "finance";
 type PlanTier = "free" | "plus" | "vip" | "starter" | "premium" | "business";
 type ShopCategory = "salon" | "general" | "kirana" | "clothing" | "mobile" | "clinic" | "coaching";
 type JobStatus = "queued" | "running" | "done" | "failed";
