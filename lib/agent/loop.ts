@@ -148,7 +148,7 @@ export async function runAgent(input: {
     return pack ? guardReply(pack, safe, lang).text : safe;
   };
 
-  const fail = async (): Promise<LoopOutcome> => {
+  const fail = async (hint?: string): Promise<LoopOutcome> => {
     await setRunStatus({ runId, userId, status: "failed" }).catch((e) =>
       console.error("agent: failed status save", e),
     );
@@ -157,21 +157,24 @@ export async function runAgent(input: {
       runId,
       steps: views,
       reply: finish(
-        pick(
-          lang,
-          "काम पूरा नहीं हो पाया। एक बार फिर छोटे में बताएं।",
-          "I could not finish this. Please tell me again in short.",
-        ),
+        hint ??
+          pick(
+            lang,
+            "काम पूरा नहीं हो पाया। एक बार फिर छोटे में बताएं।",
+            "I could not finish this. Please tell me again in short.",
+          ),
       ),
     };
   };
 
   for (let i = 0; i < MAX_STEPS; i++) {
-    // 1. model से अगला फ़ैसला (prompt में भी सिर्फ़ इस भूमिका के tools)
+    // 1. model से अगला फ़ैसला। जो single-use tool चल चुका है, वह prompt की सूची से भी हट जाता है,
+    //    ताकि model सीधे जवाब दे (दोबारा tool माँगने की गुंजाइश न रहे)।
+    const available = toolNames.filter((n) => !(SINGLE_USE_TOOLS.has(n) && spent.has(n)));
     let raw: string;
     try {
       raw = await askModel(
-        buildAgentPrompt({ goal, history, observations, lang, allowedTools: toolNames }),
+        buildAgentPrompt({ goal, history, observations, lang, allowedTools: available }),
       );
     } catch (error) {
       console.error("agent: model call failed", error);
@@ -289,6 +292,16 @@ export async function runAgent(input: {
     observations.push(`${tool.name}: ${clip(full, MAX_OBSERVATION_TEXT)}${dataLine}`);
   }
 
-  // सीमा तक पहुंच गए, और अंतिम जवाब नहीं मिला
+  // सीमा तक पहुंच गए, और अंतिम जवाब नहीं मिला।
+  // खोज हुई हो और जवाब न बना हो: साफ़ कहें कि ताज़ा जानकारी नहीं मिली (सामान्य सवाल-जवाब पर न जाएं)
+  if (spent.has("web_search")) {
+    return fail(
+      pick(
+        lang,
+        "अभी ताज़ा जानकारी नहीं मिल पाई, इसलिए पक्का जवाब नहीं दे सकता। किसी भरोसेमंद वेबसाइट या ख़बर पर एक बार देख लें।",
+        "I could not get current information right now, so I cannot give a confirmed answer. Please check a trusted website or news source.",
+      ),
+    );
+  }
   return fail();
 }
