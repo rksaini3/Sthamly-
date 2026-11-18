@@ -68,6 +68,7 @@ export const LayoutSchema = z.object({
 const DEFAULT_ORDER: Record<Role, WidgetType[]> = {
   shopkeeper: ["quick_actions", "festivals", "recent_posters", "tip_card"],
   creator: ["quick_actions", "recent_posters", "festivals", "tip_card"],
+  ecommerce: ["quick_actions", "tip_card"],
   student: ["quick_actions", "tip_card"],
   lawyer: ["quick_actions", "tip_card"],
   finance: ["quick_actions", "tip_card"],
