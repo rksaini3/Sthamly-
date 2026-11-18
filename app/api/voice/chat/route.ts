@@ -4,6 +4,7 @@ import { runAgent, type ActionView, type StepView } from "@/lib/agent/loop";
 import { replyToChat } from "@/lib/assistant/chat";
 import { titleFromMessage } from "@/lib/chats";
 import { LANG_COOKIE, parseLang, type Lang } from "@/lib/i18n";
+import { saveChatNote } from "@/lib/notebook-save";
 import { isRole } from "@/lib/roles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkUsage, recordUsage } from "@/lib/usage";
@@ -173,6 +174,12 @@ async function handleChat(req: NextRequest) {
     } catch (error) {
       console.error("voice chat: reply save failed", error);
     }
+  }
+
+  // 8. नोटबुक: जवाब अपने आप नोट बने (सेटिंग चालू हो तो)।
+  // "फिर से लिखें" और मंज़ूरी के इंतज़ार वाले जवाब पर नहीं, क्योंकि वहां अंतिम जवाब अभी बना नहीं।
+  if (!parsed.data.regenerate && outcome.status !== "waiting_confirm") {
+    await saveChatNote({ userId: user.id, threadId, question: last.content, answer: outcome.reply });
   }
 
   return NextResponse.json({
