@@ -11,6 +11,8 @@ export interface LibraryItem {
   occasion: string | null;
   caption: string;
   posterUrl: string | null;
+  // विफल काम की वजह, हिंदी में (सिर्फ़ failed होने पर)
+  failureReason: string | null;
 }
 
 interface OutputRow {
@@ -24,6 +26,7 @@ interface JobRow {
   status: LibraryItem["status"];
   created_at: string;
   input: unknown;
+  error: string | null;
   outputs: OutputRow[];
 }
 
@@ -38,11 +41,27 @@ function readInput(input: unknown): { offerText: string; occasion: string | null
   };
 }
 
+/**
+ * jobs.error का कोड (या संदेश) सादी हिंदी में।
+ * जो कोड यहां नहीं है, वह "AI/अज्ञात" वाले संदेश में जाता है, ताकि यूज़र को कुछ तो दिखे।
+ */
+export function failureReasonOf(status: LibraryItem["status"], error: string | null): string | null {
+  if (status !== "failed") return null;
+  const code = (error ?? "").trim();
+  if (code === "quota_exceeded") return "क्रेडिट या बैलेंस कम था, पैसा वापस हो गया";
+  if (code === "credit_reserve_failed") return "क्रेडिट जाँचते समय गड़बड़ी, पैसा वापस हो गया";
+  if (code === "render_failed") return "पोस्टर बनाते समय गड़बड़ी, क्रेडिट वापस कर दिया गया";
+  if (/cap|सीमा/i.test(code)) return "इस काम का खर्च तय सीमा से ऊपर चला गया";
+  if (/poster upload|storage/i.test(code)) return "पोस्टर सेव नहीं हो पाया, दोबारा कोशिश करें";
+  if (/outputs insert/i.test(code)) return "नतीजा सेव नहीं हो पाया, दोबारा कोशिश करें";
+  return "AI जवाब नहीं दे पाया, दोबारा कोशिश करें";
+}
+
 /** यूज़र के हाल के काम (RLS से सिर्फ़ अपनी दुकान के)। पोस्टर के लिए 1 घंटे वाले signed URL। */
 export async function loadLibrary(supabase: ServerClient, limit = 60): Promise<LibraryItem[]> {
   const { data, error } = await supabase
     .from("jobs")
-    .select("id, status, created_at, input, outputs(type, storage_path, content)")
+    .select("id, status, created_at, input, error, outputs(type, storage_path, content)")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -80,6 +99,7 @@ export async function loadLibrary(supabase: ServerClient, limit = 60): Promise<L
       occasion,
       caption,
       posterUrl: poster?.storage_path ? (urlByPath.get(poster.storage_path) ?? null) : null,
+      failureReason: failureReasonOf(job.status, job.error),
     };
   });
 }
