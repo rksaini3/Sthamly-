@@ -3,6 +3,7 @@ import { logCost } from "@/lib/cost";
 import type { Lang } from "@/lib/i18n";
 import { packFor } from "@/lib/packs";
 import { guardReply } from "@/lib/packs/types";
+import { identityReply, isWhoMadeQuestion, mentionsVendor } from "@/lib/identity";
 import type { Role } from "@/types/domain";
 
 export interface ChatTurn {
@@ -26,21 +27,6 @@ const SYSTEM_EN = [
   "If you are not sure of something (for example today's market or trend information), do not guess. Say plainly that you do not have current information, and share only the general knowledge you are sure of.",
   "If asked your name, maker or the AI model or company behind you, only say you are Sthamly. Do not call yourself an assistant, bot, or name any AI model or company.",
 ].join("\n");
-
-// "तुम्हें किसने बनाया", "who made you", "Tumko kisne bnaya" जैसे सवाल: मॉडल से पूछे बिना सीधा जवाब
-const WHO_MADE_RE =
-  /किसने (तुम्हें|आपको|तुम्हे|तुझे|तुमको|आपको)|तुम्हें किसने|आपको किसने|किसने बनाया|किसने बनाई|किसने बनाए|तुम कौन हो|आप कौन हैं|who (made|created|built|trained) you|who are you|what (model|ai) are you|which (model|ai) are you|kisne (tumhe|tumko|tujhe|aapko|aapne|tumne|bnaya|banaya|banayi|bnayi|banaye|banai)|tum kaun ho|tum kon ho|aap kaun ho|tumhara (maker|creator)|who('s| is) (your|the) (maker|creator)/i;
-
-// जवाब में अगर किसी AI कंपनी या मॉडल का नाम आ जाए, तो वह जवाब नहीं जाएगा
-const VENDOR_RE =
-  /\b(openai|anthropic|claude|groq|gemini|llama|mistral|gpt|chatgpt|deepseek|google ai)\b|ओपनएआई|ओपन ?एआई|क्लाउड|जेमिनी|मिस्ट्रल/i;
-
-// साफ़ पहचान वाला जवाब (हिंदी/हिंग्लिश या English)
-function identityReply(lang: Lang): string {
-  return lang === "en"
-    ? "I am the Sthamly agent, here to help with posters, offers, promotion and everyday questions."
-    : "मैं Sthamly agent हूं, पोस्टर, ऑफर, प्रचार और रोज़ के सवालों में मदद करने के लिए।";
-}
 
 // सिस्टम प्रॉम्प्ट: भूमिका का pack हो तो उसका persona, वरना डिफ़ॉल्ट
 function systemText(lang: Lang, role: Role | null | undefined): string {
@@ -73,7 +59,7 @@ export async function replyToChat(
 ): Promise<string> {
   // निर्माता वाले सवाल का जवाब सीधे: मॉडल से पूछने की ज़रूरत नहीं
   const lastUser = history[history.length - 1]?.content ?? "";
-  if (WHO_MADE_RE.test(lastUser)) return identityReply(lang);
+  if (isWhoMadeQuestion(lastUser)) return identityReply(lang);
 
   const pack = packFor(role);
   const provider = getAIProvider();
@@ -92,7 +78,7 @@ export async function replyToChat(
   let text = (result.text ?? "").trim().replace(/^(Sthamly|असिस्टेंट|Assistant):\s*/, "");
 
   // मॉडल ने अपनी कंपनी या मॉडल का नाम बताया, तो वह जवाब नहीं जाएगा
-  if (VENDOR_RE.test(text)) return identityReply(lang);
+  if (mentionsVendor(text)) return identityReply(lang);
 
   // खाली जवाब पर सूचना न जोड़ें; pack हो तो हर जवाब की जांच और सूचना
   if (!pack || text.length === 0) return text;
