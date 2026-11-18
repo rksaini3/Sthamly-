@@ -30,7 +30,7 @@ export default async function NotebookPage() {
     <main className="page stack">
       <h1 style={{ margin: 0 }}>{t.title}</h1>
       <p className="muted" style={{ margin: 0 }}>
-        {t.sub}
+        {lang === "en" ? "All your chat answers and notes, in one place." : "आपकी सारी चैट के जवाब और नोट, एक जगह।"}
       </p>
 
       <NotebookAutoToggle />
