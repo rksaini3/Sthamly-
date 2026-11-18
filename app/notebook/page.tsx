@@ -7,6 +7,7 @@ import { NotebookAutoToggle } from "@/components/library/NotebookAutoToggle";
 import { NotebookExportButton } from "@/components/library/NotebookExportButton";
 import { NotebookItemActions } from "@/components/library/NotebookItemActions";
 import { NotebookNotes } from "@/components/library/NotebookNotes";
+import { NotebookWordButton } from "@/components/library/NotebookWordButton";
 import { formatDate } from "@/lib/format";
 import { loadLibrary } from "@/lib/library";
 import { LANG_COOKIE, parseLang } from "@/lib/i18n";
@@ -69,8 +70,9 @@ export default async function NotebookPage() {
       {/* चैट के जवाब और हाथ से लिखे नोट: हर role के लिए */}
       <NotebookNotes lang={lang} />
 
-      {/* पूरी नोटबुक CSV में डाउनलोड: हर role के लिए */}
+      {/* डाउनलोड: CSV (Excel के लिए) और Word (पढ़ने के लिए), हर role के लिए */}
       <NotebookExportButton />
+      <NotebookWordButton />
 
       {/* पोस्टर: सिर्फ़ दुकानदार के लिए */}
       {isShopkeeper && (
