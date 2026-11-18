@@ -2,9 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { preflight, withCors } from "@/lib/cors";
 import { getPublicEnv } from "@/lib/env";
-import { loadLibrary, type LibraryItem } from "@/lib/library";
 import { userFromBearer } from "@/lib/mobile-auth";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -18,11 +16,12 @@ interface Session {
   supabase: DbClient;
 }
 
-const STATUS_HI: Record<LibraryItem["status"], string> = {
-  queued: "कतार में",
-  running: "बन रहा है",
-  done: "तैयार",
-  failed: "नहीं बन पाया",
+const EXPORT_LIMIT = 5000;
+
+const KIND_HI: Record<string, string> = {
+  chat: "चैट से",
+  poster: "पोस्टर",
+  manual: "हाथ से लिखा",
 };
 
 // Preflight: Android app (Capacitor) पहले OPTIONS भेजता है
@@ -87,39 +86,33 @@ async function handleExport(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: { code: "UNAUTHORIZED", message: "पहले लॉग-इन करें" } }, { status: 401 });
   }
 
-  // 1. सारे काम (RLS से सिर्फ़ अपनी दुकान के)
-  const items = await loadLibrary(session.supabase, 500);
+  // 1. सिर्फ़ नोट (RLS से सिर्फ़ इसी user के), पुराने से नए क्रम में
+  const { data, error } = await session.supabase
+    .from("notebook_notes")
+    .select("kind, title, question, content, tags, created_at")
+    .order("created_at", { ascending: true })
+    .limit(EXPORT_LIMIT);
 
-  // 2. नोटबुक से हटाए गए काम फ़ाइल में नहीं जाएंगे (वही दिखेगा जो नोटबुक में है)
-  const ids = items.map((i) => i.jobId);
-  let hiddenIds = new Set<string>();
-  if (ids.length > 0) {
-    // admin client से, पर user_id वाला फ़िल्टर पहले loadLibrary की RLS वाली सूची से आ चुका है
-    const admin = createSupabaseAdminClient();
-    const { data: hiddenRows, error: hiddenError } = await admin
-      .from("jobs")
-      .select("id")
-      .eq("hidden_from_notebook", true)
-      .in("id", ids);
-    if (hiddenError) {
-      console.error("notebook export: hidden lookup failed", hiddenError);
-    } else {
-      hiddenIds = new Set((hiddenRows ?? []).map((r) => r.id));
-    }
+  if (error) {
+    console.error("notebook export: read failed", error);
+    return NextResponse.json(
+      { error: { code: "READ_FAILED", message: "फ़ाइल नहीं बन पाई, दोबारा कोशिश करें" } },
+      { status: 500 },
+    );
   }
-  const visible = items.filter((item) => !hiddenIds.has(item.jobId));
 
-  // 3. CSV: हेडर, फिर हर काम एक लाइन में
-  const header = ["तारीख", "मौका", "ऑफ़र", "स्थिति", "नोट/कैप्शन"];
-  const rows = visible.map((item) =>
+  // 2. CSV: हेडर, फिर हर नोट एक लाइन में
+  const header = ["तारीख", "प्रकार", "शीर्षक", "सवाल", "जवाब / नोट", "tags"];
+  const rows = (data ?? []).map((note) =>
     [
-      dateOnly(item.createdAt),
-      item.occasion ?? "",
-      item.offerText,
-      STATUS_HI[item.status],
-      item.caption,
+      dateOnly(note.created_at),
+      KIND_HI[note.kind] ?? note.kind,
+      note.title,
+      note.question ?? "",
+      note.content,
+      (note.tags ?? []).join(", "),
     ]
-      .map((v) => csvCell(v))
+      .map((v) => csvCell(String(v)))
       .join(","),
   );
 
