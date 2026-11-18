@@ -1,3 +1,4 @@
+import { cloudflareProvider } from "@/lib/ai/cloudflare";
 import { falProvider } from "@/lib/ai/fal";
 import { groqProvider } from "@/lib/ai/groq";
 import { openrouterProvider } from "@/lib/ai/openrouter";
@@ -10,6 +11,7 @@ const PROVIDERS: Record<string, AIProvider> = {
   fal: falProvider,
   openrouter: openrouterProvider,
   groq: groqProvider,
+  cloudflare: cloudflareProvider,
 };
 
 function pick(envName: string): AIProvider {
@@ -24,9 +26,9 @@ function pick(envName: string): AIProvider {
 
 /**
  * हर काम का provider अलग चुना जाता है:
- * - IMAGE_PROVIDER: पोस्टर की फ़ोटो (अभी fal)
- * - TEXT_PROVIDER: ऑफ़र समझना और कैप्शन (fal, openrouter या groq)
- * - VOICE_PROVIDER: बोली हुई बात को text में बदलना (fal या groq)
+ * - IMAGE_PROVIDER: पोस्टर की फ़ोटो (cloudflare या fal)
+ * - TEXT_PROVIDER: ऑफ़र समझना और कैप्शन (groq, openrouter या fal)
+ * - VOICE_PROVIDER: बोली हुई बात को text में बदलना (groq या fal)
  */
 export function getAIProvider(): AIProvider {
   const image = pick("IMAGE_PROVIDER");
