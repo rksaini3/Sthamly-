@@ -199,23 +199,64 @@ function PencilIcon() {
 
 // संदेश edit करने के शब्द (हिंदी/English)
 const EDIT_TEXT = {
-  hi: { edit: "संदेश बदलें", copy: "कॉपी करें", send: "भेजें", cancel: "रद्द करें", label: "संदेश बदलें" },
-  en: { edit: "Edit message", copy: "Copy", send: "Send", cancel: "Cancel", label: "Edit message" },
+  hi: {
+    edit: "संदेश बदलें",
+    copy: "कॉपी करें",
+    select: "टेक्स्ट चुनें",
+    share: "प्रॉम्प्ट शेयर करें",
+    send: "भेजें",
+    cancel: "रद्द करें",
+    label: "संदेश बदलें",
+  },
+  en: {
+    edit: "Edit message",
+    copy: "Copy",
+    select: "Select text",
+    share: "Share prompt",
+    send: "Send",
+    cancel: "Cancel",
+    label: "Edit message",
+  },
 } as const;
 
-// user संदेश के नीचे छोटे आइकन (ChatGPT की तरह): कॉपी और बदलें
-const USER_ACTION = {
-  width: 32,
-  height: 32,
-  border: "none",
-  borderRadius: 8,
+// user संदेश दबाने पर खुलने वाला मेन्यू (ChatGPT जैसा)
+const USER_MENU_SCRIM = {
+  position: "fixed" as const,
+  inset: 0,
+  zIndex: 49,
   background: "transparent",
-  color: "var(--muted, #6b6b6b)",
-  display: "inline-flex",
+};
+
+const USER_MENU = {
+  position: "absolute" as const,
+  right: 0,
+  top: "calc(100% + 6px)",
+  zIndex: 50,
+  minWidth: 220,
+  padding: 6,
+  borderRadius: 16,
+  background: "var(--surface-2, #2f2f2f)",
+  boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: 2,
+};
+
+const USER_MENU_ITEM = {
+  display: "flex",
   alignItems: "center",
-  justifyContent: "center",
+  gap: 12,
+  width: "100%",
+  padding: "12px 14px",
+  border: "none",
+  borderRadius: 12,
+  background: "transparent",
+  color: "var(--ink, #f5f5f5)",
+  font: "inherit",
+  fontSize: 15,
+  textAlign: "left" as const,
   cursor: "pointer",
-} as const;
+};
 
 function CopySmallIcon() {
   return (
@@ -231,6 +272,26 @@ function EditSmallIcon() {
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M4 20h4L19 9l-4-4L4 16z" />
       <path d="M13.5 6.5l4 4" />
+    </svg>
+  );
+}
+
+function SelectSmallIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2" />
+      <path d="M8 9h8M8 13h8M8 17h5" />
+    </svg>
+  );
+}
+
+function ShareSmallIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="18" cy="5" r="3" />
+      <circle cx="6" cy="12" r="3" />
+      <circle cx="18" cy="19" r="3" />
+      <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4" />
     </svg>
   );
 }
@@ -374,6 +435,9 @@ export function VoiceAssistant({
   const [limitHit, setLimitHit] = useState(false);
   // user का संदेश edit हो रहा हो तो उसका id और नया मसौदा
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null);
+  // user संदेश पर दबाने से खुला मेन्यू, और "टेक्स्ट चुनें" वाला संदेश
+  const [userMenuId, setUserMenuId] = useState<number | null>(null);
+  const [selectingId, setSelectingId] = useState<number | null>(null);
 
   const idRef = useRef(initialMessages.length);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -565,6 +629,20 @@ export function VoiceAssistant({
     setMessages(next);
     window.history.replaceState(null, "", "/voice");
     await requestReply(toHistory(next), false, null);
+  }
+
+  // प्रॉम्प्ट शेयर: फ़ोन का share मेन्यू; न हो तो कॉपी
+  async function shareText(text: string) {
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+        return;
+      }
+    } catch {
+      // user ने शेयर रद्द किया
+      return;
+    }
+    void navigator.clipboard?.writeText(text).catch(() => undefined);
   }
 
   // किसी एक संदेश से ऑफ़र समझना
@@ -917,31 +995,91 @@ export function VoiceAssistant({
                 </div>
               );
             }
+            const menuOpen = userMenuId === m.id;
+            const closeMenu = () => setUserMenuId(null);
+            const selecting = selectingId === m.id;
             return (
-              <div key={m.id} className={styles.userWrap}>
-                <div className={styles.bubbleUser}>{m.text}</div>
-                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    style={USER_ACTION}
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(m.text).catch(() => undefined);
-                    }}
-                    aria-label={L.copy}
-                    title={L.copy}
-                  >
-                    <CopySmallIcon />
-                  </button>
-                  <button
-                    type="button"
-                    style={USER_ACTION}
-                    onClick={() => setEditing({ id: m.id, text: m.text })}
-                    disabled={busy !== "idle"}
-                    aria-label={L.edit}
-                    title={L.edit}
-                  >
-                    <EditSmallIcon />
-                  </button>
+              <div key={m.id} className={styles.userWrap} style={{ position: "relative" }}>
+                {/* संदेश दबाने पर मेन्यू खुलता है (ChatGPT की तरह) */}
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={styles.bubbleUser}
+                  style={{
+                    cursor: "pointer",
+                    userSelect: selecting ? "text" : undefined,
+                    WebkitUserSelect: selecting ? "text" : undefined,
+                  }}
+                  onClick={() => {
+                    if (busy !== "idle") return;
+                    setSelectingId(null);
+                    setUserMenuId(menuOpen ? null : m.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && busy === "idle") setUserMenuId(menuOpen ? null : m.id);
+                  }}
+                  aria-expanded={menuOpen}
+                >
+                  {m.text}
+                </div>
+
+                {menuOpen && (
+                  <>
+                    <div style={USER_MENU_SCRIM} onClick={closeMenu} />
+                    <div role="menu" style={USER_MENU}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        style={USER_MENU_ITEM}
+                        onClick={() => {
+                          closeMenu();
+                          void navigator.clipboard?.writeText(m.text).catch(() => undefined);
+                        }}
+                      >
+                        <CopySmallIcon />
+                        {L.copy}
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        style={USER_MENU_ITEM}
+                        onClick={() => {
+                          closeMenu();
+                          setSelectingId(m.id);
+                        }}
+                      >
+                        <SelectSmallIcon />
+                        {L.select}
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        style={USER_MENU_ITEM}
+                        onClick={() => {
+                          closeMenu();
+                          setEditing({ id: m.id, text: m.text });
+                        }}
+                      >
+                        <EditSmallIcon />
+                        {L.edit}
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        style={USER_MENU_ITEM}
+                        onClick={() => {
+                          closeMenu();
+                          void shareText(m.text);
+                        }}
+                      >
+                        <ShareSmallIcon />
+                        {L.share}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button
                     type="button"
                     className={styles.btnGhost}
