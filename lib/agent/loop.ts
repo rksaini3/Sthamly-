@@ -5,7 +5,8 @@ import { packFor } from "@/lib/packs";
 import { guardReply } from "@/lib/packs/types";
 import { identityReply, isWhoMadeQuestion, mentionsVendor } from "@/lib/identity";
 import { buildAgentPrompt, parseDecision, type ProtocolTurn } from "@/lib/agent/protocol";
-import { TOOLS, findTool, type AgentContext, type ToolResult } from "@/lib/agent/tools";
+import { TOOLS, type AgentContext, type AnyTool, type ToolResult } from "@/lib/agent/tools";
+import { connectorToolsFor } from "@/lib/agent/connector-tools";
 import {
   appendStep,
   createAction,
@@ -54,7 +55,7 @@ export type LoopOutcome =
 const DEFAULT_TOOL_NAMES: string[] = TOOLS.map((t) => t.name);
 
 /**
- * इस भूमिका को कौन से tools मिल सकते हैं।
+ * इस भूमिका को कौन से built-in tools मिल सकते हैं।
  * - pack हो तो सिर्फ़ उसके allowedTools (खाली हो तो कोई tool नहीं)
  * - pack न हो तो पूरा सेट (पहले जैसा व्यवहार)
  */
@@ -93,6 +94,7 @@ async function askModel(prompt: string): Promise<string> {
  * एक दुकानदार (या वकील आदि) के संदेश (goal) पर agent चलाएं।
  * - role दिया हो तो उसी के tools चलेंगे (prompt में भी वही दिखेंगे),
  *   और pack हो तो जवाब guardReply से गुज़रेगा।
+ * - user के connected connectors के tools भी इसी में जुड़ते हैं (scope के हिसाब से)।
  * - लौटता है: final जवाब, या मंज़ूरी का इंतज़ार (waiting), या विफलता (failed)।
  * - मंज़ूरी के बाद का काम confirm route में होता है, इसलिए loop वहां दोबारा नहीं चलता।
  */
@@ -107,8 +109,6 @@ export async function runAgent(input: {
   const { userId, lang, goal, history } = input;
   const role = input.role ?? null;
   const pack = packFor(role);
-  const toolNames = allowedToolNames(role);
-  const allowed = new Set(toolNames);
   // searchesLeft को tools घटाते हैं, इसलिए यह एक ही object पूरे run में चलता है
   const ctx: AgentContext = {
     userId,
@@ -134,6 +134,18 @@ export async function runAgent(input: {
     );
     return { kind: "reply", runId, reply: identityReply(lang), steps: [] };
   }
+
+  // connector tools सिर्फ़ तब लोड होते हैं जब सवाल को उनकी ज़रूरत हो सकती है (ऊपर identity वाला रास्ता बचा रहता है)
+  const connectorTools = await connectorToolsFor(userId, lang);
+  const builtinNames = allowedToolNames(role);
+  // pack हो तो connector tool भी तभी मिले जब pack की allowedTools में उसका नाम हो
+  const connectorNames = connectorTools
+    .map((t) => t.name)
+    .filter((name) => !pack || pack.allowedTools.includes(name));
+  const toolNames = [...new Set([...builtinNames, ...connectorNames])];
+  const allowed = new Set(toolNames);
+  // tool ढूंढने के लिए: built-in भी और connector वाले भी
+  const registry: AnyTool[] = [...TOOLS, ...connectorTools];
 
   const steps: RunStep[] = [];
   const views: StepView[] = [];
@@ -211,7 +223,7 @@ export async function runAgent(input: {
     }
 
     // 5. tool मौजूद है या नहीं, और arguments सही हैं या नहीं
-    const tool = findTool(decision.tool);
+    const tool = registry.find((t) => t.name === decision.tool);
     if (!tool) {
       observations.push(`tool नहीं मिला: ${decision.tool}`);
       continue;
