@@ -1,0 +1,131 @@
+# Sthamly AI: Worker deploy (Blueprint 3.0, section 11)
+# Dev: main par har push ke baad apne-aap deploy.
+# Production: sirf manual trigger se, aur GitHub Environment "production" ki approval ke baad.
+# Secrets is file mein nahi. Cloudflare secrets `wrangler secret put` se set hote hain.
+# Zaroori GitHub secret: CLOUDFLARE_API_TOKEN (sirf Workers deploy ka scope), CLOUDFLARE_ACCOUNT_ID.
+
+name: Deploy Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Kis environment par deploy karna hai"
+        required: true
+        type: choice
+        options:
+          - dev
+          - production
+        default: dev
+
+permissions:
+  contents: read
+
+# Ek hi environment par ek hi deploy chale. Beech mein naya deploy purane ko rokta nahi.
+concurrency:
+  group: deploy-worker-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-dev:
+    # Push par ya manual dev choice par, production nahi.
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'dev')
+    name: Deploy to dev
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: https://sthamly-api-dev.workers.dev
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install (lockfile se)
+        run: npm ci
+
+      # Deploy se pehle typecheck: galat code kabhi live nahi jaayega.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Deploy (dev)
+        run: npx wrangler deploy --env dev
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # Deploy ke baad health check. Fail ho to workflow lal hoga.
+      - name: Health check (dev)
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://sthamly-api-dev.workers.dev/health || true)
+            if [ "$code" = "200" ]; then
+              echo "Health OK"
+              exit 0
+            fi
+            echo "Health $code, retry $i"
+            sleep 5
+          done
+          echo "Health check fail"
+          exit 1
+
+  deploy-production:
+    # Sirf manual trigger, aur production choice par. Environment approval ke baad hi chalta hai.
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://api.sthamly.app
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install (lockfile se)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Deploy (production)
+        run: npx wrangler deploy --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Health check (production)
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://api.sthamly.app/health || true)
+            if [ "$code" = "200" ]; then
+              echo "Health OK"
+              exit 0
+            fi
+            echo "Health $code, retry $i"
+            sleep 5
+          done
+          echo "Health check fail"
+          exit 1
