@@ -1,0 +1,22 @@
+{
+  "name": "sthamly-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Sthamly AI gateway: Cloudflare Worker API (chat, voice, tools, billing, privacy routes).",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "wrangler dev --env dev",
+    "typecheck": "tsc --noEmit",
+    "deploy:dev": "wrangler deploy --env dev",
+    "deploy:prod": "wrangler deploy --env production",
+    "tail:prod": "wrangler tail --env production --format pretty"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251014.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.45.0"
+  }
+}
