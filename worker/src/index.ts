@@ -1,7 +1,7 @@
 // Sthamly AI Worker: entry point (Blueprint 3.0, section 3, 6, 9, 11)
 // Routes:
 //   GET    /health                       uptime monitor (bina secret ke, sirf ok ya degraded)
-//   POST   /api/ai/chat                  streaming chat (routes/chat.ts)
+//   POST   /api/ai/chat                  streaming chat, logged-in user ya guest (routes/chat.ts)
 //   *      /api/chat/history             conversations (routes/history.ts)
 //   *      /api/user/*                   profile, usage, export, delete (routes/user.ts)
 //   POST   /api/voice/session            Live session token (routes/voice.ts)
@@ -21,8 +21,9 @@ import { handleVoice } from "./routes/voice";
 import { createSupabase } from "./supabase";
 
 const ALLOWED_METHODS = "GET, POST, PATCH, DELETE, OPTIONS";
+// X-Guest-Id: login se pehle ke guest requests ke liye (guest.ts).
 const ALLOWED_HEADERS =
-  "Authorization, Content-Type, Idempotency-Key, X-Language, Content-Length";
+  "Authorization, Content-Type, Idempotency-Key, X-Language, Content-Length, X-Guest-Id";
 const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
