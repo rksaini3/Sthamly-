@@ -83,17 +83,17 @@ const SECTIONS: SidebarSection[] = [
     ],
   },
   {
-    id: "agents",
-    label: { hi: "एजेंट", en: "Agents" },
-    icon: "staff",
-    href: "/agents",
-    enabled: true,
-  },
-  {
     id: "apps",
     label: { hi: "ऐप्स", en: "Apps" },
     icon: "plugins",
     href: "/apps",
+    enabled: true,
+  },
+  {
+    id: "studio",
+    label: { hi: "Studio (वेबसाइट, इमेज, PPTX, PDF)", en: "Studio (website, image, PPTX, PDF)" },
+    icon: "plugins",
+    href: "/studio",
     enabled: true,
   },
 ];
