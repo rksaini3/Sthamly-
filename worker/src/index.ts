@@ -1,10 +1,14 @@
-// Sthamly AI Worker — entry point (Blueprint 3.0, section 3, 6, 9, 11)
+// Sthamly AI Worker: entry point (Blueprint 3.0, section 3, 6, 9, 11)
 // Routes:
-//   GET    /health              uptime monitor (bina secret ke, sirf ok ya degraded)
-//   POST   /api/ai/chat         streaming chat (routes/chat.ts)
-//   *      /api/chat/history    conversations (routes/history.ts)
-//   *      /api/user/*          profile, usage, export, delete (routes/user.ts)
+//   GET    /health                       uptime monitor (bina secret ke, sirf ok ya degraded)
+//   POST   /api/ai/chat                  streaming chat (routes/chat.ts)
+//   *      /api/chat/history             conversations (routes/history.ts)
+//   *      /api/user/*                   profile, usage, export, delete (routes/user.ts)
+//   POST   /api/voice/session            Live session token (routes/voice.ts)
+//   POST   /api/voice/session/:id/end    Live session band (routes/voice.ts)
+//   POST   /api/voice/turn               push-to-talk audio -> transcript (routes/voice.ts)
 // CORS: sirf ALLOWED_ORIGINS wale origins. Baaki origins ko koi ACAO header nahi jaata.
+// Capacitor (Android) ke origins ALLOWED_ORIGINS mein hone chahiye, jaise https://localhost.
 // Scheduled: har 15 minute budget check, taaki alert traffic ke bina bhi chale.
 
 import { budgetStatus } from "./budget";
@@ -13,10 +17,12 @@ import { ApiError, toErrorResponse } from "./errors";
 import { handleChat } from "./routes/chat";
 import { handleHistory } from "./routes/history";
 import { handleUser } from "./routes/user";
+import { handleVoice } from "./routes/voice";
 import { createSupabase } from "./supabase";
 
 const ALLOWED_METHODS = "GET, POST, PATCH, DELETE, OPTIONS";
-const ALLOWED_HEADERS = "Authorization, Content-Type, Idempotency-Key";
+const ALLOWED_HEADERS =
+  "Authorization, Content-Type, Idempotency-Key, X-Language, Content-Length";
 const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
@@ -91,6 +97,15 @@ async function runBudgetCheck(env: Env): Promise<void> {
   }
 }
 
+// Path ke hisaab se route chunta hai. Voice routes ka path /api/voice/ se shuru hota hai.
+function routeFor(pathname: string): "chat" | "history" | "user" | "voice" | null {
+  if (pathname === "/api/ai/chat") return "chat";
+  if (pathname === "/api/chat/history") return "history";
+  if (pathname.startsWith("/api/user/")) return "user";
+  if (pathname.startsWith("/api/voice/")) return "voice";
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -119,14 +134,21 @@ export default {
     try {
       let response: Response;
 
-      if (url.pathname === "/api/ai/chat") {
-        response = await handleChat(request, env, ctx);
-      } else if (url.pathname === "/api/chat/history") {
-        response = await handleHistory(request, env);
-      } else if (url.pathname.startsWith("/api/user/")) {
-        response = await handleUser(request, env);
-      } else {
-        throw new ApiError("invalid_request", "रास्ता नहीं मिला।");
+      switch (routeFor(url.pathname)) {
+        case "chat":
+          response = await handleChat(request, env, ctx);
+          break;
+        case "history":
+          response = await handleHistory(request, env);
+          break;
+        case "user":
+          response = await handleUser(request, env);
+          break;
+        case "voice":
+          response = await handleVoice(request, env, ctx);
+          break;
+        default:
+          throw new ApiError("invalid_request", "रास्ता नहीं मिला।");
       }
 
       return withCors(response, origin);
