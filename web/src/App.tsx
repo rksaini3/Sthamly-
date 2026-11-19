@@ -1,12 +1,13 @@
-// Sthamly AI web: routes (Blueprint 3.0, section 10, guest mode)
-// Public: /chat (guest bhi chat kar sakta hai), /login (opt-in, login ya signup).
+// Sthamly AI web: routes (Blueprint 4.0, UI spec ke hisaab se)
+// Public: /chat (guest bhi chat kar sakta hai), /create (guest ko login card dikhta hai), /login.
 // Login zaroori: /usage, /settings. Ye login gate sirf UI ke liye hai (asli security Worker aur RLS mein hai).
-// Guest flow: pehle chat, limit khatam hone par ChatPage login card dikhata hai, yahan redirect nahi hota.
+// Guest flow: chat aur create pehle khule rehte hain. Limit ya login card screen par hi dikhta hai, redirect nahi.
 
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginPage } from "./pages/LoginPage";
 import { ChatPage } from "./pages/ChatPage";
+import { CreatePage } from "./pages/CreatePage";
 import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -52,6 +53,9 @@ function AppRoutes() {
       {/* Chat sabke liye khula hai: guest bhi. Login card ChatPage ke andar dikhta hai. */}
       <Route path="/chat" element={<ChatPage />} />
       <Route path="/chat/:conversationId" element={<ChatPage />} />
+
+      {/* Creation sabke liye khula hai. Guest ko CreatePage ke andar login card dikhta hai. */}
+      <Route path="/create" element={<CreatePage />} />
 
       <Route
         path="/usage"
