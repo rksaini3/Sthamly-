@@ -1,51 +1,51 @@
-# Sthamly AI — Cloudflare Worker gateway (Blueprint 3.0)
-# Secrets yahan NAHI likhte. Woh `wrangler secret put <NAME> --env <env>` se set hote hain.
+# Sthamly AI Worker: Cloudflare config (dev aur production)
+# Secrets yahan NAHI. Woh `wrangler secret put <NAME> --env <env>` se set hote hain.
+# Dev Worker ka naam: sthamly-api-dev. Production abhi placeholder hai, use tab badlein jab production banana ho.
 
 name = "sthamly-api"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 
-# Logs: Cloudflare ke built-in Worker logs (blueprint 11)
 [observability]
 enabled = true
 
 # ------------------------------------------------------------------
-# Default (bina --env ke) — local `wrangler dev` ke liye
+# Top-level (bina --env ke deploy): dev values, taaki koi placeholder na bache
 # ------------------------------------------------------------------
 [vars]
-ENVIRONMENT = "local"
-SUPABASE_URL = "https://YOUR-DEV-PROJECT.supabase.co"
-ALLOWED_ORIGINS = "http://localhost:5173"
-LIVE_MODEL = "REPLACE-WITH-CONFIGURED-LIVE-MODEL-ID"   # blueprint 4: model ID config mein, app mein nahi
-DAILY_BUDGET_INR = "200"                              # global daily cap (blueprint 7)
-LIVE_MAX_SECONDS_PER_SESSION = "900"                  # audio-only ~15 min limit (blueprint 4)
+ENVIRONMENT = "dev"
+SUPABASE_URL = "https://fdgzhtuwxtbcodbefbmt.supabase.co"
+ALLOWED_ORIGINS = "http://localhost:5173,https://REPLACE-WITH-YOUR-VERCEL-URL"
+IMAGE_MODEL = "gemini-2.5-flash-image"   # Google docs se verify karein
+LIVE_MODEL = "NOT-SET-YET"               # Phase 2 mein Live model ID yahan
+DAILY_BUDGET_INR = "200"
+LIVE_MAX_SECONDS_PER_SESSION = "900"
 
-# Circuit breaker aur budget state ke liye KV (blueprint 7)
 [[kv_namespaces]]
 binding = "STATE"
-id = "REPLACE-WITH-LOCAL-KV-ID"
+id = "026d5a6e740d4345b1d6032f0234ba20"
 
-# Scheduled jobs (billing reconcile, cleanup). Phase 1 mein handler baad mein banega.
 [triggers]
 crons = ["*/15 * * * *"]
 
 # ------------------------------------------------------------------
-# DEV environment — Supabase dev project, dev Worker
+# DEV: wrangler deploy --env dev
 # ------------------------------------------------------------------
 [env.dev]
 name = "sthamly-api-dev"
 
 [env.dev.vars]
 ENVIRONMENT = "dev"
-SUPABASE_URL = "https://YOUR-DEV-PROJECT.supabase.co"
-ALLOWED_ORIGINS = "https://dev.sthamly.app,http://localhost:5173"
-LIVE_MODEL = "REPLACE-WITH-CONFIGURED-LIVE-MODEL-ID"
+SUPABASE_URL = "https://fdgzhtuwxtbcodbefbmt.supabase.co"
+ALLOWED_ORIGINS = "http://localhost:5173,https://REPLACE-WITH-YOUR-VERCEL-URL"
+IMAGE_MODEL = "gemini-2.5-flash-image"
+LIVE_MODEL = "NOT-SET-YET"
 DAILY_BUDGET_INR = "200"
 LIVE_MAX_SECONDS_PER_SESSION = "900"
 
 [[env.dev.kv_namespaces]]
 binding = "STATE"
-id = "REPLACE-WITH-DEV-KV-ID"
+id = "026d5a6e740d4345b1d6032f0234ba20"
 
 [env.dev.triggers]
 crons = ["*/15 * * * *"]
@@ -54,17 +54,18 @@ crons = ["*/15 * * * *"]
 enabled = true
 
 # ------------------------------------------------------------------
-# PRODUCTION environment — production Supabase project, production Worker
+# PRODUCTION: abhi use nahi. Alag Supabase project aur alag KV banane ke baad bharein.
 # ------------------------------------------------------------------
 [env.production]
 name = "sthamly-api"
 
 [env.production.vars]
 ENVIRONMENT = "production"
-SUPABASE_URL = "https://YOUR-PROD-PROJECT.supabase.co"
-ALLOWED_ORIGINS = "https://sthamly.app"
-LIVE_MODEL = "REPLACE-WITH-CONFIGURED-LIVE-MODEL-ID"
-DAILY_BUDGET_INR = "2000"                    # production budget: open decision, pehle test karke tay karein
+SUPABASE_URL = "https://REPLACE-WITH-PROD-PROJECT.supabase.co"
+ALLOWED_ORIGINS = "https://REPLACE-WITH-PROD-WEB-DOMAIN"
+IMAGE_MODEL = "gemini-2.5-flash-image"
+LIVE_MODEL = "NOT-SET-YET"
+DAILY_BUDGET_INR = "2000"
 LIVE_MAX_SECONDS_PER_SESSION = "900"
 
 [[env.production.kv_namespaces]]
