@@ -49,12 +49,12 @@ interface PlanRow {
 }
 
 // Profile ensure karta hai. Pehli baar ho to banata hai.
-// ignore-duplicates ki wajah se existing row (naam, preferences, language) kabhi nahi badalti.
+// conflict "ignore" ki wajah se existing row (naam, preferences, language) kabhi nahi badalti.
 async function ensureProfile(db: SupabaseClient, user: AuthUser): Promise<ProfileRow> {
   await db.insert<ProfileRow>(
     "profiles",
     { user_id: user.id },
-    { onConflict: "user_id", ignoreDuplicates: true },
+    { onConflict: "user_id", conflict: "ignore" },
   );
 
   const rows = await db.select<ProfileRow>(
@@ -75,7 +75,7 @@ async function loadSubscription(db: SupabaseClient, userId: string): Promise<Sub
   const row = rows[0];
   if (!row) return { plan: "free", status: "active", current_period_end: null };
 
-  // Period khatam ho chuka ho, ya payment past_due ho, to plan ke fayde band hote hain.
+  // Period khatam ho chuka ho, ya payment past_due / cancelled ho, to plan ke fayde band hote hain.
   // Blueprint: lapse hone par free mein jaata hai, top-up credits rehte hain (credits phase mein).
   const expired =
     row.current_period_end !== null && new Date(row.current_period_end).getTime() < Date.now();
@@ -123,7 +123,7 @@ export async function loadUserContext(db: SupabaseClient, user: AuthUser): Promi
     historyEnabled: profile.history_enabled,
     memoryEnabled: profile.memory_enabled,
     plan: limits,
-    subscriptionStatus: subscription.status === "cancelled" ? "cancelled" : subscription.status,
+    subscriptionStatus: subscription.status,
     tokensUsedToday,
   };
 }
