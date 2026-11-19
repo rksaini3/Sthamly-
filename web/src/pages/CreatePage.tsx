@@ -1,11 +1,11 @@
-// Sthamly AI web: creation page (Blueprint 4.0, ek creation flow, UI spec ke hisaab se)
+// Sthamly AI web: creation page (Blueprint 4.0, UI spec ke hisaab se)
 // Flow: type chuno -> prompt -> plan card -> banao (progress, Stop) -> preview -> download, dobara, hatao.
-// Preview: image seedha, slides aur website sandbox iframe mein (script chalegi, network nahi),
-// document formatted text mein. Sab Worker ke signed link se, Supabase seedha nahi.
+// Preview: image seedha, slides aur website sandbox iframe mein (script chalegi, network aur login nahi),
+// document formatted text mein. Sab Worker ke signed link se.
 // Sirf login user. Guest ko login card.
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import {
   CreateApiError,
@@ -22,6 +22,7 @@ import {
 } from "../api/create";
 
 const MAX_PROMPT_CHARS = 2000;
+
 const CHIPS: Array<{ kind: CreateKind; hint: string }> = [
   { kind: "image", hint: "दुकान का पोस्टर, उत्पाद की तस्वीर" },
   { kind: "slides", hint: "सेल या बिज़नेस का प्रेज़ेंटेशन" },
@@ -29,7 +30,7 @@ const CHIPS: Array<{ kind: CreateKind; hint: string }> = [
   { kind: "document", hint: "प्राइस लिस्ट, पत्र, नोट्स" },
 ];
 
-// Progress ke saaf steps (blueprint: "raw" process nahi dikhta).
+// Progress ke saaf steps (asli kaam Worker karta hai, ye sirf dikhane ke liye).
 const PROGRESS_STEPS: Record<CreateKind, string[]> = {
   image: ["विवरण समझ रहा हूँ…", "तस्वीर बना रहा हूँ…", "तैयार कर रहा हूँ…"],
   slides: ["ढाँचा बना रहा हूँ…", "स्लाइड लिख रहा हूँ…", "तस्वीरें जोड़ रहा हूँ…", "तैयार कर रहा हूँ…"],
@@ -37,12 +38,22 @@ const PROGRESS_STEPS: Record<CreateKind, string[]> = {
   document: ["विषय समझ रहा हूँ…", "लिख रहा हूँ…", "तैयार कर रहा हूँ…"],
 };
 
-// Plan card: banane se pehle saaf jaankari (blueprint: plan dikhe, phir banao).
+// Plan card: banane se pehle saaf jaankari.
 function planSummary(kind: CreateKind, prompt: string): string[] {
   const short = Array.from(prompt.trim()).slice(0, 80).join("");
-  if (kind === "image") return [`विषय: ${short}`, "आउटपुट: एक तस्वीर (PNG)", "कुछ सेकंड लगेंगे"];
-  if (kind === "slides") return [`विषय: ${short}`, "आउटपुट: प्रेज़ेंटेशन (HTML, डाउनलोड करें)", "स्लाइड संख्या AI तय करेगा"];
-  if (kind === "website") return [`विषय: ${short}`, "आउटपुट: एक HTML पेज, पहले पूर्वावलोकन", "एक मिनट तक लग सकता है"];
+  if (kind === "image") {
+    return [`विषय: ${short}`, "आउटपुट: एक तस्वीर (PNG)", "कुछ सेकंड लगेंगे"];
+  }
+  if (kind === "slides") {
+    return [
+      `विषय: ${short}`,
+      "आउटपुट: प्रेज़ेंटेशन (HTML, डाउनलोड करें)",
+      "स्लाइड संख्या AI तय करेगा",
+    ];
+  }
+  if (kind === "website") {
+    return [`विषय: ${short}`, "आउटपुट: एक HTML पेज, पहले पूर्वावलोकन", "एक मिनट तक लग सकता है"];
+  }
   return [`विषय: ${short}`, "आउटपुट: दस्तावेज़ (Markdown)", "कुछ सेकंड लगेंगे"];
 }
 
@@ -62,7 +73,6 @@ function formatSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// Chhota sa file card: type, naam, status, aur actions.
 function FileCard({
   file,
   active,
@@ -83,14 +93,8 @@ function FileCard({
   );
 }
 
-// Preview: type ke hisaab se. Slides aur website sandbox mein (script chalegi, network nahi).
-function Preview({
-  file,
-  token,
-}: {
-  file: CreatedFile;
-  token: string;
-}) {
+// Preview: type ke hisaab se. Token parent se aata hai.
+function Preview({ file, token }: { file: CreatedFile; token: string }) {
   const [html, setHtml] = useState<string | null>(null);
   const [text, setText] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -132,11 +136,17 @@ function Preview({
   if (error !== null) return <p className="chat-error">{error}</p>;
 
   if (imageUrl !== null) {
-    return <img src={imageUrl} alt={file.title} style={{ maxWidth: "100%", borderRadius: 12 }} />;
+    return (
+      <img
+        src={imageUrl}
+        alt={file.title}
+        style={{ maxWidth: "100%", borderRadius: 12 }}
+      />
+    );
   }
 
   if (text !== null) {
-    // Markdown ko seedha text ke roop mein dikhate hain, HTML ki tarah nahi (safe).
+    // Markdown ko text ke roop mein dikhate hain, HTML ki tarah nahi (safe).
     return (
       <pre className="bubble-text" style={{ whiteSpace: "pre-wrap", fontFamily: "inherit" }}>
         {text}
@@ -152,7 +162,13 @@ function Preview({
         title={file.title}
         sandbox="allow-scripts"
         srcDoc={html}
-        style={{ width: "100%", minHeight: "70vh", border: "1px solid var(--border)", borderRadius: 12, background: "#fff" }}
+        style={{
+          width: "100%",
+          minHeight: "70vh",
+          border: "1px solid var(--border)",
+          borderRadius: 12,
+          background: "#ffffff",
+        }}
       />
     );
   }
@@ -162,11 +178,11 @@ function Preview({
 
 export function CreatePage() {
   const { status, getAccessToken } = useAuth();
-  const navigate = useNavigate();
 
   const isMember = status === "signed_in";
   const isGuest = status === "signed_out";
 
+  const [token, setToken] = useState<string>("");
   const [kind, setKind] = useState<CreateKind>("image");
   const [prompt, setPrompt] = useState("");
   const [stage, setStage] = useState<"compose" | "plan" | "working" | "done">("compose");
@@ -178,7 +194,25 @@ export function CreatePage() {
   const [busy, setBusy] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
-  const idemRef = useRef<string>(crypto.randomUUID());
+
+  // Login user ka token, ek baar. Logout par khaali.
+  useEffect(() => {
+    if (!isMember) {
+      setToken("");
+      return;
+    }
+    let active = true;
+    getAccessToken()
+      .then((t) => {
+        if (active) setToken(t ?? "");
+      })
+      .catch(() => {
+        if (active) setToken("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [isMember, getAccessToken]);
 
   // Login user ki files ki list.
   useEffect(() => {
@@ -189,9 +223,9 @@ export function CreatePage() {
     const ctrl = new AbortController();
     (async () => {
       try {
-        const token = await getAccessToken();
-        if (!token || ctrl.signal.aborted) return;
-        const res = await listFiles(token, ctrl.signal);
+        const t = await getAccessToken();
+        if (!t || ctrl.signal.aborted) return;
+        const res = await listFiles(t, ctrl.signal);
         if (ctrl.signal.aborted) return;
         setFiles(res.files);
       } catch (err) {
@@ -202,7 +236,7 @@ export function CreatePage() {
     return () => ctrl.abort();
   }, [isMember, getAccessToken]);
 
-  // Progress: sirf dikhane ke liye, asli kaam Worker karta hai.
+  // Progress: sirf dikhane ke liye.
   useEffect(() => {
     if (stage !== "working") return;
     const steps = PROGRESS_STEPS[kind].length;
@@ -218,7 +252,8 @@ export function CreatePage() {
   }, []);
 
   const cleanPrompt = prompt.trim();
-  const canPlan = isMember && cleanPrompt.length > 0 && cleanPrompt.length <= MAX_PROMPT_CHARS && !busy;
+  const canPlan =
+    isMember && cleanPrompt.length > 0 && cleanPrompt.length <= MAX_PROMPT_CHARS && !busy;
 
   function handleChip(next: CreateKind): void {
     setKind(next);
@@ -233,10 +268,6 @@ export function CreatePage() {
     setStage("plan");
   }
 
-  function handleEditPrompt(): void {
-    setStage("compose");
-  }
-
   async function handleCreate(): Promise<void> {
     if (busy) return;
     setBusy(true);
@@ -246,17 +277,16 @@ export function CreatePage() {
 
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    // Naya key har baar: dobara banane par naya file, lekin retry par wahi key (idemRef) jo pehle thi.
-    idemRef.current = crypto.randomUUID();
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
+      const t = await getAccessToken();
+      if (!t) {
         throw new CreateApiError("unauthenticated", "बनाने के लिए पहले लॉग-इन करें।", false);
       }
+      // Har attempt ka naya key. Busy flag double tap ko rokta hai.
       const res = await createFile(
-        token,
-        { kind, prompt: cleanPrompt, idempotencyKey: idemRef.current },
+        t,
+        { kind, prompt: cleanPrompt, idempotencyKey: crypto.randomUUID() },
         ctrl.signal,
       );
       setFiles((prev) => [res.file, ...prev]);
@@ -264,7 +294,6 @@ export function CreatePage() {
       setStage("done");
     } catch (err) {
       if (isAbort(err)) {
-        // User ne roka: plan par wapas.
         setStage("plan");
         return;
       }
@@ -282,10 +311,10 @@ export function CreatePage() {
 
   async function handleDownload(file: CreatedFile): Promise<void> {
     try {
-      const token = await getAccessToken();
-      if (!token) throw new CreateApiError("unauthenticated", "पहले लॉग-इन करें।", false);
+      const t = await getAccessToken();
+      if (!t) throw new CreateApiError("unauthenticated", "पहले लॉग-इन करें।", false);
       const name = `${file.title}.${extensionFor(file.kind, file.mime_type)}`;
-      await openDownload(token, file.id, name);
+      await openDownload(t, file.id, name);
       setDownloadedHint("डाउनलोड शुरू हो गया।");
     } catch (err) {
       setError(errorText(err));
@@ -295,9 +324,9 @@ export function CreatePage() {
   async function handleDelete(file: CreatedFile): Promise<void> {
     if (!window.confirm("यह फ़ाइल हमेशा के लिए हट जाएगी। पक्का?")) return;
     try {
-      const token = await getAccessToken();
-      if (!token) throw new CreateApiError("unauthenticated", "पहले लॉग-इन करें।", false);
-      await deleteFile(token, file.id);
+      const t = await getAccessToken();
+      if (!t) throw new CreateApiError("unauthenticated", "पहले लॉग-इन करें।", false);
+      await deleteFile(t, file.id);
       setFiles((prev) => prev.filter((f) => f.id !== file.id));
       if (activeFile?.id === file.id) {
         setActiveFile(null);
@@ -314,7 +343,6 @@ export function CreatePage() {
     setStage("compose");
     setError(null);
     setDownloadedHint(null);
-    idemRef.current = crypto.randomUUID();
   }
 
   function openFile(file: CreatedFile): void {
@@ -354,7 +382,11 @@ export function CreatePage() {
 
         <nav className="sidebar-nav">
           <Link to="/chat">चैट पर वापस</Link>
-          {isMember ? <Link to="/settings">सेटिंग्स</Link> : <Link to="/login">लॉग-इन करें</Link>}
+          {isMember ? (
+            <Link to="/settings">सेटिंग्स</Link>
+          ) : (
+            <Link to="/login">लॉग-इन करें</Link>
+          )}
         </nav>
       </aside>
 
@@ -370,7 +402,11 @@ export function CreatePage() {
               <p className="muted small">
                 तस्वीर, प्रेज़ेंटेशन, वेबसाइट और दस्तावेज़ बनाना लॉग-इन के बाद खुलता है। आपकी फ़ाइलें भी वहीं सेव रहेंगी।
               </p>
-              <Link to="/login" className="btn-primary" style={{ textDecoration: "none", alignSelf: "flex-start" }}>
+              <Link
+                to="/login"
+                className="btn-primary"
+                style={{ textDecoration: "none", alignSelf: "flex-start" }}
+              >
                 लॉग-इन करें
               </Link>
             </section>
@@ -392,10 +428,15 @@ export function CreatePage() {
                 ))}
               </ul>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="btn-primary" onClick={() => void handleCreate()} disabled={busy}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void handleCreate()}
+                  disabled={busy}
+                >
                   हाँ, बनाओ
                 </button>
-                <button type="button" className="btn-ghost" onClick={handleEditPrompt}>
+                <button type="button" className="btn-ghost" onClick={() => setStage("compose")}>
                   बदलो
                 </button>
               </div>
@@ -409,36 +450,49 @@ export function CreatePage() {
               <div className="progress" aria-hidden="true">
                 <div
                   className="progress-fill"
-                  style={{ width: `${Math.round(((progressIndex + 1) / PROGRESS_STEPS[kind].length) * 100)}%` }}
+                  style={{
+                    width: `${Math.round(((progressIndex + 1) / PROGRESS_STEPS[kind].length) * 100)}%`,
+                  }}
                 />
               </div>
-              <button type="button" className="btn-stop" onClick={handleStop} style={{ alignSelf: "flex-start" }}>
+              <button
+                type="button"
+                className="btn-stop"
+                onClick={handleStop}
+                style={{ alignSelf: "flex-start" }}
+              >
                 रोकें
               </button>
             </section>
           )}
 
-          {isMember && stage === "done" && activeFile !== null && (
+          {isMember && stage === "done" && activeFile !== null && token !== "" && (
             <section className="card" style={{ margin: "0 auto", maxWidth: 720 }} aria-label="पूर्वावलोकन">
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                <div>
-                  <h2>{activeFile.title}</h2>
-                  <p className="muted small">
-                    {KIND_LABELS[activeFile.kind]} {formatSize(activeFile.size_bytes)}
-                  </p>
-                </div>
+              <div>
+                <h2>{activeFile.title}</h2>
+                <p className="muted small">
+                  {KIND_LABELS[activeFile.kind]} {formatSize(activeFile.size_bytes)}
+                </p>
               </div>
 
-              <Preview file={activeFile} token={""} />
+              <Preview file={activeFile} token={token} />
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" className="btn-primary" onClick={() => void handleDownload(activeFile)}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => void handleDownload(activeFile)}
+                >
                   डाउनलोड करें
                 </button>
                 <button type="button" className="btn-ghost" onClick={handleNew}>
                   नया बनाएँ
                 </button>
-                <button type="button" className="btn-ghost" onClick={() => void handleDelete(activeFile)}>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => void handleDelete(activeFile)}
+                >
                   हटाएँ
                 </button>
               </div>
@@ -455,7 +509,17 @@ export function CreatePage() {
 
         {isMember && stage === "compose" && (
           <>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 16px 8px", maxWidth: 720, margin: "0 auto", width: "100%" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                padding: "0 16px 8px",
+                maxWidth: 720,
+                margin: "0 auto",
+                width: "100%",
+              }}
+            >
               {CHIPS.map((chip) => (
                 <button
                   key={chip.kind}
