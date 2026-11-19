@@ -1,6 +1,6 @@
 // Sthamly AI Worker — plan, profile aur daily usage (Blueprint 3.0, section 6 step 3, section 8)
 // Plan, subscription status aur usage hamesha DB se aate hain, client se nahi.
-// Pehli request par profile upsert hota hai (auth.users par trigger nahi hai).
+// Pehli request par profile banta hai. Existing profile kabhi overwrite nahi hota.
 
 import type { AuthUser } from "./auth";
 import { ApiError } from "./errors";
@@ -48,13 +48,18 @@ interface PlanRow {
   active: boolean;
 }
 
-// Profile ensure karta hai. Pehli baar ho to banata hai, warna jaisa hai waisa rehta hai.
-// Ignore-duplicates ka matlab hai ki existing preferences kabhi overwrite nahi hote.
+// Profile ensure karta hai. Pehli baar ho to banata hai.
+// ignore-duplicates ki wajah se existing row (naam, preferences, language) kabhi nahi badalti.
 async function ensureProfile(db: SupabaseClient, user: AuthUser): Promise<ProfileRow> {
-  const rows = await db.insert<ProfileRow>(
+  await db.insert<ProfileRow>(
     "profiles",
-    { user_id: user.id, display_name: null },
-    { upsert: true, onConflict: "user_id" },
+    { user_id: user.id },
+    { onConflict: "user_id", ignoreDuplicates: true },
+  );
+
+  const rows = await db.select<ProfileRow>(
+    "profiles",
+    `user_id=eq.${user.id}&select=user_id,language,history_enabled,memory_enabled`,
   );
   const row = rows[0];
   if (!row) throw new ApiError("internal");
@@ -70,12 +75,12 @@ async function loadSubscription(db: SupabaseClient, userId: string): Promise<Sub
   const row = rows[0];
   if (!row) return { plan: "free", status: "active", current_period_end: null };
 
-  // Lapse ho chuka plan (period khatam, status active nahi) to free maana jaata hai.
-  // Blueprint: lapse hone par plan ke fayde band hote hain, top-up credits rehte hain (agle phase mein).
+  // Period khatam ho chuka ho, ya payment past_due ho, to plan ke fayde band hote hain.
+  // Blueprint: lapse hone par free mein jaata hai, top-up credits rehte hain (credits phase mein).
   const expired =
     row.current_period_end !== null && new Date(row.current_period_end).getTime() < Date.now();
-  if (row.status === "past_due" || expired) {
-    return { ...row, plan: "free", status: row.status === "cancelled" ? "cancelled" : "past_due" };
+  if (row.status === "past_due" || row.status === "cancelled" || expired) {
+    return { ...row, plan: "free" };
   }
   return row;
 }
@@ -97,7 +102,7 @@ async function loadPlanLimits(db: SupabaseClient, plan: string): Promise<PlanLim
   };
 }
 
-// Aaj ke tokens (UTC midnight se) usage_logs se.
+// Aaj ke tokens (UTC midnight se) usage_logs se, DB function ke zariye.
 async function loadTokensToday(db: SupabaseClient, userId: string): Promise<number> {
   const used = await db.rpc<number | null>("user_tokens_today", { p_user: userId });
   return typeof used === "number" ? used : 0;
@@ -118,13 +123,13 @@ export async function loadUserContext(db: SupabaseClient, user: AuthUser): Promi
     historyEnabled: profile.history_enabled,
     memoryEnabled: profile.memory_enabled,
     plan: limits,
-    subscriptionStatus: subscription.status,
+    subscriptionStatus: subscription.status === "cancelled" ? "cancelled" : subscription.status,
     tokensUsedToday,
   };
 }
 
-// Daily token quota check. Limit paar ho to 'budget_exceeded' (blueprint 7: per-user quota bhi).
-// Note: yeh 'rate_limited' nahi, kyunki yeh din bhar ka quota hai, per-minute ka rate nahi.
+// Daily token quota check. Limit paar ho to 'budget_exceeded'.
+// Yeh din bhar ka quota hai, per-minute ka rate nahi, isliye 'rate_limited' nahi.
 export function assertWithinDailyQuota(ctx: UserContext, requestedTokens: number): void {
   if (ctx.tokensUsedToday + requestedTokens > ctx.plan.dailyTokens) {
     throw new ApiError("budget_exceeded", "आज का टोकन कोटा पूरा हो गया है। कल फिर कोशिश करें।");
