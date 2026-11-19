@@ -100,16 +100,17 @@ img {
 
 /* ---- Layout ---- */
 
+/* ऊपर 64px इसलिए ताकि ☰ बटन (fixed, बाईं ओर ऊपर) पन्ने के title को न ढके */
 .page {
   max-width: 480px;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 64px 16px 48px;
 }
 
 .page-wide {
   max-width: 768px;
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: 64px 16px 48px;
 }
 
 .stack {
