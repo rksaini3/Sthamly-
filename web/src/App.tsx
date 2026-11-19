@@ -1,8 +1,7 @@
-// Sthamly AI web: routes (Blueprint 3.0, section 10)
-// Public: /login
-// Private (login zaroori): /chat, /chat/:conversationId, /usage, /settings
-// Route guard sirf UI ke liye hai. Asli security Worker aur RLS mein hai (blueprint 9).
-// Session ka kaam AuthProvider mein hoga, jo agli file hai.
+// Sthamly AI web: routes (Blueprint 3.0, section 10, guest mode)
+// Public: /chat (guest bhi chat kar sakta hai), /login (opt-in, login ya signup).
+// Login zaroori: /usage, /settings. Ye login gate sirf UI ke liye hai (asli security Worker aur RLS mein hai).
+// Guest flow: pehle chat, limit khatam hone par ChatPage login card dikhata hai, yahan redirect nahi hota.
 
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
@@ -12,7 +11,7 @@ import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
-// Login nahi hai to /login par bhejta hai. Session load hone tak kuch nahi dikhata.
+// Login zaroori routes ke liye. Session load hone tak kuch nahi dikhata.
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
 
@@ -25,7 +24,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Login ho chuka ho to seedha chat par bhejta hai.
+// Login ho chuka ho to /login par bhi seedha chat par bhejta hai.
 function RedirectIfSignedIn({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
 
@@ -50,22 +49,10 @@ function AppRoutes() {
         }
       />
 
-      <Route
-        path="/chat"
-        element={
-          <RequireAuth>
-            <ChatPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/chat/:conversationId"
-        element={
-          <RequireAuth>
-            <ChatPage />
-          </RequireAuth>
-        }
-      />
+      {/* Chat sabke liye khula hai: guest bhi. Login card ChatPage ke andar dikhta hai. */}
+      <Route path="/chat" element={<ChatPage />} />
+      <Route path="/chat/:conversationId" element={<ChatPage />} />
+
       <Route
         path="/usage"
         element={
