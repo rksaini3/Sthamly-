@@ -1,7 +1,7 @@
 // Sthamly AI Worker — Supabase REST helper (Blueprint 3.0, section 8)
 // Worker service role se likhta/padhta hai. Client ko ye key kabhi nahi milti.
 // Har query sthamly_v3 schema par jaati hai (Accept-Profile / Content-Profile headers).
-// Errors ka raw text kabhi client tak nahi jaata: yahan se ApiError banta hai.
+// Errors ka raw text kabhi client tak nahi jaata, aur log mein row data nahi jaata.
 
 import type { Env } from "./env";
 import { ApiError } from "./errors";
@@ -9,9 +9,19 @@ import { ApiError } from "./errors";
 const SCHEMA = "sthamly_v3";
 const TIMEOUT_MS = 8_000;
 
+export interface InsertOptions {
+  // Conflict par kya ho: 'merge' existing row ko badalta hai, 'ignore' use chhod deta hai.
+  onConflict?: string;
+  conflict?: "merge" | "ignore";
+}
+
 export interface SupabaseClient {
   select<T>(table: string, query: string): Promise<T[]>;
-  insert<T>(table: string, rows: Record<string, unknown> | Record<string, unknown>[], opts?: { upsert?: boolean; onConflict?: string }): Promise<T[]>;
+  insert<T>(
+    table: string,
+    rows: Record<string, unknown> | Record<string, unknown>[],
+    opts?: InsertOptions,
+  ): Promise<T[]>;
   update<T>(table: string, query: string, patch: Record<string, unknown>): Promise<T[]>;
   rpc<T>(fn: string, args: Record<string, unknown>): Promise<T>;
 }
@@ -20,10 +30,10 @@ export function createSupabase(env: Env): SupabaseClient {
   const base = env.SUPABASE_URL.replace(/\/+$/, "");
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
 
-  // Ek request bhejta hai. Non-2xx par ApiError, aur raw body log ke liye sirf server par.
+  // Ek request bhejta hai. Non-2xx par ApiError. Raw body kahin log nahi hoti.
   async function call<T>(
     path: string,
-    init: { method: string; body?: unknown; prefer?: string; schemaHeader?: boolean },
+    init: { method: string; body?: unknown; prefer?: string },
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -32,14 +42,12 @@ export function createSupabase(env: Env): SupabaseClient {
       apikey: key,
       Authorization: `Bearer ${key}`,
       Accept: "application/json",
+      // Har query sthamly_v3 par. Purane public tables is path se nahi chhoote jaate.
+      "Accept-Profile": SCHEMA,
+      "Content-Profile": SCHEMA,
     };
     if (init.body !== undefined) headers["Content-Type"] = "application/json";
     if (init.prefer) headers.Prefer = init.prefer;
-    if (init.schemaHeader !== false) {
-      // Read aur write dono ke liye schema header (PostgREST ke liye)
-      headers["Accept-Profile"] = SCHEMA;
-      headers["Content-Profile"] = SCHEMA;
-    }
 
     let res: Response;
     try {
@@ -56,7 +64,7 @@ export function createSupabase(env: Env): SupabaseClient {
     }
 
     if (!res.ok) {
-      // Raw response text log ke liye nahi, kyunki usme row data ho sakta hai (blueprint 11).
+      // Status code bhi sirf server logs mein jayega (observability file mein). Body nahi.
       throw new ApiError("internal");
     }
 
@@ -74,13 +82,24 @@ export function createSupabase(env: Env): SupabaseClient {
     insert<T>(
       table: string,
       rows: Record<string, unknown> | Record<string, unknown>[],
-      opts?: { upsert?: boolean; onConflict?: string },
+      opts?: InsertOptions,
     ): Promise<T[]> {
-      const params = opts?.onConflict ? `?on_conflict=${encodeURIComponent(opts.onConflict)}` : "";
-      const prefer = opts?.upsert
-        ? "resolution=merge-duplicates,return=representation"
-        : "return=representation";
-      return call<T[]>(`/rest/v1/${table}${params}`, { method: "POST", body: rows, prefer });
+      const params = opts?.onConflict
+        ? `?on_conflict=${encodeURIComponent(opts.onConflict)}`
+        : "";
+
+      // conflict "ignore": existing row kabhi nahi badalti (profile ke liye).
+      // conflict "merge": existing row ko naye values se badalta hai.
+      // Koi conflict option na ho to plain insert: duplicate par error.
+      let resolution = "";
+      if (opts?.conflict === "ignore") resolution = "resolution=ignore-duplicates,";
+      if (opts?.conflict === "merge") resolution = "resolution=merge-duplicates,";
+
+      return call<T[]>(`/rest/v1/${table}${params}`, {
+        method: "POST",
+        body: rows,
+        prefer: `${resolution}return=representation`,
+      });
     },
 
     update<T>(table: string, query: string, patch: Record<string, unknown>): Promise<T[]> {
@@ -92,7 +111,6 @@ export function createSupabase(env: Env): SupabaseClient {
     },
 
     rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
-      // Function bhi sthamly_v3 mein hai, isliye schema header zaroori hai.
       return call<T>(`/rest/v1/rpc/${fn}`, { method: "POST", body: args });
     },
   };
