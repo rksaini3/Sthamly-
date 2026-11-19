@@ -15,6 +15,7 @@ const PROTECTED_PREFIXES = [
   "/onboarding",
   "/role",
   "/settings",
+  "/studio",
   "/voice",
 ];
 
