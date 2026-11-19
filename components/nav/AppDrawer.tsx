@@ -37,6 +37,7 @@ type IconName =
   | "globe"
   | "share"
   | "home"
+  | "studio"
   | "chevron";
 
 interface Bilingual {
@@ -91,8 +92,8 @@ const SECTIONS: SidebarSection[] = [
   },
   {
     id: "studio",
-    label: { hi: "Studio (वेबसाइट, इमेज, PPTX, PDF)", en: "Studio (website, image, PPTX, PDF)" },
-    icon: "plugins",
+    label: { hi: "स्टूडियो", en: "Studio" },
+    icon: "studio",
     href: "/studio",
     enabled: true,
   },
@@ -140,6 +141,7 @@ const PATHS: Record<IconName, string[]> = {
   pencil: ["M4 20l1-4L17 4l3 3L8 19z"],
   live: ["M3 7a2 2 0 012-2h9a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2z", "M16 10l5-3v10l-5-3"],
   home: ["M3 11l9-7 9 7", "M5 10v10h14V10", "M10 20v-5h4v5"],
+  studio: ["M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z", "M19 3v4M17 5h4"],
   chevron: ["M9 6l6 6-6 6"],
 };
 
