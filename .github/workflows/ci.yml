@@ -1,0 +1,90 @@
+# Sthamly AI: CI (Blueprint 3.0, section 11)
+# Har pull request aur main par chalta hai. main protected hai: teeno jobs pass hona zaroori hai.
+# Jobs: secret scan, Worker typecheck aur tests, web typecheck, build aur tests.
+# Deploy is file mein nahi hai. Worker ka deploy alag workflow mein hoga.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Sirf code padhne ki permission. Zaroorat se zyada access nahi.
+permissions:
+  contents: read
+
+# Ek hi branch par purana run band ho jaata hai, naya push aaye to.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (poori history ke saath, taaki purane commits bhi scan hon)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  worker:
+    name: Worker (typecheck, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install (lockfile se, exact versions)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Tests abhi nahi likhe: script na ho to ye step skip hota hai.
+      - name: Tests (agar hain)
+        run: npm test --if-present
+
+  web:
+    name: Web (typecheck, build, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install (lockfile se, exact versions)
+        run: npm ci
+
+      # Build se pehle typecheck hota hai (package.json ka build script). Galat code deploy nahi hoga.
+      - name: Build (typecheck + vite build)
+        run: npm run build
+
+      # --passWithNoTests: abhi koi test file nahi hai, to bhi step fail nahi hoga.
+      - name: Tests
+        run: npm test -- --passWithNoTests
