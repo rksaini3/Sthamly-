@@ -52,8 +52,9 @@ export default async function BatchHistoryPage() {
 
   const batches = (data ?? []) as BatchRow[];
 
+  // ऊपर 64px इसलिए ताकि ☰ बटन पन्ने के title को न ढके
   return (
-    <main className="stack" style={{ padding: 16, gap: 16 }}>
+    <main className="stack" style={{ padding: "64px 16px 16px", gap: 16 }}>
       <header className="stack" style={{ gap: 8 }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>मेरे बैच</h1>
         <Link href="/batch" className="btn btn-primary btn-block">
