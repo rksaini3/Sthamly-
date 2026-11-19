@@ -1,0 +1,78 @@
+# Sthamly AI — Cloudflare Worker gateway (Blueprint 3.0)
+# Secrets yahan NAHI likhte. Woh `wrangler secret put <NAME> --env <env>` se set hote hain.
+
+name = "sthamly-api"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# Logs: Cloudflare ke built-in Worker logs (blueprint 11)
+[observability]
+enabled = true
+
+# ------------------------------------------------------------------
+# Default (bina --env ke) — local `wrangler dev` ke liye
+# ------------------------------------------------------------------
+[vars]
+ENVIRONMENT = "local"
+SUPABASE_URL = "https://YOUR-DEV-PROJECT.supabase.co"
+ALLOWED_ORIGINS = "http://localhost:5173"
+LIVE_MODEL = "REPLACE-WITH-CONFIGURED-LIVE-MODEL-ID"   # blueprint 4: model ID config mein, app mein nahi
+DAILY_BUDGET_INR = "200"                              # global daily cap (blueprint 7)
+LIVE_MAX_SECONDS_PER_SESSION = "900"                  # audio-only ~15 min limit (blueprint 4)
+
+# Circuit breaker aur budget state ke liye KV (blueprint 7)
+[[kv_namespaces]]
+binding = "STATE"
+id = "REPLACE-WITH-LOCAL-KV-ID"
+
+# Scheduled jobs (billing reconcile, cleanup). Phase 1 mein handler baad mein banega.
+[triggers]
+crons = ["*/15 * * * *"]
+
+# ------------------------------------------------------------------
+# DEV environment — Supabase dev project, dev Worker
+# ------------------------------------------------------------------
+[env.dev]
+name = "sthamly-api-dev"
+
+[env.dev.vars]
+ENVIRONMENT = "dev"
+SUPABASE_URL = "https://YOUR-DEV-PROJECT.supabase.co"
+ALLOWED_ORIGINS = "https://dev.sthamly.app,http://localhost:5173"
+LIVE_MODEL = "REPLACE-WITH-CONFIGURED-LIVE-MODEL-ID"
+DAILY_BUDGET_INR = "200"
+LIVE_MAX_SECONDS_PER_SESSION = "900"
+
+[[env.dev.kv_namespaces]]
+binding = "STATE"
+id = "REPLACE-WITH-DEV-KV-ID"
+
+[env.dev.triggers]
+crons = ["*/15 * * * *"]
+
+[env.dev.observability]
+enabled = true
+
+# ------------------------------------------------------------------
+# PRODUCTION environment — production Supabase project, production Worker
+# ------------------------------------------------------------------
+[env.production]
+name = "sthamly-api"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+SUPABASE_URL = "https://YOUR-PROD-PROJECT.supabase.co"
+ALLOWED_ORIGINS = "https://sthamly.app"
+LIVE_MODEL = "REPLACE-WITH-CONFIGURED-LIVE-MODEL-ID"
+DAILY_BUDGET_INR = "2000"                    # production budget: open decision, pehle test karke tay karein
+LIVE_MAX_SECONDS_PER_SESSION = "900"
+
+[[env.production.kv_namespaces]]
+binding = "STATE"
+id = "REPLACE-WITH-PROD-KV-ID"
+
+[env.production.triggers]
+crons = ["*/15 * * * *"]
+
+[env.production.observability]
+enabled = true
