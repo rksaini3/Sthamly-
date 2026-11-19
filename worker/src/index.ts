@@ -1,4 +1,4 @@
-// Sthamly AI Worker: entry point (Blueprint 3.0 section 3, 6, 9, 11; Blueprint 4.0 images)
+// Sthamly AI Worker: entry point (Blueprint 3.0 section 3, 6, 9, 11; Blueprint 4.0 creation)
 // Routes:
 //   GET    /health                       uptime monitor (bina secret ke, sirf ok ya degraded)
 //   POST   /api/ai/chat                  streaming chat, logged-in user ya guest (routes/chat.ts)
@@ -7,9 +7,9 @@
 //   POST   /api/voice/session            Live session token (routes/voice.ts)
 //   POST   /api/voice/session/:id/end    Live session band (routes/voice.ts)
 //   POST   /api/voice/turn               push-to-talk audio -> transcript (routes/voice.ts)
-//   *      /api/images                   image banana aur list (routes/images.ts), sirf login
-//   GET    /api/images/:id/url           signed download link (routes/images.ts)
-//   DELETE /api/images/:id               apni image hatana (routes/images.ts)
+//   *      /api/create                   image, slides, website, document banao aur list (routes/create.ts)
+//   GET    /api/create/:id/url           signed download link (routes/create.ts)
+//   DELETE /api/create/:id               apni file hatao (routes/create.ts)
 // CORS: sirf ALLOWED_ORIGINS wale origins. Baaki origins ko koi ACAO header nahi jaata.
 // Capacitor (Android) ke origins ALLOWED_ORIGINS mein hone chahiye, jaise https://localhost.
 // Scheduled: har 15 minute budget check, taaki alert traffic ke bina bhi chale.
@@ -18,8 +18,8 @@ import { budgetStatus } from "./budget";
 import { loadConfig, type Config, type Env } from "./env";
 import { ApiError, toErrorResponse } from "./errors";
 import { handleChat } from "./routes/chat";
+import { handleCreate } from "./routes/create";
 import { handleHistory } from "./routes/history";
-import { handleImages } from "./routes/images";
 import { handleUser } from "./routes/user";
 import { handleVoice } from "./routes/voice";
 import { createSupabase } from "./supabase";
@@ -31,7 +31,7 @@ const ALLOWED_HEADERS =
 const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
-type Route = "chat" | "history" | "user" | "voice" | "images";
+type Route = "chat" | "history" | "user" | "voice" | "create";
 
 // Request ke Origin ko allowed list se milata hai. Na mile to null.
 function allowedOrigin(request: Request, config: Config): string | null {
@@ -110,7 +110,7 @@ function routeFor(pathname: string): Route | null {
   if (pathname === "/api/chat/history") return "history";
   if (pathname.startsWith("/api/user/")) return "user";
   if (pathname.startsWith("/api/voice/")) return "voice";
-  if (pathname === "/api/images" || pathname.startsWith("/api/images/")) return "images";
+  if (pathname === "/api/create" || pathname.startsWith("/api/create/")) return "create";
   return null;
 }
 
@@ -155,8 +155,8 @@ export default {
         case "voice":
           response = await handleVoice(request, env, ctx);
           break;
-        case "images":
-          response = await handleImages(request, env, ctx);
+        case "create":
+          response = await handleCreate(request, env, ctx);
           break;
         default:
           throw new ApiError("invalid_request", "रास्ता नहीं मिला।");
