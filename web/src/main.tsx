@@ -1,4 +1,4 @@
- Sthamly AI web: React entry point (Blueprint 3.0, section 10)
+// Sthamly AI web: React entry point (Blueprint 3.0, section 10)
 // Yahan koi business logic nahi hai. Sirf React ko #root se jodna, styles aur routing ka context dena.
 // Routes aur screens App.tsx mein hain. Session ka kaam AuthProvider mein hai.
 
