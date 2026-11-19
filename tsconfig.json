@@ -45,6 +45,9 @@
     "shell",
     "tests",
     "**/*.test.ts",
-    "**/*.test.tsx"
+    "**/*.test.tsx",
+    "web",
+    "worker",
+    "supabase"
   ]
 }
