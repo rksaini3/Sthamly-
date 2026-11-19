@@ -1,4 +1,4 @@
-// Sthamly AI Worker — typed environment (Blueprint 3.0, section 11)
+// Sthamly AI Worker: typed environment (Blueprint 3.0 section 11, Blueprint 4.0 image)
 // Secrets: `wrangler secret put` se set hote hain. Vars: wrangler.toml mein.
 
 export interface Env {
@@ -7,11 +7,12 @@ export interface Env {
   SUPABASE_URL: string;
   ALLOWED_ORIGINS: string;            // comma-separated
   LIVE_MODEL: string;                 // server config, app mein kabhi nahi
-  DAILY_BUDGET_INR: string;           // number as string, parseEnv se number banega
+  IMAGE_MODEL: string;                // image banane ka Gemini model, server config
+  DAILY_BUDGET_INR: string;           // number as string, loadConfig se number banega
   LIVE_MAX_SECONDS_PER_SESSION: string;
 
   // ---- KV (wrangler.toml) ----
-  STATE: KVNamespace;                 // circuit breaker, budget counters
+  STATE: KVNamespace;                 // circuit breaker, budget counters, guest counters
 
   // ---- Secrets (wrangler secret put) ----
   SUPABASE_SERVICE_ROLE_KEY: string;
@@ -27,6 +28,7 @@ export interface Config {
   supabaseUrl: string;
   allowedOrigins: string[];
   liveModel: string;
+  imageModel: string;
   dailyBudgetInr: number;
   liveMaxSecondsPerSession: number;
 }
@@ -44,6 +46,10 @@ export function loadConfig(env: Env): Config {
     throw new Error("LIVE_MAX_SECONDS_PER_SESSION must be a positive number");
   }
 
+  if (!env.IMAGE_MODEL || env.IMAGE_MODEL.trim().length === 0) {
+    throw new Error("IMAGE_MODEL must be set in wrangler.toml");
+  }
+
   if (!env.SUPABASE_URL.startsWith("https://") && env.ENVIRONMENT !== "local") {
     throw new Error("SUPABASE_URL must use https outside local");
   }
@@ -53,6 +59,7 @@ export function loadConfig(env: Env): Config {
     supabaseUrl: env.SUPABASE_URL.replace(/\/+$/, ""),
     allowedOrigins: env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
     liveModel: env.LIVE_MODEL,
+    imageModel: env.IMAGE_MODEL.trim(),
     dailyBudgetInr,
     liveMaxSecondsPerSession: liveMaxSeconds,
   };
