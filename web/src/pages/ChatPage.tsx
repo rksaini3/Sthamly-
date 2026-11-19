@@ -1,9 +1,7 @@
-// Sthamly AI web: chat screen (Blueprint 3.0, section 6, 10, guest mode)
+// Sthamly AI web: chat screen (Blueprint 3.0 section 6, 10; guest mode; creation link)
 // Guest (login nahi): chat khuli hai, din ke limited messages, chat server par save nahi.
-// Guest ki history client par rehti hai aur har request ke saath jaati hai.
 // Login user: history DB mein, conversation list, usage, mic (push-to-talk).
-// Guest limit khatam: login card dikhta hai aur chat band. Asli limit Worker (guest.ts) lagata hai.
-// Login hone par guest ki chat nahi jaati: naya, khaali chat shuru hota hai.
+// Creation (image, slides, website, document) /create par hai. Yahan se link hai.
 // Raw server ya provider error nahi dikhta, sirf Hindi message.
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
@@ -534,6 +532,7 @@ export function ChatPage() {
         )}
 
         <nav className="sidebar-nav">
+          <Link to="/create">बनाएँ (तस्वीर, स्लाइड, वेबसाइट, दस्तावेज़)</Link>
           {isMember ? (
             <>
               <Link to="/usage">उपयोग</Link>
@@ -560,6 +559,9 @@ export function ChatPage() {
             ☰
           </button>
           <h1 className="chat-title">Sthamly AI</h1>
+          <Link to="/create" className="btn-ghost" style={{ textDecoration: "none", fontSize: 13 }}>
+            बनाएँ
+          </Link>
           {isGuest && !guestBlocked && (
             <span className="muted small">आज बचे: {guestLeft}</span>
           )}
@@ -597,7 +599,12 @@ export function ChatPage() {
         </section>
 
         {guestBlocked && (
-          <section className="card" role="region" aria-label="लॉग-इन करें" style={{ margin: "0 16px 8px" }}>
+          <section
+            className="card"
+            role="region"
+            aria-label="लॉग-इन करें"
+            style={{ margin: "0 16px 8px" }}
+          >
             <h2>आज के मुफ़्त संदेश खत्म हो गए</h2>
             <p className="muted small">
               आगे बात जारी रखने और अपनी बातचीत सेव करने के लिए लॉग-इन करें। कल फिर मुफ़्त संदेश मिलेंगे।
