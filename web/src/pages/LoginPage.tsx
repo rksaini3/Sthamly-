@@ -8,6 +8,9 @@ import { useAuth } from "../auth/AuthProvider";
 
 type Mode = "login" | "signup";
 
+const CONFIRM_MESSAGE =
+  "ईमेल पर भेजा गया लिंक खोलकर अपना खाता कन्फर्म करें, फिर लॉग-इन करें।";
+
 export function LoginPage() {
   const { signIn, signUp } = useAuth();
 
@@ -39,10 +42,10 @@ export function LoginPage() {
       if (isSignup) {
         const result = await signUp(email, password, name);
         if (result.needsConfirmation) {
-          setInfo("ईमेल पर भेजा गया लिंक खोलकर अपना खाता कन्फर्म करें, फिर लॉग-इन करें।");
+          // Email confirm baaki hai: login mode par le jaate hain, message ke saath.
           setPassword("");
-          switchMode("login");
-          setInfo("ईमेल पर भेजा गया लिंक खोलकर अपना खाता कन्फर्म करें, फिर लॉग-इन करें।");
+          setMode("login");
+          setInfo(CONFIRM_MESSAGE);
         }
       } else {
         await signIn(email, password);
@@ -60,9 +63,7 @@ export function LoginPage() {
         <h1 id="auth-title" className="auth-title">
           Sthamly AI
         </h1>
-        <p className="auth-subtitle">
-          {isSignup ? "नया खाता बनाएँ" : "लॉग-इन करें"}
-        </p>
+        <p className="auth-subtitle">{isSignup ? "नया खाता बनाएँ" : "लॉग-इन करें"}</p>
 
         <form className="auth-form" onSubmit={handleSubmit} noValidate>
           {isSignup && (
@@ -109,9 +110,7 @@ export function LoginPage() {
             />
           </label>
 
-          {isSignup && (
-            <p className="auth-hint">पासवर्ड कम से कम 8 अक्षर का हो।</p>
-          )}
+          {isSignup && <p className="auth-hint">पासवर्ड कम से कम 8 अक्षर का हो।</p>}
 
           {error && (
             <p className="auth-error" role="alert">
