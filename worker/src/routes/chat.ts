@@ -1,16 +1,17 @@
-// Sthamly AI Worker — POST /api/ai/chat (Blueprint 3.0, section 6 and 7)
-// Streaming chat. Order (blueprint section 6):
-//  1. Request shape validate            2. Login token verify
-//  3. Plan aur usage DB se              4. Quota aur budget check
-//  5. Model router (provider chunav)    6. Stream (SSE)
-//  8. Result normalize                  9. Usage ek baar (request_id unique)
-//  10. Logs aur save ctx.waitUntil se, user ko intezaar nahi
-// Tool loop Phase 3 mein aayega. Abhi koi tool nahi chalta.
+// Sthamly AI Worker: POST /api/ai/chat (Blueprint 3.0, section 6 aur 7, guest mode)
+// Do tarah ke caller:
+//  - Logged-in user (Authorization token): history DB mein, usage ek baar, quota aur budget.
+//  - Guest (token nahi, X-Guest-Id header): din ke limited messages (guest.ts). Chat DB mein save nahi.
+//    Guest ki history client bhejta hai, aur wo sirf is request ke liye use hoti hai.
+// Order: body validate -> caller pehchan -> limit aur quota -> budget -> model chunav -> stream.
+// Provider ka error pehle JSON mein jaata hai, stream tab shuru hoti hai jab reply aane lage.
+// Tool loop Phase 3 mein aayega.
 
-import { authenticate } from "../auth";
+import { getBearerToken, verifySupabaseUser, type AuthUser } from "../auth";
 import { assertBudget } from "../budget";
-import { assertSecretsPresent, loadConfig, type Env } from "../env";
+import { assertSecretsPresent, loadConfig, type Config, type Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
+import { identifyGuest, reserveGuestMessage, type GuestIdentity } from "../guest";
 import { assertWithinDailyQuota, loadUserContext, type UserContext } from "../plan";
 import { routeChat } from "../providers/router";
 import { estimateCostInr, type ChatMessage } from "../providers/types";
@@ -26,8 +27,13 @@ const TITLE_CHARS = 40;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
-// USD se INR. Ye open decision hai (blueprint 13). Baad mein config variable mein jaayega.
+// USD se INR. Open decision (blueprint 13). Baad mein config variable mein jaayega.
 const USD_TO_INR = 85;
+
+// Guest ka plan free jaisa hai. Guest ko login wale plan ke fayde nahi milte.
+const GUEST_PLAN = "free";
+const GUEST_MAX_OUTPUT_TOKENS = 1024;
+const GUEST_LANGUAGE: UserContext["language"] = "hi";
 
 // Server-side system prompt. Client ise nahi bhej sakta.
 const SYSTEM_PROMPTS: Record<UserContext["language"], string> = {
@@ -43,6 +49,35 @@ interface ChatBody {
   history: ChatMessage[];
 }
 
+type Caller =
+  | { kind: "user"; user: AuthUser }
+  | { kind: "guest"; guest: GuestIdentity };
+
+// Sirf logged-in user ke liye: usage darj karna aur (history on ho to) conversation save karna.
+interface OwnerContext {
+  userId: string;
+  usageRequestId: string;
+  // History on ho to conversation id lautata hai (naya ho to banata hai). Band ho to null.
+  resolveConversation: () => Promise<string | null>;
+}
+
+interface ChatRun {
+  env: Env;
+  config: Config;
+  db: SupabaseClient;
+  execCtx: ExecutionContext;
+  request: Request;
+  traceId: string;
+  userMessage: string;
+  messages: ChatMessage[];
+  inputEstimate: number;
+  planName: string;
+  maxOutputTokens: number;
+  hindi: boolean;
+  isFreePlan: boolean;
+  owner: OwnerContext | null;
+}
+
 function invalid(message?: string): ApiError {
   return new ApiError("invalid_request", message);
 }
@@ -54,6 +89,22 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // Rough token estimate (Hindi aur English dono ke liye). Sirf quota aur fallback ke liye.
 function approxTokens(text: string): number {
   return Math.ceil(text.length / 3);
+}
+
+function buildMessages(
+  language: UserContext["language"],
+  prior: ChatMessage[],
+  message: string,
+): ChatMessage[] {
+  return [
+    { role: "system", content: SYSTEM_PROMPTS[language] },
+    ...prior,
+    { role: "user", content: message },
+  ];
+}
+
+function estimateInput(messages: ChatMessage[]): number {
+  return messages.reduce((sum, m) => sum + approxTokens(m.content), 0);
 }
 
 // Request body validate karta hai. Galat shape par 'invalid_request'.
@@ -90,8 +141,8 @@ async function parseBody(request: Request): Promise<ChatBody> {
     conversationId = convRaw.toLowerCase();
   }
 
-  // History sirf tab use hoti hai jab user ne history band rakhi ho.
-  // History on ho to server apni DB se load karta hai, client ki history par bharosa nahi.
+  // History: logged-in user ke liye sirf fallback (history on ho to server DB se leta hai).
+  // Guest ke liye yahi asli history hai, kyunki guest ki chat server par save nahi hoti.
   const history: ChatMessage[] = [];
   const historyRaw = parsed.history;
   if (historyRaw !== undefined && historyRaw !== null) {
@@ -114,8 +165,16 @@ async function parseBody(request: Request): Promise<ChatBody> {
   return { message, conversationId, history };
 }
 
+// Pehchan: Authorization token ho to user, warna guest. Token galat ho to 'unauthenticated'.
+async function resolveCaller(request: Request, env: Env): Promise<Caller> {
+  const token = getBearerToken(request);
+  if (token !== null) {
+    return { kind: "user", user: await verifySupabaseUser(env, token) };
+  }
+  return { kind: "guest", guest: await identifyGuest(request, env) };
+}
+
 // Idempotency-Key header: sahi format ho ya na ho to request galat.
-// Na ho to server apna trace id use karta hai.
 function readIdempotencyKey(request: Request): string | null {
   const raw = request.headers.get("Idempotency-Key");
   if (raw === null) return null;
@@ -145,9 +204,7 @@ async function loadStoredHistory(
     "messages",
     `conversation_id=eq.${conversationId}&select=role,content&order=created_at.desc&limit=${MAX_HISTORY_ITEMS}`,
   );
-  return rows
-    .reverse()
-    .map((r) => ({ role: r.role, content: r.content }));
+  return rows.reverse().map((r) => ({ role: r.role, content: r.content }));
 }
 
 // Nayi conversation. Title pehle message se, 40 characters tak.
@@ -237,11 +294,9 @@ async function saveTurn(
       request_id: p.traceId,
     },
   ]);
-  await db.update(
-    "conversations",
-    `id=eq.${p.conversationId}`,
-    { updated_at: new Date().toISOString() },
-  );
+  await db.update("conversations", `id=eq.${p.conversationId}`, {
+    updated_at: new Date().toISOString(),
+  });
 }
 
 // Log mein sirf event, code aur request id. Message, prompt ya token kabhi nahi.
@@ -252,115 +307,64 @@ function logFailure(event: string, requestId: string): (err: unknown) => void {
   };
 }
 
-export async function handleChat(
-  request: Request,
-  env: Env,
-  ctx: ExecutionContext,
-): Promise<Response> {
-  const traceId = crypto.randomUUID();
+// Model chalata hai aur stream karta hai. Dono tarah ke callers ke liye ek hi jagah.
+async function runChat(run: ChatRun): Promise<Response> {
+  const { env, config, db, execCtx, request, traceId, messages, inputEstimate } = run;
+  const owner = run.owner;
 
-  try {
-    if (request.method !== "POST") throw invalid();
+  // 4. Budget (100% par free users band). Chat ke liye cheap model bhi yahin tay hota hai.
+  const budget = await assertBudget(env, db, config, {
+    feature: "chat",
+    isFreePlan: run.isFreePlan,
+  });
 
-    const config = loadConfig(env);
-    assertSecretsPresent(env);
+  // Nayi conversation: provider call se pehle bana do, taaki reply ka sahi id mile.
+  const conversationId = owner ? await owner.resolveConversation() : null;
 
-    // 2. Login token verify
-    const user = await authenticate(request, env);
+  // 5. Model chunav. Yahin provider ka pehla chunk tak wait hota hai.
+  const routed = await routeChat(env, db, {
+    planName: run.planName,
+    budget,
+    hindi: run.hindi,
+    preferTier: "standard",
+    request: {
+      messages,
+      maxOutputTokens: run.maxOutputTokens,
+      signal: request.signal,
+    },
+  });
 
-    // 1. Shape validate
-    const body = await parseBody(request);
-    const idemKey = readIdempotencyKey(request);
-    const usageRequestId = `${user.id}:${idemKey ?? traceId}`;
+  // 6. Stream
+  const response = createSseResponse(async (send) => {
+    let reply = "";
+    let finishReason: "stop" | "length" | "error" = "stop";
+    let providerInput = 0;
+    let providerOutput = 0;
 
-    // 3. Plan aur usage DB se (client se nahi)
-    const db = createSupabase(env);
-    const userCtx = await loadUserContext(db, user);
-
-    if (!userCtx.historyEnabled && body.conversationId) {
-      throw invalid("इतिहास बंद है, इसलिए बातचीत ID नहीं चल सकती।");
-    }
-
-    if (await usageExists(db, usageRequestId)) {
-      throw invalid("यह अनुरोध पहले ही हो चुका है।");
-    }
-
-    // Pichhla context: history on ho to DB se, warna client ki history
-    let priorMessages: ChatMessage[] = body.history;
-    if (userCtx.historyEnabled) {
-      if (body.conversationId) {
-        await assertOwnsConversation(db, user.id, body.conversationId);
-        priorMessages = await loadStoredHistory(db, body.conversationId);
+    for await (const chunk of routed.stream) {
+      if (request.signal.aborted) break;
+      if (chunk.type === "text") {
+        reply += chunk.text;
+        await send({ event: "delta", data: { text: chunk.text } });
       } else {
-        priorMessages = [];
+        finishReason = chunk.finishReason;
+        providerInput = chunk.inputTokens;
+        providerOutput = chunk.outputTokens;
       }
     }
 
-    const messages: ChatMessage[] = [
-      { role: "system", content: SYSTEM_PROMPTS[userCtx.language] },
-      ...priorMessages,
-      { role: "user", content: body.message },
-    ];
+    // 8. Normalize. Provider ne token na bataye to estimate.
+    const inputTokens = providerInput > 0 ? providerInput : inputEstimate;
+    const outputTokens = providerOutput > 0 ? providerOutput : approxTokens(reply);
+    const costInr = estimateCostInr(routed.entry, inputTokens, outputTokens, USD_TO_INR);
+    const aborted = request.signal.aborted;
+    const succeeded = !aborted && reply.length > 0;
 
-    // 4. Quota aur budget
-    const inputEstimate = messages.reduce((sum, m) => sum + approxTokens(m.content), 0);
-    assertWithinDailyQuota(userCtx, inputEstimate + userCtx.plan.maxOutputTokens);
-
-    const budget = await assertBudget(env, db, config, {
-      feature: "chat",
-      isFreePlan: userCtx.plan.plan === "free",
-    });
-
-    // Nayi conversation: provider call se pehle bana do, taaki reply ka sahi id mile.
-    let conversationId: string | null = body.conversationId;
-    if (userCtx.historyEnabled && conversationId === null) {
-      conversationId = await createConversation(db, user.id, body.message);
-    }
-
-    // 5. Model chunav. Yahin provider ka pehla chunk tak wait hota hai,
-    //    isliye galat connection par JSON error milta hai, khaali stream nahi.
-    const routed = await routeChat(env, db, {
-      planName: userCtx.plan.plan,
-      budget,
-      hindi: userCtx.language !== "en",
-      preferTier: "standard",
-      request: {
-        messages,
-        maxOutputTokens: userCtx.plan.maxOutputTokens,
-        signal: request.signal,
-      },
-    });
-
-    // 6. Stream
-    const response = createSseResponse(async (send) => {
-      let reply = "";
-      let finishReason: "stop" | "length" | "error" = "stop";
-      let providerInput = 0;
-      let providerOutput = 0;
-
-      for await (const chunk of routed.stream) {
-        if (request.signal.aborted) break;
-        if (chunk.type === "text") {
-          reply += chunk.text;
-          await send({ event: "delta", data: { text: chunk.text } });
-        } else {
-          finishReason = chunk.finishReason;
-          providerInput = chunk.inputTokens;
-          providerOutput = chunk.outputTokens;
-        }
-      }
-
-      // 8. Normalize. Provider ne token na bataye to estimate.
-      const inputTokens = providerInput > 0 ? providerInput : inputEstimate;
-      const outputTokens = providerOutput > 0 ? providerOutput : approxTokens(reply);
-      const costInr = estimateCostInr(routed.entry, inputTokens, outputTokens, USD_TO_INR);
-      const aborted = request.signal.aborted;
-      const succeeded = !aborted && reply.length > 0;
-
-      // 9 aur 10. Usage ek baar, aur save. User ko intezaar nahi.
+    // 9 aur 10. Sirf logged-in user ka usage aur save. Guest ka kuch darj nahi hota.
+    if (owner) {
       const usageWrite = recordUsage(db, {
-        userId: user.id,
-        usageRequestId,
+        userId: owner.userId,
+        usageRequestId: owner.usageRequestId,
         provider: routed.provider,
         model: routed.model,
         inputTokens,
@@ -369,11 +373,11 @@ export async function handleChat(
       }).catch(logFailure("usage_write_failed", traceId));
 
       const saveWrite =
-        succeeded && userCtx.historyEnabled && conversationId !== null
+        succeeded && conversationId !== null
           ? saveTurn(db, {
               conversationId,
               traceId,
-              userMessage: body.message,
+              userMessage: run.userMessage,
               reply,
               provider: routed.provider,
               model: routed.model,
@@ -383,32 +387,165 @@ export async function handleChat(
             }).catch(logFailure("save_turn_failed", traceId))
           : Promise.resolve();
 
-      ctx.waitUntil(Promise.all([usageWrite, saveWrite]));
-
-      if (aborted) return;
-
-      // Provider ne error diya aur koi text nahi aaya: user ko clean error
-      if (finishReason === "error" && reply.length === 0) {
-        throw new ApiError("provider_unavailable");
-      }
-
-      await send({
-        event: "done",
-        data: {
-          request_id: traceId,
-          provider: routed.provider,
-          model: routed.model,
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          finish_reason: finishReason,
-        },
-      });
-    }, traceId);
-
-    if (conversationId !== null) {
-      response.headers.set("X-Conversation-Id", conversationId);
+      execCtx.waitUntil(Promise.all([usageWrite, saveWrite]));
     }
-    return response;
+
+    if (aborted) return;
+
+    // Provider ne error diya aur koi text nahi aaya: user ko clean error
+    if (finishReason === "error" && reply.length === 0) {
+      throw new ApiError("provider_unavailable");
+    }
+
+    await send({
+      event: "done",
+      data: {
+        request_id: traceId,
+        provider: routed.provider,
+        model: routed.model,
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        finish_reason: finishReason,
+      },
+    });
+  }, traceId);
+
+  if (conversationId !== null) {
+    response.headers.set("X-Conversation-Id", conversationId);
+  }
+  return response;
+}
+
+// Logged-in user ka poora flow.
+async function handleUserChat(
+  request: Request,
+  env: Env,
+  config: Config,
+  db: SupabaseClient,
+  user: AuthUser,
+  body: ChatBody,
+  traceId: string,
+  execCtx: ExecutionContext,
+): Promise<Response> {
+  // 3. Plan aur usage DB se (client se nahi)
+  const userCtx = await loadUserContext(db, user);
+  const idemKey = readIdempotencyKey(request);
+  const usageRequestId = `${user.id}:${idemKey ?? traceId}`;
+
+  if (!userCtx.historyEnabled && body.conversationId !== null) {
+    throw invalid("इतिहास बंद है, इसलिए बातचीत ID नहीं चल सकती।");
+  }
+
+  if (await usageExists(db, usageRequestId)) {
+    throw invalid("यह अनुरोध पहले ही हो चुका है।");
+  }
+
+  // Pichhla context: history on ho to DB se, warna client ki history
+  let priorMessages: ChatMessage[] = body.history;
+  if (userCtx.historyEnabled) {
+    if (body.conversationId !== null) {
+      await assertOwnsConversation(db, user.id, body.conversationId);
+      priorMessages = await loadStoredHistory(db, body.conversationId);
+    } else {
+      priorMessages = [];
+    }
+  }
+
+  const messages = buildMessages(userCtx.language, priorMessages, body.message);
+  const inputEstimate = estimateInput(messages);
+
+  // 4. Daily token quota
+  assertWithinDailyQuota(userCtx, inputEstimate + userCtx.plan.maxOutputTokens);
+
+  return runChat({
+    env,
+    config,
+    db,
+    execCtx,
+    request,
+    traceId,
+    userMessage: body.message,
+    messages,
+    inputEstimate,
+    planName: userCtx.plan.plan,
+    maxOutputTokens: userCtx.plan.maxOutputTokens,
+    hindi: userCtx.language !== "en",
+    isFreePlan: userCtx.plan.plan === "free",
+    owner: {
+      userId: user.id,
+      usageRequestId,
+      resolveConversation: async () => {
+        if (!userCtx.historyEnabled) return null;
+        if (body.conversationId !== null) return body.conversationId;
+        return createConversation(db, user.id, body.message);
+      },
+    },
+  });
+}
+
+// Guest ka flow: login nahi, limited messages, kuch save nahi.
+async function handleGuestChat(
+  request: Request,
+  env: Env,
+  config: Config,
+  db: SupabaseClient,
+  guest: GuestIdentity,
+  body: ChatBody,
+  traceId: string,
+  execCtx: ExecutionContext,
+): Promise<Response> {
+  if (body.conversationId !== null) {
+    throw invalid("मेहमान मोड में बातचीत सेव नहीं होती। लॉग-इन करें।");
+  }
+
+  // Guest ka message limit pehle lagta hai, taaki limit ke baad koi kaam na ho.
+  await reserveGuestMessage(env, guest);
+
+  const messages = buildMessages(GUEST_LANGUAGE, body.history, body.message);
+  const inputEstimate = estimateInput(messages);
+
+  return runChat({
+    env,
+    config,
+    db,
+    execCtx,
+    request,
+    traceId,
+    userMessage: body.message,
+    messages,
+    inputEstimate,
+    planName: GUEST_PLAN,
+    maxOutputTokens: GUEST_MAX_OUTPUT_TOKENS,
+    hindi: true,
+    isFreePlan: true,
+    owner: null,
+  });
+}
+
+export async function handleChat(
+  request: Request,
+  env: Env,
+  execCtx: ExecutionContext,
+): Promise<Response> {
+  const traceId = crypto.randomUUID();
+
+  try {
+    if (request.method !== "POST") throw invalid();
+
+    const config = loadConfig(env);
+    assertSecretsPresent(env);
+
+    // 1. Shape validate (pehle, taaki galat request limit na kharche)
+    const body = await parseBody(request);
+
+    // 2. Pehchan: user ya guest
+    const caller = await resolveCaller(request, env);
+    const db = createSupabase(env);
+
+    if (caller.kind === "guest") {
+      return await handleGuestChat(request, env, config, db, caller.guest, body, traceId, execCtx);
+    }
+    return await handleUserChat(request, env, config, db, caller.user, body, traceId, execCtx);
   } catch (err) {
     logFailure("chat_request_failed", traceId)(err);
     return toErrorResponse(err, traceId);
