@@ -23,6 +23,7 @@ export interface SupabaseClient {
     opts?: InsertOptions,
   ): Promise<T[]>;
   update<T>(table: string, query: string, patch: Record<string, unknown>): Promise<T[]>;
+  delete<T>(table: string, query: string): Promise<T[]>;
   rpc<T>(fn: string, args: Record<string, unknown>): Promise<T>;
 }
 
@@ -106,6 +107,14 @@ export function createSupabase(env: Env): SupabaseClient {
       return call<T[]>(`/rest/v1/${table}?${query}`, {
         method: "PATCH",
         body: patch,
+        prefer: "return=representation",
+      });
+    },
+
+    delete<T>(table: string, query: string): Promise<T[]> {
+      // Query mein hamesha id aur user_id dono hone chahiye (caller ki zimmedari).
+      return call<T[]>(`/rest/v1/${table}?${query}`, {
+        method: "DELETE",
         prefer: "return=representation",
       });
     },
