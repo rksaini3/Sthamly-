@@ -1,10 +1,14 @@
-// Sthamly AI web: Worker API client (Blueprint 3.0, section 6 aur 10)
-// Har request login token ke saath jaati hai (token caller deta hai, yahan store nahi hota).
+// Sthamly AI web: Worker API client (Blueprint 3.0, section 6 aur 10, guest mode)
+// Login hai to token jaata hai (Authorization). Nahi hai to guest ID jaati hai (X-Guest-Id).
+// Guest ID browser mein ek baar banti hai aur save rehti hai. Ye secret nahi, bas pehchan hai.
 // Chat streaming SSE se padhi jaati hai: delta, done, error. Baaki sab simple JSON.
 // Worker ke error codes fixed hain. Unknown code 'internal' ban jaata hai.
-// Raw server ya provider text console mein nahi, sirf code aur request id.
+// Raw server ya provider text kabhi console ya UI mein nahi, sirf code aur request id.
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
+
+const GUEST_ID_KEY = "sthamly_guest_id";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const ERROR_CODES = [
   "unauthenticated",
@@ -44,6 +48,38 @@ export class ApiClientError extends Error {
   }
 }
 
+// ---------------------------------------------------------------
+// Guest ID
+// ---------------------------------------------------------------
+
+// Memory mein fallback, agar localStorage band ho (private mode ya kuch WebView).
+let memoryGuestId: string | null = null;
+
+// Guest ID lautata hai. Pehli baar ho to banati hai aur save karti hai.
+export function getGuestId(): string {
+  try {
+    const saved = window.localStorage.getItem(GUEST_ID_KEY);
+    if (saved !== null && UUID_RE.test(saved)) return saved;
+
+    const fresh = crypto.randomUUID();
+    window.localStorage.setItem(GUEST_ID_KEY, fresh);
+    return fresh;
+  } catch {
+    // Storage nahi chal rahi: ek hi session ke liye memory mein rakhte hain.
+    if (memoryGuestId === null) memoryGuestId = crypto.randomUUID();
+    return memoryGuestId;
+  }
+}
+
+// Ye error guest ke limit ya login maangne ka signal hai (Worker: unauthenticated).
+export function isLoginRequired(err: unknown): boolean {
+  return err instanceof ApiClientError && err.code === "unauthenticated";
+}
+
+// ---------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------
+
 function toErrorCode(value: unknown): ErrorCode {
   return typeof value === "string" && (ERROR_CODES as readonly string[]).includes(value)
     ? (value as ErrorCode)
@@ -52,6 +88,10 @@ function toErrorCode(value: unknown): ErrorCode {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAbort(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
 }
 
 // Worker ka error body padhta hai: { error: { code, message, retryable, request_id } }.
@@ -76,6 +116,7 @@ async function errorFromResponse(res: Response): Promise<ApiClientError> {
   return new ApiClientError(code, message, retryable, requestId);
 }
 
+// Login wali requests ke liye token zaroori hai.
 function authHeaders(token: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
@@ -102,7 +143,7 @@ async function requestJson<T>(
       signal: opts.signal,
     });
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    if (isAbort(err)) throw err;
     throw new ApiClientError("internal", FALLBACK_MESSAGE.internal, true, null);
   }
 
@@ -177,13 +218,14 @@ export interface UsageResponse {
 }
 
 // ---------------------------------------------------------------
-// Chat streaming
+// Chat streaming (guest ya login dono)
 // ---------------------------------------------------------------
 
 export interface StreamChatInput {
   message: string;
+  // Guest ke liye hamesha null (guest ki chat server par save nahi hoti).
   conversationId: string | null;
-  // History sirf tab bheji jaati hai jab user ne history band rakhi ho.
+  // History: guest ke liye zaroori (server yaad nahi rakhta). Login user ke liye sirf history off hone par.
   history?: ChatTurn[];
   // Har send ke liye naya key: retry ka double usage nahi banta.
   idempotencyKey: string;
@@ -252,10 +294,10 @@ function parseJsonSafe(data: string): unknown {
   }
 }
 
-// Chat bhejta hai aur reply stream karta hai. Resolve hone par conversation id milta hai.
-// Abort (user ne band kiya) par AbortError throw hota hai, caller use chhod sakta hai.
+// Chat bhejta hai aur reply stream karta hai. Token ho to login user, nahi to guest.
+// Abort (user ne roka) par AbortError throw hota hai, caller use chhod sakta hai.
 export async function streamChat(
-  token: string,
+  token: string | null,
   input: StreamChatInput,
   handlers: StreamChatHandlers,
   signal?: AbortSignal,
@@ -266,12 +308,16 @@ export async function streamChat(
   };
   if (input.history) payload.history = input.history;
 
+  // Login hai to token, nahi to guest ID. Dono ek saath nahi jaate.
+  const identity: Record<string, string> =
+    token !== null ? authHeaders(token) : { "X-Guest-Id": getGuestId() };
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE}/api/ai/chat`, {
       method: "POST",
       headers: {
-        ...authHeaders(token),
+        ...identity,
         "Content-Type": "application/json",
         Accept: "text/event-stream",
         "Idempotency-Key": input.idempotencyKey,
@@ -280,7 +326,7 @@ export async function streamChat(
       signal,
     });
   } catch (err) {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    if (isAbort(err)) throw err;
     throw new ApiClientError("internal", FALLBACK_MESSAGE.internal, true, null);
   }
 
@@ -291,11 +337,15 @@ export async function streamChat(
   }
 
   const conversationId = res.headers.get("X-Conversation-Id");
-  let finished = false;
-  let streamError: ApiClientError | null = null;
+
+  // State object mein: callback ke andar badalne par TypeScript ka narrowing galat nahi hota.
+  const state: { finished: boolean; error: ApiClientError | null } = {
+    finished: false,
+    error: null,
+  };
 
   await consumeSse(res.body, (name, data) => {
-    if (streamError) return;
+    if (state.error !== null) return;
     const parsed = parseJsonSafe(data);
     const obj = isRecord(parsed) ? parsed : {};
 
@@ -304,7 +354,7 @@ export async function streamChat(
       return;
     }
     if (name === "done") {
-      finished = true;
+      state.finished = true;
       handlers.onDone(obj as unknown as ChatDoneMeta);
       return;
     }
@@ -314,7 +364,7 @@ export async function streamChat(
         typeof obj.message === "string" && obj.message.length > 0
           ? obj.message
           : FALLBACK_MESSAGE[code];
-      streamError = new ApiClientError(
+      state.error = new ApiClientError(
         code,
         message,
         obj.retryable === true,
@@ -324,8 +374,8 @@ export async function streamChat(
     // tool_call aur confirm_required abhi nahi chalte (Phase 3 mein aayenge).
   });
 
-  if (streamError) throw streamError;
-  if (!finished) {
+  if (state.error !== null) throw state.error;
+  if (!state.finished) {
     throw new ApiClientError("internal", "जवाब अधूरा रह गया। दोबारा कोशिश करें।", true, null);
   }
 
@@ -333,7 +383,7 @@ export async function streamChat(
 }
 
 // ---------------------------------------------------------------
-// Profile, usage aur history
+// Profile, usage aur history (sirf login user ke liye)
 // ---------------------------------------------------------------
 
 export function getProfile(token: string, signal?: AbortSignal): Promise<ProfileResponse> {
