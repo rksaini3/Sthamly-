@@ -1,61 +1,35 @@
-# Sthamly
+# Sthamly AI (Blueprint 3.0)
 
-छोटे शहर के दुकानदारों के लिए WhatsApp-first AI ad assistant।
-दुकानदार दुकान की फोटो और ऑफर भेजता है, और उसे रील (9:16), पोस्टर (1:1 / A4) और हिंग्लिश कैप्शन मिलते हैं।
+Hindi aur Hinglish mein chhote dukandaron ke liye AI sahayak. Ye repo Blueprint 3.0 ke hisaab se bana hai:
+Cloudflare Worker gateway, React + Vite web app, aur baad mein Capacitor se Android.
 
-> **Status:** Scaffold। ढांचा और types तैयार हैं, ज़्यादातर functions अभी `not implemented` हैं। पूरा प्लान `docs/PLAN.md` में है।
+> **Status:** Phase 1 (Core AI) ka code taiyaar hai: streaming chat, history, login, model routing, usage aur budget cap.
+> Live voice, connectors, memory, billing aur Android abhi baaki hain. Blueprint section 12 aur 13 dekhein.
+
+## Folder structure
+
+| Path | Kya hai |
+|---|---|
+| `worker/` | Cloudflare Worker: AI gateway, chat, history, user routes, budget |
+| `web/` | React + Vite frontend: login, chat, usage, settings |
+| `supabase/migrations/` | Database schema, RLS aur grants (schema `sthamly_v3`) |
+| `.github/workflows/` | CI (tests, typecheck, secret scan) aur Worker deploy |
+| `docs/` | Blueprint aur architecture notes (agar hon) |
 
 ## Stack
 
-- **Next.js 15 (App Router) + TypeScript (strict)**, Vercel पर deploy
-- **Supabase:** Postgres, Auth, Storage (RLS के साथ)
-- **WhatsApp Cloud API** (Meta) for messaging
-- **AI:** provider adapter (`lib/ai/`), शुरू में Fal.ai
-- **Poster:** satori + resvg (हिंदी font से)
-- **Validation:** zod
-- **Billing (Phase 2):** Razorpay (UPI AutoPay)
+- **Gateway:** Cloudflare Workers (TypeScript, `wrangler`)
+- **Frontend:** React 19, Vite, React Router, Vercel par host
+- **Database, auth, storage:** Supabase (Postgres, RLS, Auth). Tables `sthamly_v3` schema mein hain.
+- **AI:** Groq (chat, Whisper) aur Gemini (reasoning, vision, embeddings). Keys sirf Worker mein.
+- **Payments:** Razorpay (Stage 5 mein, abhi nahi)
 
-## फोल्डर
+## Pehli baar setup (local)
 
-| Path | क्या है |
-|---|---|
-| `app/` | Pages और API routes (`app/api/...`) |
-| `components/` | React components (`ui/`, `onboarding/`, `dashboard/`, `pricing/`) |
-| `lib/` | Server और shared logic: env, supabase, whatsapp, ai, render, quota, prompts |
-| `types/` | Domain types, WhatsApp payload types, Supabase DB types |
-| `supabase/migrations/` | Postgres schema और RLS |
-| `public/` | Static files, fonts, templates |
-| `scripts/` | Local test और seed scripts (TypeScript, `tsx` से चलते हैं) |
-| `docs/` | प्लान, architecture, file tree, compliance, metrics, pilot log |
+### 1. Supabase project
+1. Dev ke liye naya Supabase project banayein. Purane project mein mat chalayein.
+2. SQL Editor mein `supabase/migrations/0001_core_v3.sql` chalayein.
+3. **Settings → API → Exposed schemas** mein `sthamly_v3` add karein.
+4. **Authentication → URL Configuration → Redirect URLs** mein `http://localhost:5173/login` add karein.
 
-पूरी फाइल सूची और मेहनत का अनुमान: `docs/FILE_TREE.md`।
-
-## शुरू कैसे करें
-
-```bash
-cp .env.example .env.local     # keys भरें
-npm install
-npm run typecheck              # TypeScript जांच
-npm run dev                    # http://localhost:3000
-```
-
-Database के लिए (Supabase CLI):
-
-```bash
-npx supabase link --project-ref <ref>
-npm run db:push
-npm run db:types               # types/database.ts को असली schema से भरता है
-```
-
-## Rules
-
-- `lib/supabase/admin.ts` और `SUPABASE_SERVICE_ROLE_KEY` सिर्फ server पर।
-- Secret keys कभी `NEXT_PUBLIC_` से शुरू न हों।
-- Prompts में हिंदी का spelling-sensitive टेक्स्ट AI से poster पर न लिखवाएं, वह `lib/render/poster.ts` से लिखा जाए।
-- Launch से पहले `docs/COMPLIANCE.md` की checklist पूरी करें।
-
-## अगला कदम
-
-1. `docs/PLAN.md` पढ़ें, नाम और pricing फाइनल करें।
-2. Phase 0: 20 दुकानों के साथ manual pilot (कोड से पहले)।
-3. Phase 1: `docs/FILE_TREE.md` के MVP सेट के हिसाब से `not implemented` वाले functions भरें।
+### 2. Cloudflare KV
