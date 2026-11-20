@@ -10,7 +10,10 @@
 //   *      /api/create                   image, slides, website, document banao aur list (routes/create.ts)
 //   GET    /api/create/:id/url           signed download link (routes/create.ts)
 //   DELETE /api/create/:id               apni file hatao (routes/create.ts)
-// CORS: sirf ALLOWED_ORIGINS wale origins, aur is project ke Vercel preview URLs. Baaki origins ko koi ACAO header nahi jaata.
+//   *      /api/images                   image banao aur list (routes/images.ts)
+//   GET    /api/images/:id/url           image ka signed link (routes/images.ts)
+//   DELETE /api/images/:id               apni image hatao (routes/images.ts)
+// CORS: sirf ALLOWED_ORIGINS wale origins. Baaki origins ko koi ACAO header nahi jaata.
 // Capacitor (Android) ke origins ALLOWED_ORIGINS mein hone chahiye, jaise https://localhost.
 // Scheduled: har 15 minute budget check, taaki alert traffic ke bina bhi chale.
 
@@ -20,6 +23,7 @@ import { ApiError, toErrorResponse } from "./errors";
 import { handleChat } from "./routes/chat";
 import { handleCreate } from "./routes/create";
 import { handleHistory } from "./routes/history";
+import { handleImages } from "./routes/images";
 import { handleUser } from "./routes/user";
 import { handleVoice } from "./routes/voice";
 import { createSupabase } from "./supabase";
@@ -31,20 +35,13 @@ const ALLOWED_HEADERS =
 const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
-// Vercel har deployment par naya URL banata hai, jaise web-<hash>-rajasaini22086-7683s-projects.vercel.app.
-// Is project ke sabhi preview URLs allowed hain, taaki har deploy par list na badalni pade.
-const PREVIEW_ORIGIN_RE = /^https:\/\/web-[a-z0-9-]+-rajasaini22086-7683s-projects\.vercel\.app$/;
+type Route = "chat" | "history" | "user" | "voice" | "create" | "images";
 
-type Route = "chat" | "history" | "user" | "voice" | "create";
-
-// Request ke Origin ko allowed list ya preview pattern se milata hai. Na mile to null.
+// Request ke Origin ko allowed list se milata hai. Na mile to null.
 function allowedOrigin(request: Request, config: Config): string | null {
   const origin = request.headers.get("Origin");
   if (origin === null) return null;
-  if (config.allowedOrigins.includes(origin) || PREVIEW_ORIGIN_RE.test(origin)) {
-    return origin;
-  }
-  return null;
+  return config.allowedOrigins.includes(origin) ? origin : null;
 }
 
 // Response mein CORS headers jodta hai. Origin allowed na ho to response waisa hi rehta hai.
@@ -94,11 +91,19 @@ function health(env: Env): Response {
 }
 
 // Cron ka kaam: budget ka haal dekhna, jisse 50/80/100% ke alert traffic ke bina bhi jaayein.
+// Har step ka naam 'step' mein rakhte hain, taaki log se pata chale ki kahan fail hua.
+// Error ka message ya secret kabhi log nahi hota, sirf code aur error ka type.
 async function runBudgetCheck(env: Env): Promise<void> {
+  let step = "config";
   try {
     const config = loadConfig(env);
+
+    step = "supabase";
     const db = createSupabase(env);
+
+    step = "budget";
     const status = await budgetStatus(env, db, config);
+
     console.info(
       JSON.stringify({
         event: "budget_cron",
@@ -106,8 +111,15 @@ async function runBudgetCheck(env: Env): Promise<void> {
         percent: Math.round(status.ratio * 100),
       }),
     );
-  } catch {
-    console.error(JSON.stringify({ event: "budget_cron_failed" }));
+  } catch (err) {
+    console.error(
+      JSON.stringify({
+        event: "budget_cron_failed",
+        step,
+        code: err instanceof ApiError ? err.code : "unexpected",
+        error_name: err instanceof Error ? err.name : "non_error",
+      }),
+    );
   }
 }
 
@@ -118,6 +130,7 @@ function routeFor(pathname: string): Route | null {
   if (pathname.startsWith("/api/user/")) return "user";
   if (pathname.startsWith("/api/voice/")) return "voice";
   if (pathname === "/api/create" || pathname.startsWith("/api/create/")) return "create";
+  if (pathname === "/api/images" || pathname.startsWith("/api/images/")) return "images";
   return null;
 }
 
@@ -164,6 +177,9 @@ export default {
           break;
         case "create":
           response = await handleCreate(request, env, ctx);
+          break;
+        case "images":
+          response = await handleImages(request, env, ctx);
           break;
         default:
           throw new ApiError("invalid_request", "रास्ता नहीं मिला।");
