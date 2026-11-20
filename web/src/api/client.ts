@@ -34,6 +34,9 @@ const FALLBACK_MESSAGE: Record<ErrorCode, string> = {
   internal: "कुछ गड़बड़ हो गई। कृपया दोबारा कोशिश करें।",
 };
 
+// Network ही नहीं पहुंचा (इंटरनेट, API का पता, CORS): असली वजह छिपाने के बजाय साफ़ बताएं।
+const NETWORK_MESSAGE = "सर्वर से संपर्क नहीं हो पाया। इंटरनेट जांचें या थोड़ी देर बाद दोबारा कोशिश करें।";
+
 export class ApiClientError extends Error {
   readonly code: ErrorCode;
   readonly retryable: boolean;
@@ -106,10 +109,11 @@ async function errorFromResponse(res: Response): Promise<ApiClientError> {
 
   const inner = isRecord(body) && isRecord(body.error) ? body.error : null;
   const code = toErrorCode(inner?.code);
+  // संरचित जवाब न हो (जैसे Vercel या proxy का HTML 404/502): असली status भी दिखाएं
   const message =
     inner && typeof inner.message === "string" && inner.message.length > 0
       ? inner.message
-      : FALLBACK_MESSAGE[code];
+      : `${FALLBACK_MESSAGE[code]} (त्रुटि ${res.status})`;
   const retryable = inner && typeof inner.retryable === "boolean" ? inner.retryable : false;
   const requestId = inner && typeof inner.request_id === "string" ? inner.request_id : null;
 
@@ -144,7 +148,7 @@ async function requestJson<T>(
     });
   } catch (err) {
     if (isAbort(err)) throw err;
-    throw new ApiClientError("internal", FALLBACK_MESSAGE.internal, true, null);
+    throw new ApiClientError("internal", NETWORK_MESSAGE, true, null);
   }
 
   if (!res.ok) throw await errorFromResponse(res);
@@ -327,7 +331,7 @@ export async function streamChat(
     });
   } catch (err) {
     if (isAbort(err)) throw err;
-    throw new ApiClientError("internal", FALLBACK_MESSAGE.internal, true, null);
+    throw new ApiClientError("internal", NETWORK_MESSAGE, true, null);
   }
 
   // Galat connection par JSON error aata hai (stream nahi), isliye yahin rok lete hain.
