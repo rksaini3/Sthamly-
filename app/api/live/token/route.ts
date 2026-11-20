@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { allowRequest } from "@/lib/rate-limit";
-import { takeAssistantCredit } from "@/lib/meter";
+import { checkUsage, recordUsage } from "@/lib/usage";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { refundWalletForJob } from "@/lib/wallet";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,22 +26,24 @@ export async function POST() {
     return NextResponse.json({ error: { code: "NOT_CONFIGURED", message: "Live सेटअप अधूरा है" } }, { status: 500 });
   }
 
-  // मीटरिंग: पहले मुफ़्त 3 सत्र, फिर वॉलेट से ₹1 प्रति सत्र
-  const credit = await takeAssistantCredit(user.id, "live").catch((error: unknown) => {
-    console.error("live token: meter failed", error);
-    return null;
-  });
-  if (!credit) {
+  // मीटरिंग: प्लान की रोज़ की शामिल सीमा, फिर वॉलेट से (नियम lib/usage-rules.ts में हैं)
+  // सत्र शुरू होने के बाद ही इस्तेमाल दर्ज होता है, इसलिए यहाँ अभी कुछ नहीं कटता।
+  let usage: Awaited<ReturnType<typeof checkUsage>>;
+  try {
+    usage = await checkUsage(user.id, "live");
+  } catch (error: unknown) {
+    console.error("live token: usage check failed", error);
     return NextResponse.json(
       { error: { code: "METER_DOWN", message: "अभी सेवा उपलब्ध नहीं, थोड़ी देर बाद कोशिश करें" } },
       { status: 503 },
     );
   }
-  if (!credit.ok) {
+  if (!usage.ok) {
     return NextResponse.json(
       {
         error: { code: "NEED_RECHARGE", message: "आज के मुफ़्त लाइव सत्र खत्म हो गए। वॉलेट में बैलेंस डालें।" },
-        balancePaise: credit.balancePaise,
+        balancePaise: usage.walletPaise,
+        pricePaise: usage.pricePaise,
       },
       { status: 402 },
     );
@@ -51,6 +52,7 @@ export async function POST() {
   const model = process.env.GEMINI_LIVE_MODEL ?? "gemini-3.1-flash-live-preview";
   const now = Date.now();
 
+  let tokenName: string | undefined;
   try {
     const client = new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "v1alpha" } });
     const token = await client.authTokens.create({
@@ -60,16 +62,15 @@ export async function POST() {
         newSessionExpireTime: new Date(now + 60 * 1000).toISOString(),
       },
     });
-    return NextResponse.json({ token: token.name, model });
-  } catch (error) {
+    tokenName = token.name;
+  } catch (error: unknown) {
+    // token नहीं बना: कोई इस्तेमाल दर्ज नहीं, इसलिए पैसे नहीं कटे
     console.error("live token failed", error);
-    if (credit.source === "wallet") {
-      try {
-        await refundWalletForJob(credit.jobId);
-      } catch (refundError) {
-        console.error("live token: wallet refund failed", refundError);
-      }
-    }
     return NextResponse.json({ error: { code: "TOKEN_FAILED", message: "Live शुरू नहीं हो पाया" } }, { status: 502 });
   }
+
+  // सत्र शुरू हुआ: अब इस्तेमाल दर्ज करें और (ज़रूरत हो तो) वॉलेट से काटें
+  await recordUsage(user.id, "live", usage.willPayPaise);
+
+  return NextResponse.json({ token: tokenName, model });
 }
