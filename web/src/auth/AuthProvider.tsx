@@ -22,6 +22,10 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error("VITE_SUPABASE_URL aur VITE_SUPABASE_ANON_KEY set karein (web/.env.local mein).");
 }
 
+// Session ka lock: browser ka navigator.locks kuch WebView / mobile browsers mein atak jaata hai.
+// Lock seedha chalane se getSession kabhi na ruke. Trade-off: do tabs ek saath token refresh karein to dono chalenge.
+const SESSION_WAIT_MS = 8_000;
+
 // Sirf anon key browser mein jaati hai (public). Service role key kabhi nahi.
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -29,6 +33,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     flowType: "pkce",
+    lock: async <R,>(_name: string, _acquireTimeout: number, fn: () => Promise<R>): Promise<R> => fn(),
   },
 });
 
@@ -88,9 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    // Ek baar bhi session ka faisla ho gaya (listener ya getSession se) to timeout fallback nahi chalta.
+    let settled = false;
 
     const apply = (session: Session | null): void => {
       if (!active) return;
+      settled = true;
       setUser(toUser(session?.user ?? null));
       setStatus(session ? "signed_in" : "signed_out");
     };
@@ -105,8 +113,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ data }) => apply(data.session))
       .catch(() => apply(null));
 
+    // Safety: agar session kuch seconds mein tay na ho, to screen 'loading' par na atke.
+    // Guest ki tarah khulta hai. Baad mein listener sahi session aane par status apne aap sudhar jaata hai.
+    const timer = setTimeout(() => {
+      if (!settled) apply(null);
+    }, SESSION_WAIT_MS);
+
     return () => {
       active = false;
+      clearTimeout(timer);
       subscription.subscription.unsubscribe();
     };
   }, []);
