@@ -62,7 +62,11 @@ async function ensureProfile(db: SupabaseClient, user: AuthUser): Promise<Profil
     `user_id=eq.${user.id}&select=user_id,language,history_enabled,memory_enabled`,
   );
   const row = rows[0];
-  if (!row) throw new ApiError("internal");
+  if (!row) {
+    // Ye error pehle log nahi hota tha. Ab event dikhega.
+    console.error(JSON.stringify({ event: "plan_profile_row_missing" }));
+    throw new ApiError("internal");
+  }
   return row;
 }
 
@@ -91,7 +95,11 @@ async function loadPlanLimits(db: SupabaseClient, plan: string): Promise<PlanLim
     `plan=eq.${encodeURIComponent(plan)}&active=eq.true&select=*`,
   );
   const row = rows[0];
-  if (!row) throw new ApiError("internal");
+  if (!row) {
+    // Plan ka naam galat ho ya plans row active na ho to yahan rukta hai. Ab log mein dikhega.
+    console.error(JSON.stringify({ event: "plan_limits_missing", plan }));
+    throw new ApiError("internal");
+  }
   return {
     plan: row.plan,
     dailyTokens: row.daily_tokens,
@@ -103,17 +111,9 @@ async function loadPlanLimits(db: SupabaseClient, plan: string): Promise<PlanLim
 }
 
 // Aaj ke tokens (UTC midnight se) usage_logs se, DB function ke zariye.
-// RPC fail ho to chat band nahi hoti: 0 maante hain aur log mein event jaata hai.
-// Dhyan: is fallback ke dauraan daily quota check kuch der ke liye effective nahi hoga.
-// Migration 0007 lagane ke baad yeh fallback normally nahi chalna chahiye.
 async function loadTokensToday(db: SupabaseClient, userId: string): Promise<number> {
-  try {
-    const used = await db.rpc<number | null>("user_tokens_today", { p_user: userId });
-    return typeof used === "number" ? used : 0;
-  } catch {
-    console.error(JSON.stringify({ event: "tokens_today_unavailable" }));
-    return 0;
-  }
+  const used = await db.rpc<number | null>("user_tokens_today", { p_user: userId });
+  return typeof used === "number" ? used : 0;
 }
 
 // Ek hi call mein poora user context. Har chat request isse shuru hoti hai.
