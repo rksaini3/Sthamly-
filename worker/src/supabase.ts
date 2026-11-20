@@ -2,12 +2,28 @@
 // Worker service role se likhta/padhta hai. Client ko ye key kabhi nahi milti.
 // Har query sthamly_v3 schema par jaati hai (Accept-Profile / Content-Profile headers).
 // Errors ka raw text kabhi client tak nahi jaata, aur log mein row data nahi jaata.
+// Log mein sirf: method, path (query ke bina), status, Postgres/PostgREST code, error ka type aur time.
 
 import type { Env } from "./env";
 import { ApiError } from "./errors";
 
 const SCHEMA = "sthamly_v3";
 const TIMEOUT_MS = 8_000;
+
+// Postgres / PostgREST codes ko type ke naam se badalte hain, taaki log padhna aasan ho.
+// Yeh sirf type batata hai, koi data nahi.
+const PG_ERROR_KIND: Record<string, string> = {
+  PGRST202: "function_missing",
+  "42883": "function_missing",
+  PGRST205: "table_missing",
+  "42P01": "table_missing",
+  PGRST204: "column_missing",
+  "42703": "column_missing",
+  "42501": "permission_denied",
+  "23505": "unique_violation",
+  "23503": "fk_violation",
+  "22P02": "bad_input",
+};
 
 export interface InsertOptions {
   // Conflict par kya ho: 'merge' existing row ko badalta hai, 'ignore' use chhod deta hai.
@@ -27,6 +43,15 @@ export interface SupabaseClient {
   rpc<T>(fn: string, args: Record<string, unknown>): Promise<T>;
 }
 
+// HTTP status aur Postgres code se error ka type tay karta hai. Koi data nahi.
+function classifyError(status: number, pgCode: string | null): string {
+  if (pgCode !== null && PG_ERROR_KIND[pgCode] !== undefined) return PG_ERROR_KIND[pgCode];
+  if (status === 401 || status === 403) return "auth_or_permission";
+  if (status === 404) return "not_found";
+  if (status >= 500) return "upstream_5xx";
+  return "other";
+}
+
 export function createSupabase(env: Env): SupabaseClient {
   const base = env.SUPABASE_URL.replace(/\/+$/, "");
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -38,6 +63,8 @@ export function createSupabase(env: Env): SupabaseClient {
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const startedAt = Date.now();
+    const shortPath = path.split("?")[0];
 
     const headers: Record<string, string> = {
       apikey: key,
@@ -58,16 +85,26 @@ export function createSupabase(env: Env): SupabaseClient {
         body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
         signal: controller.signal,
       });
-    } catch {
-      console.error(JSON.stringify({ event: "supabase_network_error", path: path.split("?")[0] }));
+    } catch (err) {
+      // Timeout (AbortController) ya network ki gadbad: dono ka type alag log hota hai.
+      const name = err instanceof Error ? err.name : "unknown";
+      console.error(
+        JSON.stringify({
+          event: "supabase_network_error",
+          method: init.method,
+          path: shortPath,
+          error_kind: name === "AbortError" ? "timeout" : "network",
+          elapsed_ms: Date.now() - startedAt,
+        }),
+      );
       throw new ApiError("internal");
     } finally {
       clearTimeout(timer);
     }
 
     if (!res.ok) {
-      // Server logs mein sirf status, table path aur Supabase ka short error code jaata hai.
-      // Row data ya poori body kabhi nahi.
+      // Server logs mein sirf status, table path, Postgres code aur error ka type jaata hai.
+      // Row data, column values ya poori body kabhi nahi.
       let pgCode: string | null = null;
       try {
         const errBody = (await res.json()) as { code?: unknown };
@@ -78,9 +115,12 @@ export function createSupabase(env: Env): SupabaseClient {
       console.error(
         JSON.stringify({
           event: "supabase_error",
+          method: init.method,
           status: res.status,
           pg_code: pgCode,
-          path: path.split("?")[0],
+          error_kind: classifyError(res.status, pgCode),
+          path: shortPath,
+          elapsed_ms: Date.now() - startedAt,
         }),
       );
       throw new ApiError("internal");
