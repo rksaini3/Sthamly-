@@ -1,6 +1,6 @@
 // Sthamly AI web: login aur signup page (Blueprint 3.0, section 9 aur 10)
-// Ek hi form, do modes: login aur signup. Login hone par App.tsx ka
-// RedirectIfSignedIn khud /chat par bhejta hai, yahan navigate nahi hota.
+// Google login sabse upar, phir email aur password. Ek hi page, do modes: login aur signup.
+// Login hone par App.tsx ka RedirectIfSignedIn khud /chat par bhejta hai.
 // Errors AuthProvider se Hindi mein aate hain. Raw error yahan nahi dikhta.
 
 import { useState, type FormEvent } from "react";
@@ -11,8 +11,32 @@ type Mode = "login" | "signup";
 const CONFIRM_MESSAGE =
   "ईमेल पर भेजा गया लिंक खोलकर अपना खाता कन्फर्म करें, फिर लॉग-इन करें।";
 
+// Google ka official "G" logo (inline SVG, koi external image nahi).
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path
+        fill="#FFC107"
+        d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.080 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.650-.389-3.917z"
+      />
+      <path
+        fill="#FF3D00"
+        d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z"
+      />
+      <path
+        fill="#4CAF50"
+        d="M24 44c5.166 0 9.860-1.977 13.409-5.192l-6.190-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"
+      />
+      <path
+        fill="#1976D2"
+        d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l.003-.002 6.190 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.650-.389-3.917z"
+      />
+    </svg>
+  );
+}
+
 export function LoginPage() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogle } = useAuth();
 
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
@@ -57,6 +81,22 @@ export function LoginPage() {
     }
   }
 
+  async function handleGoogle(): Promise<void> {
+    if (busy) return;
+
+    setBusy(true);
+    setError(null);
+    setInfo(null);
+
+    try {
+      // Successful hone par browser Google par redirect hota hai, isliye busy reset nahi karte.
+      await signInWithGoogle();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google से लॉग-इन नहीं हो सका।");
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="auth-title">
@@ -64,6 +104,23 @@ export function LoginPage() {
           Sthamly AI
         </h1>
         <p className="auth-subtitle">{isSignup ? "नया खाता बनाएँ" : "लॉग-इन करें"}</p>
+
+        <div className="auth-form">
+          <button
+            type="button"
+            onClick={() => void handleGoogle()}
+            disabled={busy}
+            className="auth-google"
+            aria-label="Google से लॉग-इन करें"
+          >
+            <GoogleIcon />
+            <span>Google से लॉग-इन करें</span>
+          </button>
+
+          <div className="auth-divider" role="separator">
+            <span>या ईमेल से</span>
+          </div>
+        </div>
 
         <form className="auth-form" onSubmit={handleSubmit} noValidate>
           {isSignup && (
