@@ -118,13 +118,22 @@ async function readJsonBody(request: Request): Promise<Record<string, unknown>> 
   return parsed;
 }
 
-// Profile row user ke apne data ke roop mein. Plan ki jaankari loadUserContext se aati hai.
-// Row na mile to log mein sirf event jaata hai (user id nahi).
+// Profile row user ke apne data ke roop mein.
+// Row na mile to pehle banata hai (loadUserContext bhi yahi karta hai), phir dobara padhta hai.
+// Log mein sirf event jaata hai (user id nahi).
 async function readProfile(db: SupabaseClient, userId: string): Promise<ProfileRow> {
-  const rows = await db.select<ProfileRow>(
-    "profiles",
-    `user_id=eq.${userId}&select=user_id,display_name,avatar_url,language,history_enabled,memory_enabled,created_at,updated_at`,
-  );
+  const query = `user_id=eq.${userId}&select=user_id,display_name,avatar_url,language,history_enabled,memory_enabled,created_at,updated_at`;
+
+  let rows = await db.select<ProfileRow>("profiles", query);
+  if (!rows[0]) {
+    await db.insert<ProfileRow>(
+      "profiles",
+      { user_id: userId },
+      { onConflict: "user_id", conflict: "ignore" },
+    );
+    rows = await db.select<ProfileRow>("profiles", query);
+  }
+
   const row = rows[0];
   if (!row) {
     console.error(JSON.stringify({ event: "profile_row_missing" }));
