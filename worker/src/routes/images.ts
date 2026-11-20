@@ -12,14 +12,13 @@ import { ApiError, toErrorResponse } from "../errors";
 import { loadUserContext, type UserContext } from "../plan";
 import { cleanImagePrompt, generateImage } from "../providers/image";
 import { ProviderError } from "../providers/types";
-import { assertPathBelongsTo, deleteObject, objectPathFor, signedDownloadUrl, uploadImage } from "../storage";
+import { assertPathBelongsTo, deleteObject, objectPathFor, signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 // Image model: model_registry mein 'image' tier wali row se aata hai. Abhi config se (verify karein).
 const IMAGE_FEATURE = "image";
 // Image ka kharcha rupees mein (estimate, open decision). Pehle price verify karein.
 const IMAGE_COST_INR_ESTIMATE = 3.5;
-const USD_TO_INR = 85;
 
 const IDEMPOTENCY_RE = /^[A-Za-z0-9_-]{8,128}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -163,7 +162,7 @@ async function recordImageUsage(
       model: p.model,
       input_tokens: p.inputTokens,
       output_tokens: p.outputTokens,
-      estimated_cost_inr: Number((IMAGE_COST_INR_ESTIMATE * (USD_TO_INR / USD_TO_INR)).toFixed(4)),
+      estimated_cost_inr: Number(IMAGE_COST_INR_ESTIMATE.toFixed(4)),
     },
     { onConflict: "request_id", conflict: "ignore" },
   );
@@ -203,7 +202,7 @@ async function createImage(
     );
   }
 
-  // Budget (global, 100% par free users band).
+  // Budget (global, 100% par image band, 110% par free users band).
   await assertBudget(env, db, config, {
     feature: "image",
     isFreePlan: ctx.plan.plan === "free",
@@ -219,7 +218,7 @@ async function createImage(
       signal: new AbortController().signal,
     });
 
-    const stored = await uploadImage(env, {
+    const stored = await uploadObject(env, {
       userId: ctx.userId,
       fileId: row.id,
       mimeType: generated.mimeType,
