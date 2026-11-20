@@ -1,23 +1,24 @@
 # Sthamly AI Worker: Cloudflare config (dev aur production)
 # Secrets yahan NAHI. Woh `wrangler secret put <NAME> --env <env>` se set hote hain.
-# Dev Worker ka naam: sthamly-api-dev. Production abhi placeholder hai, use tab badlein jab production banana ho.
+# Dev Worker ka naam: sthamly-api-dev. Production abhi placeholder hai.
 
 name = "sthamly-api"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
+workers_dev = true
 
 [observability]
 enabled = true
 
 # ------------------------------------------------------------------
-# Top-level (bina --env ke deploy): dev values, taaki koi placeholder na bache
+# Top-level (bina --env ke deploy): dev values
 # ------------------------------------------------------------------
 [vars]
 ENVIRONMENT = "dev"
 SUPABASE_URL = "https://fdgzhtuwxtbcodbefbmt.supabase.co"
-ALLOWED_ORIGINS = "http://localhost:5173,https://REPLACE-WITH-YOUR-VERCEL-URL"
-IMAGE_MODEL = "gemini-2.5-flash-image"   # Google docs se verify karein
-LIVE_MODEL = "NOT-SET-YET"               # Phase 2 mein Live model ID yahan
+ALLOWED_ORIGINS = "http://localhost:5173,https://web-ip0tyafb0-rajasaini22086-7683s-projects.vercel.app"
+IMAGE_MODEL = "gemini-2.5-flash-image"
+LIVE_MODEL = "NOT-SET-YET"
 DAILY_BUDGET_INR = "200"
 LIVE_MAX_SECONDS_PER_SESSION = "900"
 
@@ -33,11 +34,12 @@ crons = ["*/15 * * * *"]
 # ------------------------------------------------------------------
 [env.dev]
 name = "sthamly-api-dev"
+workers_dev = true
 
 [env.dev.vars]
 ENVIRONMENT = "dev"
 SUPABASE_URL = "https://fdgzhtuwxtbcodbefbmt.supabase.co"
-ALLOWED_ORIGINS = "http://localhost:5173,https://REPLACE-WITH-YOUR-VERCEL-URL"
+ALLOWED_ORIGINS = "http://localhost:5173,https://web-ip0tyafb0-rajasaini22086-7683s-projects.vercel.app"
 IMAGE_MODEL = "gemini-2.5-flash-image"
 LIVE_MODEL = "NOT-SET-YET"
 DAILY_BUDGET_INR = "200"
@@ -54,10 +56,11 @@ crons = ["*/15 * * * *"]
 enabled = true
 
 # ------------------------------------------------------------------
-# PRODUCTION: abhi use nahi. Alag Supabase project aur alag KV banane ke baad bharein.
+# PRODUCTION: abhi use nahi. Alag Supabase project aur KV banane ke baad bharein.
 # ------------------------------------------------------------------
 [env.production]
 name = "sthamly-api"
+workers_dev = true
 
 [env.production.vars]
 ENVIRONMENT = "production"
