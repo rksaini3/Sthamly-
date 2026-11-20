@@ -1,7 +1,10 @@
 # Sthamly AI: CI (Blueprint 3.0, section 11)
-# Har pull request aur main par chalta hai. main protected hai: teeno jobs pass hona zaroori hai.
-# Jobs: secret scan, Worker typecheck aur tests, web typecheck, build aur tests.
+# Har pull request aur main par chalta hai. main protected hai: sab jobs pass hona zaroori hai.
+# Jobs: secret scan, root (typecheck, tests), Worker typecheck aur tests, web typecheck, build aur tests.
 # Deploy is file mein nahi hai. Worker ka deploy alag workflow mein hoga.
+#
+# Zaroori: har package folder (root, web, worker) ka package-lock.json repo mein commit hona chahiye,
+# warna npm ci fail hoga.
 
 name: CI
 
@@ -34,6 +37,30 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  root:
+    name: Root (typecheck, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (lockfile se, exact versions)
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # --passWithNoTests: agar koi test file na ho to step fail nahi hoga.
+      - name: Tests
+        run: npm test -- --passWithNoTests
+
   worker:
     name: Worker (typecheck, tests)
     runs-on: ubuntu-latest
@@ -44,10 +71,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Node 20
+      - name: Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: worker/package-lock.json
 
@@ -57,7 +84,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # Tests abhi nahi likhe: script na ho to ye step skip hota hai.
+      # Tests ka script na ho to ye step skip hota hai.
       - name: Tests (agar hain)
         run: npm test --if-present
 
@@ -71,10 +98,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Node 20
+      - name: Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
 
