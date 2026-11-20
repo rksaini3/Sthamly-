@@ -1,4 +1,4 @@
-# Sthamly AI (Blueprint 3.0)
+# Sthamly AI (Blueprint 0)
 
 Hindi aur Hinglish mein chhote dukandaron ke liye AI sahayak. Ye repo Blueprint 3.0 ke hisaab se bana hai:
 Cloudflare Worker gateway, React + Vite web app, aur baad mein Capacitor se Android.
