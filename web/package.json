@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Sthamly AI web frontend: React + Vite, Vercel par host, Capacitor se Android.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "vite",
