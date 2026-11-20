@@ -119,13 +119,17 @@ async function readJsonBody(request: Request): Promise<Record<string, unknown>> 
 }
 
 // Profile row user ke apne data ke roop mein. Plan ki jaankari loadUserContext se aati hai.
+// Row na mile to log mein sirf event jaata hai (user id nahi).
 async function readProfile(db: SupabaseClient, userId: string): Promise<ProfileRow> {
   const rows = await db.select<ProfileRow>(
     "profiles",
     `user_id=eq.${userId}&select=user_id,display_name,avatar_url,language,history_enabled,memory_enabled,created_at,updated_at`,
   );
   const row = rows[0];
-  if (!row) throw new ApiError("internal");
+  if (!row) {
+    console.error(JSON.stringify({ event: "profile_row_missing" }));
+    throw new ApiError("internal");
+  }
   return row;
 }
 
@@ -395,7 +399,11 @@ export async function handleUser(request: Request, env: Env): Promise<Response> 
     throw new ApiError("invalid_request", "रास्ता नहीं मिला।");
   } catch (err) {
     const code = err instanceof ApiError ? err.code : "internal";
-    console.error(JSON.stringify({ event: "user_request_failed", code, request_id: traceId }));
+    // Asli error ka naam bhi log mein jaata hai, taaki pata chale kahan fail hua. Message nahi.
+    const errorName = err instanceof Error ? err.name : "non_error";
+    console.error(
+      JSON.stringify({ event: "user_request_failed", code, error_name: errorName, request_id: traceId }),
+    );
     return toErrorResponse(err, traceId);
   }
 }
