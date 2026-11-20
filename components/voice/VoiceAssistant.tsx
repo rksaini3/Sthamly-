@@ -1136,14 +1136,10 @@ export function VoiceAssistant({
 
               <p className={styles.botText}>{m.text}</p>
 
-              {/* मंज़ूरी के इंतज़ार वाले काम: हर एक का अपना card */}
+              {/* मंज़ूरी के इंतज़ार वाले काम: हर एक का अपना card।
+                  फ़ैसले का नतीजा card के अंदर ही दिखता है; चैट में दोबारा नहीं जोड़ते (वरना दो बार दिखता है)। */}
               {actions.map((a) => (
-                <AgentActionCard
-                  key={a.id}
-                  action={a}
-                  lang={lang}
-                  onDecided={(text) => addBotNote(text)}
-                />
+                <AgentActionCard key={a.id} action={a} lang={lang} />
               ))}
 
               <MessageActions
