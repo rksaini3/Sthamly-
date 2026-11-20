@@ -59,13 +59,30 @@ export function createSupabase(env: Env): SupabaseClient {
         signal: controller.signal,
       });
     } catch {
+      console.error(JSON.stringify({ event: "supabase_network_error", path: path.split("?")[0] }));
       throw new ApiError("internal");
     } finally {
       clearTimeout(timer);
     }
 
     if (!res.ok) {
-      // Status code bhi sirf server logs mein jayega (observability file mein). Body nahi.
+      // Server logs mein sirf status, table path aur Supabase ka short error code jaata hai.
+      // Row data ya poori body kabhi nahi.
+      let pgCode: string | null = null;
+      try {
+        const errBody = (await res.json()) as { code?: unknown };
+        pgCode = typeof errBody.code === "string" ? errBody.code : null;
+      } catch {
+        pgCode = null;
+      }
+      console.error(
+        JSON.stringify({
+          event: "supabase_error",
+          status: res.status,
+          pg_code: pgCode,
+          path: path.split("?")[0],
+        }),
+      );
       throw new ApiError("internal");
     }
 
