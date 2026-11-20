@@ -12,7 +12,7 @@ import { ApiError, toErrorResponse } from "../errors";
 import { loadUserContext, type UserContext } from "../plan";
 import { cleanImagePrompt, generateImage } from "../providers/image";
 import { ProviderError } from "../providers/types";
-import { assertPathBelongsTo, deleteObject, objectPathFor, signedDownloadUrl, uploadObject } from "../storage";
+import { assertPathBelongsTo, deleteObject, signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 // Image model: model_registry mein 'image' tier wali row se aata hai. Abhi config se (verify karein).
