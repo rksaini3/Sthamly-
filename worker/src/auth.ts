@@ -31,6 +31,7 @@ export function getBearerToken(request: Request): string | null {
 // Supabase Auth se token verify karta hai.
 // - Token galat, expire ya revoke ho to 'unauthenticated'.
 // - Supabase tak pahunch na paaye (timeout, network) to 'internal', kyunki yeh user ki galti nahi hai.
+// Har failure par server log mein sirf event aur HTTP status jaata hai. Token ya body nahi.
 export async function verifySupabaseUser(env: Env, token: string): Promise<AuthUser> {
   const supabaseUrl = env.SUPABASE_URL.replace(/\/+$/, "");
   const controller = new AbortController();
@@ -47,15 +48,18 @@ export async function verifySupabaseUser(env: Env, token: string): Promise<AuthU
       signal: controller.signal,
     });
   } catch {
+    console.error(JSON.stringify({ event: "auth_network_error" }));
     throw new ApiError("internal");
   } finally {
     clearTimeout(timer);
   }
 
   if (res.status === 401 || res.status === 403) {
+    console.error(JSON.stringify({ event: "auth_rejected", status: res.status }));
     throw new ApiError("unauthenticated");
   }
   if (!res.ok) {
+    console.error(JSON.stringify({ event: "auth_upstream_error", status: res.status }));
     throw new ApiError("internal");
   }
 
@@ -63,11 +67,13 @@ export async function verifySupabaseUser(env: Env, token: string): Promise<AuthU
   try {
     body = await res.json();
   } catch {
+    console.error(JSON.stringify({ event: "auth_body_not_json" }));
     throw new ApiError("internal");
   }
 
   const user = body as { id?: unknown; email?: unknown } | null;
   if (!user || typeof user.id !== "string" || !UUID_RE.test(user.id)) {
+    console.error(JSON.stringify({ event: "auth_bad_user_body" }));
     throw new ApiError("unauthenticated");
   }
 
