@@ -1,4 +1,5 @@
-// Sthamly AI web: session, login, signup aur logout (Blueprint 3.0, section 9 aur 10)
+// Sthamly AI web: session, login, signup, Google login aur logout (Blueprint 3.0, section 9 aur 10)
+// Email/password aur Google (OAuth) dono ek hi session mein milte hain.
 // Supabase Auth browser mein token sambhalta hai (auto refresh ke saath).
 // Worker ko token getAccessToken() se milta hai. Token kabhi console ya log mein nahi jaata.
 // Raw Supabase error UI tak nahi jaata, sirf Hindi message jaata hai.
@@ -53,6 +54,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<SignUpResult>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
 }
@@ -93,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus(session ? "signed_in" : "signed_out");
     };
 
-    // Pehle listener, taaki koi change miss na ho (token refresh, doosre tab se logout).
+    // Pehle listener, taaki koi change miss na ho (token refresh, Google redirect, doosre tab se logout).
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
       apply(session);
     });
@@ -140,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         options: {
           data: cleanName ? { full_name: cleanName } : {},
-          emailRedirectTo: `${window.location.origin}/login`,
+          emailRedirectTo: `${window.location.origin}/chat`,
         },
       });
       if (error) throw friendlyError(error, "खाता नहीं बन सका। दोबारा कोशिश करें।");
@@ -150,6 +152,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  // Google se login. Browser Google par jaata hai, wapas aane par Supabase session bana deta hai.
+  // Ye page ko redirect karta hai, isliye successful hone par ye function kuch return nahi karta.
+  const signInWithGoogle = useCallback(async (): Promise<void> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/chat`,
+      },
+    });
+    if (error) throw friendlyError(error, "Google से लॉग-इन नहीं हो सका। दोबारा कोशिश करें।");
+  }, []);
 
   // Sirf is device ka session hatata hai. Doosre devices par login rehta hai.
   const signOut = useCallback(async (): Promise<void> => {
@@ -164,8 +178,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, signIn, signUp, signOut, getAccessToken }),
-    [status, user, signIn, signUp, signOut, getAccessToken],
+    () => ({ status, user, signIn, signUp, signInWithGoogle, signOut, getAccessToken }),
+    [status, user, signIn, signUp, signInWithGoogle, signOut, getAccessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
