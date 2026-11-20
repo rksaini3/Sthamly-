@@ -392,5 +392,292 @@ export function ChatPage() {
       if (abortRef.current === controller) abortRef.current = null;
       setSending(false);
     }
+    // Login user ka naya chat: list mein sabse upar, URL mein id. Messages pehle se screen par hain.
+    if (isMember && newId !== null) {
+      const id: string = newId;
+      const now = new Date().toISOString();
+      if (activeId === null) {
+        loadedIdRef.current = id;
+        setConversations((prev) => [
+          { id, title: titleFrom(text), created_at: now, updated_at: now },
+          ...prev,
+        ]);
+        navigate(`/chat/${id}`, { replace: true });
+      } else {
+        setConversations((prev) => {
+          const found = prev.find((c) => c.id === id);
+          if (!found) return prev;
+          return [{ ...found, updated_at: now }, ...prev.filter((c) => c.id !== id)];
+        });
+      }
+    }
+  }
 
-    // Login user ka naya chat: list mein sabse upar, URL mein
+  async function handleLoadMore(): Promise<void> {
+    if (!nextCursor) return;
+    try {
+      const token = await authToken();
+      const res = await listConversations(token, {
+        limit: CONVERSATION_PAGE,
+        before: nextCursor,
+      });
+      setConversations((prev) => [...prev, ...res.conversations]);
+      setNextCursor(res.next_cursor);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function handleDelete(id: string): Promise<void> {
+    if (sending) return;
+    if (!window.confirm("यह बातचीत हमेशा के लिए हट जाएगी। क्या आप सहमत हैं?")) return;
+
+    try {
+      const token = await authToken();
+      await deleteConversation(token, id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (activeId === id) {
+        navigate("/chat", { replace: true });
+      }
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  async function handleSignOut(): Promise<void> {
+    abortRef.current?.abort();
+    try {
+      await signOut();
+      navigate("/chat", { replace: true });
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    void handleSend();
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    // Enter bhejta hai, Shift+Enter nayi line. IME (Hindi keyboard) composition ke beech nahi bhejta.
+    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      void handleSend();
+    }
+  }
+
+  // Profile fail ho to "लोड हो रहा है…" par atkaayen nahi, saaf batayen.
+  const profileFailed = isMember && profile === null && error !== null;
+  const placeholder = profileFailed
+    ? "प्रोफ़ाइल नहीं खुली। ऊपर का संदेश देखें।"
+    : !ready
+      ? "लोड हो रहा है…"
+      : guestBlocked
+        ? "आज के मुफ़्त संदेश खत्म हो गए"
+        : "अपना सवाल लिखें…";
+
+  return (
+    <div className="chat-layout">
+      <aside className={`chat-sidebar${sidebarOpen ? " open" : ""}`} aria-label="बातचीत की सूची">
+        <div className="sidebar-top">
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={handleNewChat}
+            disabled={status === "loading"}
+          >
+            + नई बातचीत
+          </button>
+          <button
+            type="button"
+            className="btn-ghost sidebar-close"
+            onClick={() => setSidebarOpen(false)}
+          >
+            बंद करें
+          </button>
+        </div>
+
+        {isMember &&
+          (profile === null ? (
+            <p className="muted">लोड हो रहा है…</p>
+          ) : profile.history_enabled ? (
+            <>
+              <ul className="conv-list">
+                {conversations.map((c) => (
+                  <li key={c.id} className={c.id === activeId ? "conv-item active" : "conv-item"}>
+                    <button
+                      type="button"
+                      className="conv-open"
+                      onClick={() => openConversation(c.id)}
+                      disabled={sending}
+                    >
+                      {c.title}
+                    </button>
+                    <button
+                      type="button"
+                      className="conv-delete"
+                      aria-label="बातचीत हटाएँ"
+                      onClick={() => void handleDelete(c.id)}
+                      disabled={sending}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {nextCursor !== null && (
+                <button type="button" className="btn-ghost" onClick={() => void handleLoadMore()}>
+                  और देखें
+                </button>
+              )}
+            </>
+          ) : (
+            <p className="muted">इतिहास बंद है। सेटिंग्स में चालू करें।</p>
+          ))}
+
+        {isGuest && (
+          <p className="muted small">
+            मेहमान मोड में बातचीत सेव नहीं होती। लॉग-इन करने पर इतिहास मिलेगा।
+          </p>
+        )}
+
+        <nav className="sidebar-nav">
+          <Link to="/create">बनाएँ (तस्वीर, स्लाइड, वेबसाइट, दस्तावेज़)</Link>
+          {isMember ? (
+            <>
+              <Link to="/usage">उपयोग</Link>
+              <Link to="/settings">सेटिंग्स</Link>
+              <button type="button" className="btn-ghost" onClick={() => void handleSignOut()}>
+                लॉग-आउट
+              </button>
+            </>
+          ) : (
+            <Link to="/login">लॉग-इन करें</Link>
+          )}
+        </nav>
+        {isMember && user?.email && <p className="muted small sidebar-user">{user.email}</p>}
+      </aside>
+
+      <main className="chat-main">
+        <header className="chat-header">
+          <button
+            type="button"
+            className="btn-ghost menu-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="मेन्यू खोलें"
+          >
+            ☰
+          </button>
+          <h1 className="chat-title">Sthamly AI</h1>
+          <Link to="/create" className="btn-ghost" style={{ textDecoration: "none", fontSize: 13 }}>
+            बनाएँ
+          </Link>
+          {isGuest && !guestBlocked && (
+            <span className="muted small">आज बचे: {guestLeft}</span>
+          )}
+          {isMember && plan !== null && <span className="plan-badge">{plan.name}</span>}
+          {isGuest && <span className="plan-badge">मेहमान</span>}
+        </header>
+
+        <section className="chat-messages" aria-live="polite">
+          {loadingMessages && <p className="muted">बातचीत लोड हो रही है…</p>}
+
+          {!loadingMessages && messages.length === 0 && (
+            <div className="empty-state">
+              <h2>नमस्ते!</h2>
+              <p>अपना सवाल हिंदी या Hinglish में लिखें।</p>
+              {isGuest && (
+                <p className="small">मेहमान के रूप में आज {GUEST_MESSAGES_PER_DAY} संदेश मुफ़्त हैं।</p>
+              )}
+            </div>
+          )}
+
+          {messages.map((m) => (
+            <article key={m.key} className={`bubble ${m.role}`}>
+              <div className="bubble-text">
+                {m.content}
+                {m.pending && (
+                  <span className="cursor" aria-hidden="true">
+                    ▍
+                  </span>
+                )}
+              </div>
+              {m.stopped && <p className="muted small">जवाब बीच में रोका गया।</p>}
+            </article>
+          ))}
+          <div ref={endRef} />
+        </section>
+
+        {guestBlocked && (
+          <section
+            className="card"
+            role="region"
+            aria-label="लॉग-इन करें"
+            style={{ margin: "0 16px 8px" }}
+          >
+            <h2>आज के मुफ़्त संदेश खत्म हो गए</h2>
+            <p className="muted small">
+              आगे बात जारी रखने और अपनी बातचीत सेव करने के लिए लॉग-इन करें। कल फिर मुफ़्त संदेश मिलेंगे।
+            </p>
+            <Link
+              to="/login"
+              className="btn-primary"
+              style={{ textDecoration: "none", alignSelf: "flex-start" }}
+            >
+              लॉग-इन करें
+            </Link>
+          </section>
+        )}
+
+        {error !== null && (
+          <div className="chat-error" role="alert" style={{ margin: "0 16px 8px" }}>
+            <p style={{ margin: 0 }}>{error}</p>
+            {profileFailed && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={handleRetryProfile}
+                style={{ marginTop: 8 }}
+              >
+                फिर से कोशिश करें
+              </button>
+            )}
+          </div>
+        )}
+
+        <form className="composer" onSubmit={handleSubmit}>
+          <textarea
+            rows={1}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            maxLength={MAX_INPUT_CHARS}
+            disabled={!ready || guestBlocked}
+            aria-label="संदेश"
+          />
+
+          {isMember && (
+            <PushToTalkButton
+              getToken={() => getAccessToken()}
+              onTranscript={handleTranscript}
+              onError={(message: string) => setError(message)}
+              disabled={!ready || sending}
+            />
+          )}
+
+          {sending ? (
+            <button type="button" className="btn-stop" onClick={handleStop}>
+              रोकें
+            </button>
+          ) : (
+            <button type="submit" className="btn-primary" disabled={!canSend}>
+              भेजें
+            </button>
+          )}
+        </form>
+      </main>
+    </div>
+  );
+}
