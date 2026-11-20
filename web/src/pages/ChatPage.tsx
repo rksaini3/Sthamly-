@@ -460,11 +460,15 @@ export function ChatPage() {
     }
   }
 
-  const placeholder = !ready
-    ? "लोड हो रहा है…"
-    : guestBlocked
-      ? "आज के मुफ़्त संदेश खत्म हो गए"
-      : "अपना सवाल लिखें…";
+  // Profile fail ho to "लोड हो रहा है…" par atkaayen nahi, saaf batayen.
+  const profileFailed = isMember && profile === null && error !== null;
+  const placeholder = profileFailed
+    ? "प्रोफ़ाइल नहीं खुली। ऊपर का संदेश देखें।"
+    : !ready
+      ? "लोड हो रहा है…"
+      : guestBlocked
+        ? "आज के मुफ़्त संदेश खत्म हो गए"
+        : "अपना सवाल लिखें…";
 
   return (
     <div className="chat-layout">
