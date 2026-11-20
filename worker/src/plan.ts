@@ -103,9 +103,17 @@ async function loadPlanLimits(db: SupabaseClient, plan: string): Promise<PlanLim
 }
 
 // Aaj ke tokens (UTC midnight se) usage_logs se, DB function ke zariye.
+// RPC fail ho to chat band nahi hoti: 0 maante hain aur log mein event jaata hai.
+// Dhyan: is fallback ke dauraan daily quota check kuch der ke liye effective nahi hoga.
+// Migration 0007 lagane ke baad yeh fallback normally nahi chalna chahiye.
 async function loadTokensToday(db: SupabaseClient, userId: string): Promise<number> {
-  const used = await db.rpc<number | null>("user_tokens_today", { p_user: userId });
-  return typeof used === "number" ? used : 0;
+  try {
+    const used = await db.rpc<number | null>("user_tokens_today", { p_user: userId });
+    return typeof used === "number" ? used : 0;
+  } catch {
+    console.error(JSON.stringify({ event: "tokens_today_unavailable" }));
+    return 0;
+  }
 }
 
 // Ek hi call mein poora user context. Har chat request isse shuru hoti hai.
