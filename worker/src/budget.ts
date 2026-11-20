@@ -2,7 +2,7 @@
 // Spend ka source of truth database hai (usage_logs). KV sirf alert dedupe ke liye hai.
 // Stages:
 //   normal          : sab features chalte hain
-//   cheap_chat_only : costly features (vision, document, voice_live) band, chat sasta model
+//   cheap_chat_only : costly features (vision, document, voice_live, image) band, chat sasta model
 //   block_free      : upar ke saath free plan ke users bhi band
 // Thresholds 1.0 aur 1.1 meri pasand hain (blueprint mein sirf order likha hai). Open decision.
 
@@ -10,13 +10,14 @@ import type { Config, Env } from "./env";
 import { ApiError } from "./errors";
 import type { SupabaseClient } from "./supabase";
 
-export type CostFeature = "chat" | "vision" | "document" | "voice_live" | "voice_turn";
+export type CostFeature = "chat" | "vision" | "document" | "voice_live" | "voice_turn" | "image";
 
 // Yeh features sabse mehngi hain, isliye budget ke 100% par sabse pehle band hote hain.
 const COSTLY_FEATURES: ReadonlySet<CostFeature> = new Set<CostFeature>([
   "vision",
   "document",
   "voice_live",
+  "image",
 ]);
 
 export type BudgetStage = "normal" | "cheap_chat_only" | "block_free";
