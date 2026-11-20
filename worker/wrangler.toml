@@ -16,7 +16,7 @@ enabled = true
 [vars]
 ENVIRONMENT = "dev"
 SUPABASE_URL = "https://fdgzhtuwxtbcodbefbmt.supabase.co"
-ALLOWED_ORIGINS = "http://localhost:5173,https://localhost,https://web-ip0tyafb0-rajasaini22086-7683s-projects.vercel.app"
+ALLOWED_ORIGINS = "http://localhost:5173,https://localhost,https://sthamly.com,https://www.sthamly.com,https://web-ip0tyafb0-rajasaini22086-7683s-projects.vercel.app"
 IMAGE_MODEL = "gemini-2.5-flash-image"
 LIVE_MODEL = "NOT-SET-YET"
 DAILY_BUDGET_INR = "200"
@@ -39,7 +39,7 @@ workers_dev = true
 [env.dev.vars]
 ENVIRONMENT = "dev"
 SUPABASE_URL = "https://fdgzhtuwxtbcodbefbmt.supabase.co"
-ALLOWED_ORIGINS = "http://localhost:5173,https://localhost,https://web-ip0tyafb0-rajasaini22086-7683s-projects.vercel.app"
+ALLOWED_ORIGINS = "http://localhost:5173,https://localhost,https://sthamly.com,https://www.sthamly.com,https://web-ip0tyafb0-rajasaini22086-7683s-projects.vercel.app"
 IMAGE_MODEL = "gemini-2.5-flash-image"
 LIVE_MODEL = "NOT-SET-YET"
 DAILY_BUDGET_INR = "200"
