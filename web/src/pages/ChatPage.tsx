@@ -150,6 +150,8 @@ export function ChatPage() {
   // Kaunsi conversation ke messages abhi loaded hain. Naya chat bante hi reload se bachne ke liye.
   const loadedIdRef = useRef<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  // Composer ka textarea: user ka sawal badalne ke liye usi par focus jaata hai.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const guestLeft = Math.max(0, GUEST_MESSAGES_PER_DAY - guestUsed);
   const guestBlocked = isGuest && guestLeft === 0;
@@ -497,6 +499,13 @@ export function ChatPage() {
     }
   }
 
+  // User ka sawal composer mein bhar deta hai, user badal kar bhejta hai. Purani baatein nahi chhedte.
+  function handleEditQuestion(text: string): void {
+    if (sending) return;
+    setInput(text);
+    textareaRef.current?.focus();
+  }
+
   // Aakhri sawal ko dobara bhejte hain: uska purana jawab hata kar naya banta hai.
   function handleRegenerate(): void {
     if (!canRegenerate) return;
@@ -631,6 +640,33 @@ export function ChatPage() {
                   </span>
                 )}
               </div>
+              {m.role === "user" && !m.pending && (
+                <div className="msg-actions" role="group" aria-label="सवाल के विकल्प">
+                  <button
+                    type="button"
+                    className="msg-action"
+                    onClick={() => handleEditQuestion(m.content)}
+                    disabled={sending}
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                    <span>बदलें</span>
+                  </button>
+                </div>
+              )}
               {m.stopped && <p className="muted small">जवाब बीच में रोका गया।</p>}
               {m.role === "assistant" && !m.pending && m.content.length > 0 && (
                 <MessageActions
@@ -687,6 +723,7 @@ export function ChatPage() {
         <form className="composer" onSubmit={handleSubmit}>
           <ComposerPlus modeLabel={findMode(mode).label} disabled={sending} />
           <textarea
+            ref={textareaRef}
             rows={1}
             value={input}
             onChange={(e) => setInput(e.target.value)}
