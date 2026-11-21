@@ -1,0 +1,66 @@
+/* Sthamly AI web: chat bubble mein tasveer aur PDF ka layout. Rang styles.css ke tokens se. */
+
+.chat-media {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 0;
+  max-width: min(360px, 100%);
+}
+
+.chat-media-open {
+  padding: 0;
+  border: none;
+  background: transparent;
+  line-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.chat-media-open img,
+.chat-media > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 420px;
+  object-fit: contain;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.chat-media-user {
+  align-self: flex-end;
+}
+
+.chat-media-doc {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.chat-media-badge {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--accent-bg);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.chat-media-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
