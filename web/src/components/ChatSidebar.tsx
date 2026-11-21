@@ -1,10 +1,12 @@
-// Sthamly AI web: chat ki side bar, ChatGPT jaisi layout.
-// Ye sirf dikhata hai. Data aur kaam (naya chat, khholna, hatana, log-out) ChatPage se aate hain.
+// Sthamly AI web: chat ki side bar, ChatGPT jaisi structure.
+// Upar: brand, search, naya chat, neeche: links (bananaye, plan, upyog, settings), bhasha, user.
+// Ye sirf dikhata hai. Data aur kaam ChatPage se aate hain.
 // Desktop par bayen taraf hamesha khuli. Mobile par overlay: bahar tap ya Esc se band.
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { ConversationSummary } from "../api/client";
+import { LANGUAGE_OPTIONS, findLanguage } from "../lib/languages";
 import "./ChatSidebar.css";
 
 export type HistoryState = "loading" | "on" | "off";
@@ -22,6 +24,8 @@ export interface ChatSidebarProps {
   hasMore: boolean;
   busy: boolean;
   newChatDisabled: boolean;
+  currentLang: string;
+  onLanguage: (code: string) => void;
   onNewChat: () => void;
   onOpen: (id: string) => void;
   onDelete: (id: string) => void;
@@ -36,28 +40,32 @@ interface Group {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Baatein aaj, pichhle 7 din, aur purani mein baant dete hain (ChatGPT ki tarah).
+// Baatein: aaj, pichhle 7 din, pichhle 30 din, aur pehle (ChatGPT ki tarah).
 export function groupConversations(
   list: ConversationSummary[],
   now: Date = new Date(),
 ): Group[] {
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startWeek = startToday - 7 * DAY_MS;
+  const start7 = startToday - 7 * DAY_MS;
+  const start30 = startToday - 30 * DAY_MS;
 
   const today: ConversationSummary[] = [];
   const week: ConversationSummary[] = [];
+  const month: ConversationSummary[] = [];
   const older: ConversationSummary[] = [];
 
   for (const c of list) {
     const t = Date.parse(c.updated_at);
-    if (Number.isNaN(t) || t < startWeek) older.push(c);
+    if (Number.isNaN(t) || t < start30) older.push(c);
     else if (t >= startToday) today.push(c);
-    else week.push(c);
+    else if (t >= start7) week.push(c);
+    else month.push(c);
   }
 
   const groups: Group[] = [
     { label: "आज", items: today },
     { label: "पिछले 7 दिन", items: week },
+    { label: "पिछले 30 दिन", items: month },
     { label: "पहले", items: older },
   ];
   return groups.filter((g) => g.items.length > 0);
@@ -84,6 +92,9 @@ function Icon({ children }: { children: ReactNode }) {
 
 export function ChatSidebar(p: ChatSidebarProps) {
   const { open, onClose } = p;
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [langOpen, setLangOpen] = useState(false);
 
   // Mobile par Esc dabane se band.
   useEffect(() => {
@@ -95,18 +106,21 @@ export function ChatSidebar(p: ChatSidebarProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const groups = groupConversations(p.conversations);
+  const q = query.trim().toLowerCase();
+  const visible = q.length > 0
+    ? p.conversations.filter((c) => c.title.toLowerCase().includes(q))
+    : p.conversations;
+  const groups = groupConversations(visible);
+
+  const currentLabel = findLanguage(p.currentLang)?.label ?? "हिन्दी";
   const initial = p.email ? (Array.from(p.email)[0]?.toUpperCase() ?? "?") : "?";
 
   return (
     <>
-      <div
-        className={`cs-scrim${open ? " open" : ""}`}
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className={`cs-scrim${open ? " open" : ""}`} onClick={onClose} aria-hidden="true" />
 
-      <aside className={`cs-root${open ? " open" : ""}`} aria-label="बातचीत की सूची">
+      <aside className={`cs-root${open ? " open" : ""}`} aria-label="साइड बार">
+        {/* Upar: brand aur icons */}
         <div className="cs-head">
           <div className="cs-brand">
             <span className="cs-logo" aria-hidden="true">
@@ -114,40 +128,76 @@ export function ChatSidebar(p: ChatSidebarProps) {
             </span>
             <span>Sthamly</span>
           </div>
-          <button
-            type="button"
-            className="cs-icon-btn cs-mobile-only"
-            onClick={onClose}
-            aria-label="मेन्यू बंद करें"
-          >
-            <Icon>
-              <path d="M18 6 6 18M6 6l12 12" />
-            </Icon>
-          </button>
+          <div className="cs-head-actions">
+            <button
+              type="button"
+              className="cs-icon-btn"
+              onClick={() => setSearchOpen((v) => !v)}
+              aria-label="बातचीत खोजें"
+              aria-pressed={searchOpen}
+              title="खोजें"
+            >
+              <Icon>
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </Icon>
+            </button>
+            <button
+              type="button"
+              className="cs-icon-btn cs-mobile-only"
+              onClick={onClose}
+              aria-label="मेन्यू बंद करें"
+            >
+              <Icon>
+                <path d="M18 6 6 18M6 6l12 12" />
+              </Icon>
+            </button>
+          </div>
         </div>
 
-        <button
-          type="button"
-          className="cs-new"
-          onClick={p.onNewChat}
-          disabled={p.newChatDisabled}
-        >
-          <Icon>
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-          </Icon>
-          <span>नई बातचीत</span>
-        </button>
+        {/* Naya chat aur khoj */}
+        <div className="cs-top">
+          <button
+            type="button"
+            className="cs-nav-btn"
+            onClick={p.onNewChat}
+            disabled={p.newChatDisabled}
+          >
+            <Icon>
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </Icon>
+            <span>नई बातचीत</span>
+          </button>
 
-        <div className="cs-scroll">
-          {p.isMember && p.historyState === "loading" && (
-            <p className="cs-note">लोड हो रहा है…</p>
+          <Link to="/create" className="cs-nav-btn" onClick={onClose}>
+            <Icon>
+              <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" />
+            </Icon>
+            <span>बनाएँ</span>
+          </Link>
+
+          {searchOpen && (
+            <input
+              type="search"
+              className="cs-search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="बातचीत खोजें…"
+              aria-label="बातचीत खोजें"
+              autoFocus
+            />
           )}
+        </div>
+
+        {/* Beech mein: baatein */}
+        <div className="cs-scroll">
+          {p.isMember && p.historyState === "loading" && <p className="cs-note">लोड हो रहा है…</p>}
           {p.isMember && p.historyState === "off" && (
             <p className="cs-note">इतिहास बंद है। सेटिंग्स में चालू करें।</p>
           )}
-          {p.isMember && p.historyState === "on" && groups.length === 0 && (
-            <p className="cs-note">अभी कोई बातचीत नहीं है।</p>
+          {p.historyState === "on" && groups.length === 0 && (
+            <p className="cs-note">{q.length > 0 ? "कोई बातचीत नहीं मिली।" : "अभी कोई बातचीत नहीं है।"}</p>
           )}
           {p.isGuest && (
             <p className="cs-note">
@@ -195,60 +245,119 @@ export function ChatSidebar(p: ChatSidebarProps) {
               </section>
             ))}
 
-          {p.historyState === "on" && p.hasMore && (
+          {p.historyState === "on" && p.hasMore && q.length === 0 && (
             <button type="button" className="cs-more" onClick={p.onLoadMore}>
               और देखें
             </button>
           )}
         </div>
 
+        {/* Neeche: plan, bhasha, links, user */}
         <div className="cs-foot">
-          <Link to="/create" className="cs-link" onClick={onClose}>
-            <Icon>
-              <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" />
-            </Icon>
-            <span>बनाएँ</span>
+          <Link to="/plans" className="cs-plan-card" onClick={onClose}>
+            <span className="cs-plan-icon" aria-hidden="true">
+              <Icon>
+                <path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z" />
+              </Icon>
+            </span>
+            <span className="cs-plan-text">
+              <strong>{p.planName ? `${p.planName} प्लान` : "प्लान और टॉपअप"}</strong>
+              <span className="cs-plan-sub">प्रीमियम, टॉपअप देखें</span>
+            </span>
+            <span className="cs-chevron" aria-hidden="true">›</span>
           </Link>
 
-          {p.isMember ? (
-            <>
-              <Link to="/usage" className="cs-link" onClick={onClose}>
-                <Icon>
-                  <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
-                </Icon>
-                <span>उपयोग</span>
-              </Link>
-              <Link to="/settings" className="cs-link" onClick={onClose}>
-                <Icon>
-                  <circle cx="12" cy="12" r="3" />
-                  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
-                </Icon>
-                <span>सेटिंग्स</span>
-              </Link>
+          <button
+            type="button"
+            className="cs-row"
+            onClick={() => setLangOpen((v) => !v)}
+            aria-expanded={langOpen}
+            aria-controls="cs-lang-list"
+          >
+            <Icon>
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18" />
+              <path d="M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
+            </Icon>
+            <span className="cs-row-label">भाषा</span>
+            <span className="cs-row-value">{currentLabel}</span>
+            <span className={`cs-chevron${langOpen ? " up" : ""}`} aria-hidden="true">
+              ⌄
+            </span>
+          </button>
 
-              <div className="cs-user">
-                <span className="cs-avatar" aria-hidden="true">
-                  {initial}
-                </span>
-                <div className="cs-user-text">
-                  <span className="cs-email">{p.email ?? "लॉग-इन"}</span>
-                  {p.planName && <span className="cs-plan">{p.planName}</span>}
-                </div>
-                <button
-                  type="button"
-                  className="cs-icon-btn"
-                  onClick={p.onSignOut}
-                  aria-label="लॉग-आउट"
-                  title="लॉग-आउट"
-                >
-                  <Icon>
-                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                    <path d="M16 17l5-5-5-5" />
-                    <path d="M21 12H9" />
-                  </Icon>
-                </button>
+          {langOpen && (
+            <ul id="cs-lang-list" className="cs-lang-list" role="listbox" aria-label="भाषा चुनें">
+              {LANGUAGE_OPTIONS.map((o) => {
+                const selected = o.code === p.currentLang;
+                return (
+                  <li key={o.code}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      className={`cs-lang-item${selected ? " selected" : ""}`}
+                      disabled={!o.supported}
+                      onClick={() => {
+                        p.onLanguage(o.code);
+                        setLangOpen(false);
+                      }}
+                    >
+                      <span className="cs-lang-text">
+                        <span className="cs-lang-name">{o.label}</span>
+                        <span className="cs-lang-en">{o.english}</span>
+                      </span>
+                      {!o.supported && <span className="cs-soon">जल्द</span>}
+                      {selected && o.supported && <span className="cs-check" aria-hidden="true">✓</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {p.isMember && (
+            <Link to="/usage" className="cs-row" onClick={onClose}>
+              <Icon>
+                <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+              </Icon>
+              <span className="cs-row-label">उपयोग</span>
+            </Link>
+          )}
+
+          {p.isMember && (
+            <Link to="/settings" className="cs-row" onClick={onClose}>
+              <Icon>
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z" />
+              </Icon>
+              <span className="cs-row-label">सेटिंग्स</span>
+            </Link>
+          )}
+
+          {p.isMember ? (
+            <div className="cs-user">
+              <span className="cs-avatar" aria-hidden="true">
+                {initial}
+              </span>
+              <div className="cs-user-text">
+                <span className="cs-email">{p.email ?? "लॉग-इन"}</span>
+                {p.planName && <span className="cs-plan-name">{p.planName}</span>}
               </div>
-            </>
+              <button
+                type="button"
+                className="cs-icon-btn"
+                onClick={p.onSignOut}
+                aria-label="लॉग-आउट"
+                title="लॉग-आउट"
+              >
+                <Icon>
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <path d="M16 17l5-5-5-5" />
+                  <path d="M21 12H9" />
+                </Icon>
+              </button>
+            </div>
           ) : (
             <Link to="/login" className="cs-login" onClick={onClose}>
               लॉग-इन करें
