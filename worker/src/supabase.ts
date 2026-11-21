@@ -3,6 +3,8 @@
 // Har query sthamly_v3 schema par jaati hai (Accept-Profile / Content-Profile headers).
 // Errors ka raw text kabhi client tak nahi jaata, aur log mein row data nahi jaata.
 // Log mein sirf: method, path (query ke bina), status, Postgres/PostgREST code, error ka type aur time.
+// Key do tarah ki ho sakti hai: legacy JWT (eyJ...) ya nayi secret key (sb_secret_...).
+// Nayi key sirf 'apikey' header mein jaati hai. Authorization: Bearer sirf JWT ke liye bheja jaata hai.
 
 import type { Env } from "./env";
 import { ApiError } from "./errors";
@@ -52,6 +54,11 @@ function classifyError(status: number, pgCode: string | null): string {
   return "other";
 }
 
+// Legacy service_role key JWT hoti hai (eyJ se shuru). Nayi secret key (sb_secret_) JWT nahi hoti.
+function isJwtKey(key: string): boolean {
+  return key.startsWith("eyJ");
+}
+
 export function createSupabase(env: Env): SupabaseClient {
   const base = env.SUPABASE_URL.replace(/\/+$/, "");
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
@@ -68,12 +75,13 @@ export function createSupabase(env: Env): SupabaseClient {
 
     const headers: Record<string, string> = {
       apikey: key,
-      Authorization: `Bearer ${key}`,
       Accept: "application/json",
       // Har query sthamly_v3 par. Purane public tables is path se nahi chhoote jaate.
       "Accept-Profile": SCHEMA,
       "Content-Profile": SCHEMA,
     };
+    // Authorization sirf JWT key ke saath. Nayi sb_secret key ke saath ye header nahi jaata.
+    if (isJwtKey(key)) headers.Authorization = `Bearer ${key}`;
     if (init.body !== undefined) headers["Content-Type"] = "application/json";
     if (init.prefer) headers.Prefer = init.prefer;
 
