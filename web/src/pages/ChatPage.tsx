@@ -29,9 +29,10 @@ import {
   readGuestLanguage,
   writeGuestLanguage,
 } from "../lib/languages";
-import { type ModeKey } from "../lib/modes";
+import { findMode, type ModeKey } from "../lib/modes";
 import { ModeChips, Suggestions } from "../components/ModeBar";
 import { MessageActions } from "../components/MessageActions";
+import { ComposerPlus } from "../components/ComposerPlus";
 
 const CONVERSATION_PAGE = 30;
 const HISTORY_LIMIT = 20;
@@ -555,6 +556,30 @@ export function ChatPage() {
           )}
           {isMember && plan !== null && <span className="plan-badge">{plan.name}</span>}
           {isGuest && <span className="plan-badge">मेहमान</span>}
+          <button
+            type="button"
+            className="chat-new-icon"
+            onClick={handleNewChat}
+            disabled={status === "loading"}
+            aria-label="नई बातचीत"
+            title="नई बातचीत"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </button>
         </header>
 
         <section className="chat-messages" aria-live="polite">
@@ -636,6 +661,7 @@ export function ChatPage() {
         <ModeChips mode={mode} onChange={setMode} disabled={sending} />
 
         <form className="composer" onSubmit={handleSubmit}>
+          <ComposerPlus modeLabel={findMode(mode).label} disabled={sending} />
           <textarea
             rows={1}
             value={input}
