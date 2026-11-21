@@ -156,6 +156,10 @@ export function ChatPage() {
   // Guest hamesha tayyar. Login user ke liye profile load hona zaroori hai.
   const ready = isGuest || (isMember && profile !== null);
   const canSend = ready && !guestBlocked && input.trim().length > 0 && !sending;
+  // "दोबारा बनाएँ" abhi sirf wahin, jahan chat server par save nahi hoti (guest, ya history band).
+  // Saved chat mein dobara banane par purana jawab DB mein rehta, isliye wahan nahi dikhate.
+  const canRegenerate =
+    !sending && (isGuest || (isMember && profile !== null && !profile.history_enabled));
 
   // Login user ka token. Nahi hai to 'unauthenticated' (sirf member ke kaam ke liye).
   async function authToken(): Promise<string> {
@@ -332,8 +336,9 @@ export function ChatPage() {
     setInput((prev) => (prev.trim().length > 0 ? `${prev.trim()} ${text}` : text));
   }
 
-  async function handleSend(): Promise<void> {
-    const text = input.trim();
+  // override: dobara banane ke liye (text + wahan tak ke messages). Na ho to input se bhejte hain.
+  async function handleSend(override?: { text: string; base: DisplayMessage[] }): Promise<void> {
+    const text = (override ? override.text : input).trim();
     if (!text || sending || !ready || guestBlocked) return;
 
     if (text.length > MAX_INPUT_CHARS) {
@@ -343,22 +348,23 @@ export function ChatPage() {
 
     const userKey = crypto.randomUUID();
     const assistantKey = crypto.randomUUID();
+    const source: DisplayMessage[] = override ? override.base : messages;
 
     // Pichhli baatein bhejni hain? Guest ke liye hamesha (server yaad nahi rakhta).
     // Login user ke liye sirf tab jab history band ho (warna server DB se leta hai).
     const sendHistory = isGuest || (isMember && profile !== null && !profile.history_enabled);
-    const priorTurns: ChatTurn[] = messages
+    const priorTurns: ChatTurn[] = source
       .filter((m) => !m.pending && m.content.length > 0)
       .slice(-HISTORY_LIMIT)
       .map((m) => ({ role: m.role, content: m.content }));
 
     const controller = new AbortController();
     abortRef.current = controller;
-    setInput("");
+    if (!override) setInput("");
     setError(null);
     setSending(true);
     setMessages((prev) => [
-      ...prev,
+      ...(override ? override.base : prev),
       { key: userKey, role: "user", content: text },
       { key: assistantKey, role: "assistant", content: "", pending: true },
     ]);
@@ -413,8 +419,9 @@ export function ChatPage() {
         setMessages((prev) => prev.filter((m) => m.key !== userKey && m.key !== assistantKey));
       } else {
         // Error: khaali jawab hata do, sawal input mein wapas, taaki dobara bhej sake.
+        // Dobara banane mein input ko nahi chhedte, user ka likha draft bachta hai.
         setError(errorText(err));
-        setInput(text);
+        if (!override) setInput(text);
         setMessages((prev) =>
           prev.flatMap((m) => {
             if (m.key === userKey) return [];
@@ -490,6 +497,15 @@ export function ChatPage() {
     }
   }
 
+  // Aakhri sawal ko dobara bhejte hain: uska purana jawab hata kar naya banta hai.
+  function handleRegenerate(): void {
+    if (!canRegenerate) return;
+    const idx = messages.map((m) => m.role).lastIndexOf("user");
+    const question = idx >= 0 ? messages[idx] : undefined;
+    if (question === undefined) return;
+    void handleSend({ text: question.content, base: messages.slice(0, idx) });
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     void handleSend();
@@ -502,6 +518,9 @@ export function ChatPage() {
       void handleSend();
     }
   }
+
+  const lastAssistantKey: string | null =
+    [...messages].reverse().find((m) => m.role === "assistant")?.key ?? null;
 
   // Profile fail ho to "लोड हो रहा है…" par atkaayen nahi, saaf batayen.
   const profileFailed = isMember && profile === null && error !== null;
@@ -614,7 +633,12 @@ export function ChatPage() {
               </div>
               {m.stopped && <p className="muted small">जवाब बीच में रोका गया।</p>}
               {m.role === "assistant" && !m.pending && m.content.length > 0 && (
-                <MessageActions text={m.content} />
+                <MessageActions
+                  text={m.content}
+                  onRegenerate={
+                    canRegenerate && m.key === lastAssistantKey ? handleRegenerate : undefined
+                  }
+                />
               )}
             </article>
           ))}
