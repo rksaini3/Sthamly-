@@ -82,8 +82,9 @@ function decodeBase64Image(input: string): Uint8Array {
 }
 
 // Promise ko timeout aur abort signal ke saath chalata hai.
+// Timer ko finally mein clear karte hain, taaki koi timer lataka na rahe.
 function withTimeout<T>(work: Promise<T>, ms: number, signal: AbortSignal): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined = undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error("timeout")), ms);
   });
@@ -94,7 +95,9 @@ function withTimeout<T>(work: Promise<T>, ms: number, signal: AbortSignal): Prom
     }
     signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
   });
-  return Promise.race([work, timeout, aborted]).finally(() => clearTimeout(timer));
+  return Promise.race([work, timeout, aborted]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }
 
 // Workers AI se image banwati hai. Ek hi image wapas aati hai.
