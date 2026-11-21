@@ -1,0 +1,56 @@
+// Sthamly AI Worker: planner ke jawab ki jaanch (model par bharosa nahi, isliye har galti ka fallback).
+import { describe, expect, it } from "vitest";
+import { estimatePlanCostInr, estimateStepCostInr, MAX_PLAN_STEPS, parsePlan } from "../src/orchestrator/planner";
+
+const PROMPT = "मेरी दुकान के लिए सेल का पोस्टर और वेबसाइट बनाओ";
+
+describe("parsePlan", () => {
+  it("सही JSON से steps लेता है", () => {
+    const raw = JSON.stringify({
+      steps: [
+        { kind: "image", prompt: "सेल का पोस्टर" },
+        { kind: "website", prompt: "दुकान की वेबसाइट" },
+      ],
+    });
+    expect(parsePlan(raw, PROMPT).steps).toEqual([
+      { kind: "image", prompt: "सेल का पोस्टर" },
+      { kind: "website", prompt: "दुकान की वेबसाइट" },
+    ]);
+  });
+
+  it("खराब JSON हो तो एक document वाला fallback", () => {
+    expect(parsePlan("यह JSON नहीं है", PROMPT).steps).toEqual([{ kind: "document", prompt: PROMPT }]);
+  });
+
+  it("अनजान kind छोड़ देता है", () => {
+    const raw = JSON.stringify({
+      steps: [
+        { kind: "video", prompt: "कुछ" },
+        { kind: "slides", prompt: "पिच डेक" },
+      ],
+    });
+    expect(parsePlan(raw, PROMPT).steps).toEqual([{ kind: "slides", prompt: "पिच डेक" }]);
+  });
+
+  it("सारे steps गलत हों तो fallback", () => {
+    const raw = JSON.stringify({ steps: [{ kind: "video", prompt: "x" }, { kind: "image" }] });
+    expect(parsePlan(raw, PROMPT).steps).toEqual([{ kind: "document", prompt: PROMPT }]);
+  });
+
+  it("MAX_PLAN_STEPS से ज़्यादा steps को काट देता है", () => {
+    const many = Array.from({ length: MAX_PLAN_STEPS + 3 }, () => ({ kind: "document", prompt: "ए" }));
+    expect(parsePlan(JSON.stringify({ steps: many }), PROMPT).steps).toHaveLength(MAX_PLAN_STEPS);
+  });
+
+  it("```json code fence के अंदर का JSON भी पढ़ता है", () => {
+    const raw = '```json\n{"steps":[{"kind":"image","prompt":"लोगो"}]}\n```';
+    expect(parsePlan(raw, PROMPT).steps).toEqual([{ kind: "image", prompt: "लोगो" }]);
+  });
+});
+
+describe("estimateStepCostInr", () => {
+  it("slides में तस्वीरों का खर्च भी जुड़ता है", () => {
+    expect(estimateStepCostInr("slides")).toBeGreaterThan(estimateStepCostInr("image"));
+    expect(estimatePlanCostInr([{ kind: "document", prompt: "a" }, { kind: "image", prompt: "b" }])).toBeCloseTo(4, 5);
+  });
+});
