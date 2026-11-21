@@ -1,4 +1,4 @@
-/* Sthamly AI web: tasveer ka full-screen viewer. Background hamesha gehra rehta hai (light ya dark theme se alag),
+/* Sthamly AI web: tasveer ka full-screen editor. Background hamesha gehra rehta hai (light ya dark theme se alag),
    taaki tasveer ke rang sahi dikhein. Buttons ka rang bhi isi ke hisaab se hai. */
 
 .iv-root {
@@ -77,10 +77,38 @@
   margin: 0 16px 8px;
   text-align: center;
   font-size: 13px;
-  color: rgb(255 255 255 / 0.8);
+  color: rgb(255 255 255 / 0.85);
 }
 
-/* ---------- Neeche: औज़ार (Edit, Markup, Resize, Remove) ---------- */
+/* ---------- Size chunne ka panel (Resize ke baad) ---------- */
+
+.iv-sizes {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 8px;
+}
+
+.iv-size {
+  padding: 8px 14px;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 999px;
+  background: transparent;
+  color: #fff;
+  font-size: 13px;
+}
+
+.iv-size:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.12);
+}
+
+.iv-size:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- Neeche: औज़ार (Edit, Resize, Remove background, Markup) ---------- */
 
 .iv-bottom {
   display: flex;
@@ -90,6 +118,7 @@
 }
 
 .iv-tool {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -98,6 +127,10 @@
   padding: 0;
   border: none;
   background: transparent;
+  color: #fff;
+}
+
+.iv-tool:disabled {
   color: rgb(255 255 255 / 0.5);
   cursor: not-allowed;
 }
@@ -108,11 +141,28 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.12);
+}
+
+.iv-tool:not(:disabled):hover .iv-tool-icon,
+.iv-tool.active .iv-tool-icon {
+  background: rgb(255 255 255 / 0.22);
 }
 
 .iv-tool-label {
   font-size: 12px;
+  text-align: center;
+}
+
+.iv-soon {
+  position: absolute;
+  top: -4px;
+  right: 0;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.2);
+  color: #fff;
 }
 
 @media (prefers-reduced-motion: reduce) {
