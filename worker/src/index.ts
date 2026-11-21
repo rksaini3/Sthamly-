@@ -13,6 +13,8 @@
 //   *      /api/images                   image banao aur list (routes/images.ts)
 //   GET    /api/images/:id/url           image ka signed link (routes/images.ts)
 //   DELETE /api/images/:id               apni image hatao (routes/images.ts)
+//   POST   /api/image-tools/remove-background  tasveer ka background hatao, PNG wapas (routes/image-tools.ts)
+//   POST   /api/image-chat/edit          chat mein tasveer edit karo, naya file link (routes/image-chat.ts)
 //   POST   /api/project                  project ka plan banao (routes/project.ts)
 //   GET    /api/project/:id              project aur uske steps ki sthiti
 //   POST   /api/project/:id/next         agla step chalao (ek call = ek step)
@@ -28,6 +30,8 @@ import { handleCreate } from "./routes/create";
 import { handleProject } from "./routes/project";
 import { handleHistory } from "./routes/history";
 import { handleImages } from "./routes/images";
+import { handleImageTools } from "./routes/image-tools";
+import { handleImageChat } from "./routes/image-chat";
 import { handleUser } from "./routes/user";
 import { handleVoice } from "./routes/voice";
 import { createSupabase } from "./supabase";
@@ -39,7 +43,16 @@ const ALLOWED_HEADERS =
 const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
-type Route = "chat" | "history" | "user" | "voice" | "create" | "images" | "project";
+type Route =
+  | "chat"
+  | "history"
+  | "user"
+  | "voice"
+  | "create"
+  | "images"
+  | "imageTools"
+  | "imageChat"
+  | "project";
 
 // Request ke Origin ko allowed list se milata hai. Na mile to null.
 function allowedOrigin(request: Request, config: Config): string | null {
@@ -136,6 +149,8 @@ function routeFor(pathname: string): Route | null {
   if (pathname === "/api/create" || pathname.startsWith("/api/create/")) return "create";
   if (pathname === "/api/project" || pathname.startsWith("/api/project/")) return "project";
   if (pathname === "/api/images" || pathname.startsWith("/api/images/")) return "images";
+  if (pathname.startsWith("/api/image-tools/")) return "imageTools";
+  if (pathname.startsWith("/api/image-chat/")) return "imageChat";
   return null;
 }
 
@@ -185,6 +200,12 @@ export default {
           break;
         case "images":
           response = await handleImages(request, env, ctx);
+          break;
+        case "imageTools":
+          response = await handleImageTools(request, env, ctx);
+          break;
+        case "imageChat":
+          response = await handleImageChat(request, env, ctx);
           break;
         case "project":
           response = await handleProject(request, env, ctx);
