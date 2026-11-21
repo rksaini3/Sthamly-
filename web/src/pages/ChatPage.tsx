@@ -15,6 +15,7 @@ import {
   listConversations,
   listMessages,
   streamChat,
+  updateProfile,
   type ChatTurn,
   type ConversationSummary,
   type ProfileResponse,
@@ -23,6 +24,14 @@ import {
 } from "../api/client";
 import { PushToTalkButton } from "../voice/PushToTalkButton";
 import { ChatSidebar } from "../components/ChatSidebar";
+import {
+  isSupportedLanguage,
+  readGuestLanguage,
+  writeGuestLanguage,
+} from "../lib/languages";
+import { type ModeKey } from "../lib/modes";
+import { ModeChips, Suggestions } from "../components/ModeBar";
+import { MessageActions } from "../components/MessageActions";
 
 const CONVERSATION_PAGE = 30;
 const HISTORY_LIMIT = 20;
@@ -129,6 +138,11 @@ export function ChatPage() {
   const [guestUsed, setGuestUsed] = useState<number>(() => readGuestCount());
   // Profile dobara load karne ke liye: badalne par profile effect phir chalta hai.
   const [profileRetry, setProfileRetry] = useState(0);
+  // Guest ki bhasha is device par. Login user ki bhasha profile se aati hai.
+  const [guestLang, setGuestLang] = useState<string>(() => readGuestLanguage());
+  const currentLang: string = isMember && profile !== null ? profile.language : guestLang;
+  // Role mode (सामान्य, दुकान, …). Abhi sirf screen par; server ko bhejna agle kadam mein.
+  const [mode, setMode] = useState<ModeKey>("general");
 
   // Chal rahi request ka controller. Stop, chat badalne aur screen band hone par abort hota hai.
   const abortRef = useRef<AbortController | null>(null);
@@ -269,6 +283,25 @@ export function ChatPage() {
 
   function handleStop(): void {
     abortRef.current?.abort();
+  }
+
+  // Bhasha: login user ka profile mein save hota hai. Guest ki pasand is device par.
+  // Abhi sirf hi, hinglish, en server par chalti hain; baaki sirf dikhti hain (sidebar mein 'जल्द').
+  async function handleLanguage(code: string): Promise<void> {
+    if (!isSupportedLanguage(code)) return;
+    if (!isMember) {
+      setGuestLang(code);
+      writeGuestLanguage(code);
+      return;
+    }
+    if (profile !== null && profile.language === code) return;
+    try {
+      const token = await authToken();
+      const res = await updateProfile(token, { language: code });
+      setProfile(res.profile);
+    } catch (err) {
+      setError(errorText(err));
+    }
   }
 
   function handleNewChat(): void {
@@ -493,6 +526,8 @@ export function ChatPage() {
         hasMore={nextCursor !== null}
         busy={sending}
         newChatDisabled={status === "loading"}
+        currentLang={currentLang}
+        onLanguage={(code) => void handleLanguage(code)}
         onNewChat={handleNewChat}
         onOpen={openConversation}
         onDelete={(id) => void handleDelete(id)}
@@ -531,6 +566,13 @@ export function ChatPage() {
               {isGuest && (
                 <p className="small">मेहमान के रूप में आज {GUEST_MESSAGES_PER_DAY} संदेश मुफ़्त हैं।</p>
               )}
+              {!guestBlocked && (
+                <Suggestions
+                  mode={mode}
+                  onPick={(text) => setInput(text)}
+                  disabled={!ready || sending}
+                />
+              )}
             </div>
           )}
 
@@ -545,6 +587,9 @@ export function ChatPage() {
                 )}
               </div>
               {m.stopped && <p className="muted small">जवाब बीच में रोका गया।</p>}
+              {m.role === "assistant" && !m.pending && m.content.length > 0 && (
+                <MessageActions text={m.content} />
+              )}
             </article>
           ))}
           <div ref={endRef} />
@@ -586,6 +631,8 @@ export function ChatPage() {
             )}
           </div>
         )}
+
+        <ModeChips mode={mode} onChange={setMode} disabled={sending} />
 
         <form className="composer" onSubmit={handleSubmit}>
           <textarea
