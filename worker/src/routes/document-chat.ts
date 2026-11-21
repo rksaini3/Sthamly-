@@ -1,0 +1,184 @@
+// Sthamly AI Worker: POST /api/document-chat/ask (chat mein PDF bhejo, sawal ya summary lo)
+// Sirf login user. Body: { pdf: "data:application/pdf;base64,...", prompt: string }.
+// Order: login -> body check -> prompt check -> daily limit (KV) -> budget -> Gemini -> usage -> text.
+// Nakaam hone par slot wapas aata hai. Raw provider error, prompt aur PDF bytes kabhi log ya client tak nahi jaate.
+
+import { authenticate } from "../auth";
+import { assertBudget } from "../budget";
+import { assertSecretsPresent, loadConfig, type Env } from "../env";
+import { ApiError, toErrorResponse } from "../errors";
+import { loadUserContext } from "../plan";
+import { askAboutPdf } from "../providers/gemini-document";
+import { cleanImagePrompt } from "../providers/image";
+import { ProviderError } from "../providers/types";
+import { createSupabase, type SupabaseClient } from "../supabase";
+
+const ROUTE = "/api/document-chat/ask";
+// Gemini document model (docs ke examples mein yahi naam hai). Badalna ho to yahin badlein.
+const GEMINI_DOCUMENT_MODEL = "gemini-3.8-flash";
+// PDF ka kharcha rupees mein (estimate). Verify karke update karein.
+const DOCUMENT_COST_INR_ESTIMATE = 1.0;
+const DOCUMENT_FEATURE = "document";
+// Ek user ke liye din mein kitne PDF sawal. KV par count (approximate).
+const DAILY_LIMIT = 10;
+const SLOT_TTL_SECONDS = 2 * 24 * 60 * 60;
+const SLOT_PREFIX = "docq";
+const MAX_BODY_BYTES = 14 * 1024 * 1024;
+// Gemini inline limit 50MB hai, par hum apni taraf se 10MB rakhte hain (cost aur memory ke liye).
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
+
+// data:application/pdf;base64,...
+const PDF_DATA_URI_RE = /^data:application\/pdf;base64,([A-Za-z0-9+/]+=*)$/;
+
+interface ParsedBody {
+  pdfBase64: string;
+  prompt: string;
+}
+
+function invalid(message?: string): ApiError {
+  return new ApiError("invalid_request", message);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function utcDay(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function slotKey(userId: string): string {
+  return `${SLOT_PREFIX}:${userId}:${utcDay()}`;
+}
+
+async function readBody(request: Request): Promise<ParsedBody> {
+  const contentType = request.headers.get("Content-Type") ?? "";
+  if (!contentType.toLowerCase().startsWith("application/json")) throw invalid();
+
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+    throw invalid("PDF बहुत बड़ी है।");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw invalid();
+  }
+  if (!isRecord(parsed) || typeof parsed.pdf !== "string" || typeof parsed.prompt !== "string") {
+    throw invalid();
+  }
+
+  const match = PDF_DATA_URI_RE.exec(parsed.pdf);
+  if (!match || !match[1]) throw invalid("सिर्फ़ PDF फ़ाइल चल सकती है।");
+
+  const decodedBytes = Math.floor((match[1].length * 3) / 4);
+  if (decodedBytes > MAX_PDF_BYTES) throw invalid("PDF बहुत बड़ी है। छोटी PDF चुनें।");
+
+  return { pdfBase64: match[1], prompt: parsed.prompt };
+}
+
+async function takeSlot(env: Env, userId: string): Promise<void> {
+  const key = slotKey(userId);
+  const current = Number((await env.STATE.get(key)) ?? "0");
+  if (current >= DAILY_LIMIT) {
+    throw new ApiError(
+      "rate_limited",
+      "आज PDF के सवालों की सीमा पूरी हो गई। कल फिर कोशिश करें।",
+    );
+  }
+  await env.STATE.put(key, String(current + 1), { expirationTtl: SLOT_TTL_SECONDS });
+}
+
+async function releaseSlot(env: Env, userId: string): Promise<void> {
+  const key = slotKey(userId);
+  const current = Number((await env.STATE.get(key)) ?? "0");
+  if (current > 0) {
+    await env.STATE.put(key, String(current - 1), { expirationTtl: SLOT_TTL_SECONDS });
+  }
+}
+
+async function recordUsage(db: SupabaseClient, userId: string, requestId: string): Promise<void> {
+  await db.insert(
+    "usage_logs",
+    {
+      user_id: userId,
+      request_id: requestId,
+      feature: DOCUMENT_FEATURE,
+      provider: "gemini",
+      model: GEMINI_DOCUMENT_MODEL,
+      input_tokens: 0,
+      output_tokens: 0,
+      estimated_cost_inr: Number(DOCUMENT_COST_INR_ESTIMATE.toFixed(4)),
+    },
+    { onConflict: "request_id", conflict: "ignore" },
+  );
+}
+
+export async function handleDocumentChat(
+  request: Request,
+  env: Env,
+  execCtx: ExecutionContext,
+): Promise<Response> {
+  const traceId = crypto.randomUUID();
+
+  try {
+    const config = loadConfig(env);
+    assertSecretsPresent(env);
+
+    // Login zaroori. Guest ko PDF nahi milta.
+    const user = await authenticate(request, env);
+
+    const { pathname } = new URL(request.url);
+    if (pathname !== ROUTE || request.method !== "POST") throw invalid();
+
+    const db = createSupabase(env);
+    const ctx = await loadUserContext(db, user);
+
+    const body = await readBody(request);
+    const prompt = cleanImagePrompt(body.prompt);
+
+    await takeSlot(env, user.id);
+
+    try {
+      await assertBudget(env, db, config, {
+        feature: DOCUMENT_FEATURE,
+        isFreePlan: ctx.plan.plan === "free",
+      });
+
+      const text = await askAboutPdf(env, {
+        model: GEMINI_DOCUMENT_MODEL,
+        prompt,
+        pdfBase64: body.pdfBase64,
+        signal: new AbortController().signal,
+      });
+
+      execCtx.waitUntil(
+        recordUsage(db, user.id, `${user.id}:doc:${traceId}`).catch(() => {
+          console.error(JSON.stringify({ event: "doc_usage_write_failed", request_id: traceId }));
+        }),
+      );
+
+      return json({ text, request_id: traceId });
+    } catch (err) {
+      await releaseSlot(env, user.id);
+      if (err instanceof ProviderError) throw new ApiError("provider_unavailable");
+      throw err;
+    }
+  } catch (err) {
+    const code = err instanceof ApiError ? err.code : "internal";
+    console.error(JSON.stringify({ event: "document_chat_request_failed", code, request_id: traceId }));
+    return toErrorResponse(err, traceId);
+  }
+}
