@@ -5,6 +5,8 @@
 #
 # Zaroori: har package folder (root, web, worker) ka package-lock.json repo mein commit hona chahiye,
 # warna npm ci fail hoga.
+# Worker ka npm ci --legacy-peer-deps isliye hai ki wrangler aur @cloudflare/workers-types ka peer version mel nahi khaata.
+# Ye flag sirf CI command mein hai, worker/.npmrc mein nahi, taaki Cloudflare build (jo use nahi padhta) fail na ho.
 
 name: CI
 
@@ -78,8 +80,8 @@ jobs:
           cache: npm
           cache-dependency-path: worker/package-lock.json
 
-      - name: Install (lockfile se, exact versions)
-        run: npm ci
+      - name: Install (lockfile se, exact versions, peer conflict ke liye legacy flag)
+        run: npm ci --legacy-peer-deps
 
       - name: Typecheck
         run: npm run typecheck
