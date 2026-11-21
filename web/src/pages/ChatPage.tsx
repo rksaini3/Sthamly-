@@ -33,6 +33,15 @@ import { findMode, type ModeKey } from "../lib/modes";
 import { ModeChips, Suggestions } from "../components/ModeBar";
 import { MessageActions } from "../components/MessageActions";
 import { ComposerPlus } from "../components/ComposerPlus";
+import { ImageViewer } from "../components/ImageViewer";
+import { AiImageBlock, UserAttachment, type MessageAttachment } from "../components/ChatMedia";
+import { editImageInChat } from "../api/imageChat";
+import { askDocument } from "../api/documentChat";
+import {
+  fileToAttachment,
+  imageToAttachment,
+  type Attachment,
+} from "../lib/attachment";
 
 const CONVERSATION_PAGE = 30;
 const HISTORY_LIMIT = 20;
@@ -50,7 +59,20 @@ interface DisplayMessage {
   content: string;
   pending?: boolean;
   stopped?: boolean;
+  // User ne jo tasveer ya PDF bheji (sirf dikhane ke liye).
+  attachment?: MessageAttachment;
+  // AI ne jo tasveer banayi (signed link).
+  image?: string;
 }
+
+// Role (mode) ke hisaab se tasveer aur PDF ke prompt mein chhota sandarbh.
+const MODE_HINT: Record<ModeKey, string> = {
+  general: "",
+  shop: "दुकान के प्रचार के लिए साफ़, आकर्षक और सही लगने वाला बनाओ। ",
+  study: "पढ़ाई के लिए साफ़, सीधा और आसानी से समझ आने वाला रखो। ",
+  legal: "सरकारी या कानूनी कागज़ जैसा साफ़, सादा और व्यवस्थित रखो। ",
+  creator: "सोशल मीडिया के लिए आकर्षक और ध्यान खींचने वाला बनाओ। ",
+};
 
 interface GuestUsage {
   day: string;
@@ -144,6 +166,10 @@ export function ChatPage() {
   const currentLang: string = isMember && profile !== null ? profile.language : guestLang;
   // Role mode (सामान्य, दुकान, …). Abhi sirf screen par; server ko bhejna agle kadam mein.
   const [mode, setMode] = useState<ModeKey>("general");
+  // Chat mein bhejne ke liye chuni hui tasveer ya PDF (composer ke chip mein dikhti hai).
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  // Jo AI ki tasveer full-screen dekhi ja rahi hai.
+  const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null);
 
   // Chal rahi request ka controller. Stop, chat badalne aur screen band hone par abort hota hai.
   const abortRef = useRef<AbortController | null>(null);
@@ -157,7 +183,8 @@ export function ChatPage() {
   const guestBlocked = isGuest && guestLeft === 0;
   // Guest hamesha tayyar. Login user ke liye profile load hona zaroori hai.
   const ready = isGuest || (isMember && profile !== null);
-  const canSend = ready && !guestBlocked && input.trim().length > 0 && !sending;
+  const canSend =
+    ready && !guestBlocked && (input.trim().length > 0 || attachment !== null) && !sending;
   // "दोबारा बनाएँ" abhi sirf wahin, jahan chat server par save nahi hoti (guest, ya history band).
   // Saved chat mein dobara banane par purana jawab DB mein rehta, isliye wahan nahi dikhate.
   const canRegenerate =
@@ -338,8 +365,144 @@ export function ChatPage() {
     setInput((prev) => (prev.trim().length > 0 ? `${prev.trim()} ${text}` : text));
   }
 
+  // Chuni hui file (phone ki photo, camera ya PDF). Login zaroori.
+  async function handleFile(file: File): Promise<void> {
+    if (!isMember) {
+      setError("तस्वीर या PDF भेजने के लिए लॉग-इन करें।");
+      return;
+    }
+    try {
+      const next = await fileToAttachment(file);
+      setError(null);
+      setAttachment((prev) => {
+        if (prev?.kind === "image") URL.revokeObjectURL(prev.previewUrl);
+        return next;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "फ़ाइल नहीं खुल सकी।");
+    }
+  }
+
+  // Chip se hatana: tasveer ka preview URL bhi saaf.
+  function clearAttachment(): void {
+    setAttachment((prev) => {
+      if (prev?.kind === "image") URL.revokeObjectURL(prev.previewUrl);
+      return null;
+    });
+  }
+
+  // Tasveer ya PDF AI ko bhejte hain. Jawab chat mein aata hai: tasveer ya text.
+  // Galti par sandesh hatte hain, aur cheez wapas aati hai, taaki user dobara bhej sake.
+  async function sendAttachment(opts: {
+    label: string;
+    prompt: string;
+    att: Attachment;
+    restoreText: string;
+  }): Promise<void> {
+    const { att } = opts;
+    const label =
+      opts.label.trim().length > 0
+        ? opts.label.trim()
+        : att.kind === "image"
+          ? "इस तस्वीर को बेहतर बनाओ"
+          : "इस PDF का सारांश दो";
+    const prompt = `${MODE_HINT[mode]}${opts.prompt.trim().length > 0 ? opts.prompt.trim() : label}`;
+
+    const userKey = crypto.randomUUID();
+    const assistantKey = crypto.randomUUID();
+    const shown: MessageAttachment =
+      att.kind === "image"
+        ? { kind: "image", name: att.name, previewUrl: att.previewUrl }
+        : { kind: "pdf", name: att.name };
+
+    setInput("");
+    setAttachment(null);
+    setError(null);
+    setSending(true);
+    setMessages((prev) => [
+      ...prev,
+      { key: userKey, role: "user", content: label, attachment: shown },
+      { key: assistantKey, role: "assistant", content: "", pending: true },
+    ]);
+
+    try {
+      const token = await authToken();
+      if (att.kind === "image") {
+        const res = await editImageInChat(token, { imageDataUrl: att.dataUrl, prompt });
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.key === assistantKey
+              ? { ...m, pending: false, content: res.text ?? "", image: res.download_url }
+              : m,
+          ),
+        );
+      } else {
+        const res = await askDocument(token, { pdfDataUrl: att.dataUrl, prompt });
+        setMessages((prev) =>
+          prev.map((m) => (m.key === assistantKey ? { ...m, pending: false, content: res.text } : m)),
+        );
+      }
+    } catch (err) {
+      setError(errorText(err));
+      setMessages((prev) => prev.filter((m) => m.key !== userKey && m.key !== assistantKey));
+      setInput(opts.restoreText);
+      setAttachment((prev) => prev ?? att);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // AI ki bani tasveer ko agle sandesh ke liye chunna: user prompt likhega, AI phir badlega.
+  async function pickForEdit(src: string): Promise<void> {
+    setError(null);
+    try {
+      const next = await imageToAttachment(src, "AI-tasveer.jpg");
+      setAttachment((prev) => {
+        if (prev?.kind === "image") URL.revokeObjectURL(prev.previewUrl);
+        return next;
+      });
+      textareaRef.current?.focus();
+    } catch {
+      setError("यह तस्वीर अभी नहीं खुल पा रही। डाउनलोड करके फिर से चुनें।");
+    }
+  }
+
+  // Ek tap mein background hatana: AI ko seedha kaam dete hain.
+  async function removeBackgroundFrom(src: string): Promise<void> {
+    if (sending) return;
+    setError(null);
+    try {
+      const next = await imageToAttachment(src, "AI-tasveer.jpg");
+      await sendAttachment({
+        label: "बैकग्राउंड हटाओ",
+        prompt:
+          "इस तस्वीर का बैकग्राउंड हटाओ। मुख्य चीज़ को जैसा है वैसा रखो, और बैकग्राउंड को साफ़ सफ़ेद कर दो।",
+        att: next,
+        restoreText: "",
+      });
+    } catch {
+      setError("यह तस्वीर अभी नहीं खुल पा रही। डाउनलोड करके फिर से चुनें।");
+    }
+  }
+
+  function openImage(src: string): void {
+    setViewing({ src, alt: "AI की बनाई तस्वीर" });
+  }
+
   // override: dobara banane ke liye (text + wahan tak ke messages). Na ho to input se bhejte hain.
   async function handleSend(override?: { text: string; base: DisplayMessage[] }): Promise<void> {
+    // Chuni hui tasveer ya PDF ho to wahi AI ko jaati hai (text ke saath, ya bina text ke).
+    if (override === undefined && attachment !== null) {
+      if (sending || !ready || guestBlocked) return;
+      await sendAttachment({
+        label: input,
+        prompt: input,
+        att: attachment,
+        restoreText: input,
+      });
+      return;
+    }
+
     const text = (override ? override.text : input).trim();
     if (!text || sending || !ready || guestBlocked) return;
 
@@ -632,6 +795,16 @@ export function ChatPage() {
 
           {messages.map((m) => (
             <article key={m.key} className={`bubble ${m.role}`}>
+              {m.attachment !== undefined && <UserAttachment attachment={m.attachment} />}
+              {m.image !== undefined && (
+                <AiImageBlock
+                  src={m.image}
+                  disabled={sending}
+                  onOpen={openImage}
+                  onEdit={(src) => void pickForEdit(src)}
+                  onRemoveBackground={(src) => void removeBackgroundFrom(src)}
+                />
+              )}
               <div className="bubble-text">
                 {m.content}
                 {m.pending && (
@@ -721,7 +894,13 @@ export function ChatPage() {
         <ModeChips mode={mode} onChange={setMode} disabled={sending} />
 
         <form className="composer" onSubmit={handleSubmit}>
-          <ComposerPlus modeLabel={findMode(mode).label} disabled={sending} />
+          <ComposerPlus
+            modeLabel={findMode(mode).label}
+            disabled={sending || !ready || guestBlocked}
+            attachment={attachment}
+            onFile={(file) => void handleFile(file)}
+            onClearAttachment={clearAttachment}
+          />
           <textarea
             ref={textareaRef}
             rows={1}
@@ -754,6 +933,10 @@ export function ChatPage() {
           )}
         </form>
       </main>
+
+      {viewing !== null && (
+        <ImageViewer src={viewing.src} alt={viewing.alt} onClose={() => setViewing(null)} />
+      )}
     </div>
   );
 }
