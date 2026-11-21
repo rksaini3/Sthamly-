@@ -1,0 +1,349 @@
+/* Sthamly AI web: chat sidebar (ChatGPT jaisi). Classes cs- se shuru hoti hain,
+   taaki purani styles.css ke .chat-sidebar wale rules se takraav na ho.
+   Rang sab styles.css ke tokens (--surface, --text, --muted, --border) se aate hain,
+   isliye light aur dark dono mode mein apne-aap sahi rehte hain. */
+
+.cs-root {
+  --cs-hover: color-mix(in srgb, var(--text) 8%, transparent);
+  --cs-active: color-mix(in srgb, var(--text) 12%, transparent);
+
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+/* ---------- Header: brand + mobile close ---------- */
+
+.cs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 4px 8px;
+}
+
+.cs-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cs-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cs-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.cs-icon-btn:hover:not(:disabled) {
+  background: var(--cs-hover);
+  color: var(--text);
+}
+
+.cs-mobile-only {
+  display: none;
+}
+
+/* ---------- Naya chat ---------- */
+
+.cs-new {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+}
+
+.cs-new:hover:not(:disabled) {
+  background: var(--cs-hover);
+}
+
+/* ---------- Scroll wala hissa: groups aur list ---------- */
+
+.cs-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.cs-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cs-label {
+  margin: 8px 10px 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.cs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cs-item {
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+}
+
+.cs-item:hover {
+  background: var(--cs-hover);
+}
+
+.cs-item.active {
+  background: var(--cs-active);
+}
+
+.cs-item-open {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-item-del {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.cs-item:hover .cs-item-del,
+.cs-item.active .cs-item-del,
+.cs-item-del:focus-visible {
+  opacity: 1;
+}
+
+.cs-item-del:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.cs-more {
+  align-self: flex-start;
+  margin: 2px 10px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cs-more:hover:not(:disabled) {
+  background: var(--cs-hover);
+  color: var(--text);
+}
+
+.cs-note {
+  margin: 6px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ---------- Neeche: links, user, log-out ---------- */
+
+.cs-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.cs-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.cs-link:hover {
+  background: var(--cs-hover);
+}
+
+.cs-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 8px 6px 8px 10px;
+  border-radius: 10px;
+}
+
+.cs-user:hover {
+  background: var(--cs-hover);
+}
+
+.cs-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.cs-user-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-email {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cs-plan {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cs-login {
+  display: block;
+  margin: 6px 4px 2px;
+  padding: 10px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 14px;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* ---------- Scrim (sirf mobile par dikhta hai) ---------- */
+
+.cs-scrim {
+  display: none;
+}
+
+/* ---------- Mobile: overlay drawer ---------- */
+
+@media (max-width: 768px) {
+  .cs-root {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(280px, 84vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 4px 0 24px var(--scrim);
+  }
+
+  .cs-root.open {
+    transform: translateX(0);
+  }
+
+  .cs-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 25;
+    background: var(--scrim);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .cs-scrim.open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .cs-mobile-only {
+    display: inline-grid;
+  }
+}
+
+/* Touch screen par hatane ka button hamesha dikhe (hover nahi hota). */
+@media (hover: none) {
+  .cs-item-del {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-root,
+  .cs-scrim {
+    transition: none;
+  }
+}
