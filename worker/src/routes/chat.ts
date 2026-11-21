@@ -43,10 +43,29 @@ const SYSTEM_PROMPTS: Record<UserContext["language"], string> = {
   en: "You are Sthamly AI, an assistant for small shopkeepers and entrepreneurs. Reply in simple English. Keep answers short and clear. If you do not know something, say so; do not guess.",
 };
 
+// Role mode: web ke mode chip se aata hai. Ajnaat value aaye to 'general' maana jaata hai.
+export const CHAT_MODES = ["general", "shop", "study", "legal", "creator"] as const;
+export type ChatMode = (typeof CHAT_MODES)[number];
+
+// Har mode ka chhota instruction. Base prompt (bhasha wala) ke baad jodta hai.
+// General mode mein kuch nahi jodte, taaki purana behavior waisa hi rahe.
+const MODE_HINTS: Record<ChatMode, string | null> = {
+  general: null,
+  shop:
+    "The user is a small shopkeeper. Give practical, short answers for running a shop: offers, WhatsApp messages, simple bills, credit (udhaar) reminders. Keep wording polite and easy to copy-paste.",
+  study:
+    "The user is a student. Explain step by step in very simple words, with a short example. For quizzes, give MCQs with the correct answer and a one-line reason. Do not write long essays unless asked.",
+  legal:
+    "The user needs help with legal paperwork (notices, applications, complaint letters). Give a clear draft or explanation. Always end with a one-line note that this is not legal advice and the user should consult a lawyer before acting. Cite a law or section only if you are sure of it; otherwise say you are not sure.",
+  creator:
+    "The user is a content creator. Give short hooks, captions, hashtags as suggestions (not trend claims), thumbnail text and short video scripts (hook, main part, call to action). Keep it energetic and easy to read.",
+};
+
 interface ChatBody {
   message: string;
   conversationId: string | null;
   history: ChatMessage[];
+  mode: ChatMode;
 }
 
 type Caller =
@@ -93,11 +112,14 @@ function approxTokens(text: string): number {
 
 function buildMessages(
   language: UserContext["language"],
+  mode: ChatMode,
   prior: ChatMessage[],
   message: string,
 ): ChatMessage[] {
+  const hint = MODE_HINTS[mode];
+  const system = hint === null ? SYSTEM_PROMPTS[language] : `${SYSTEM_PROMPTS[language]}\n\n${hint}`;
   return [
-    { role: "system", content: SYSTEM_PROMPTS[language] },
+    { role: "system", content: system },
     ...prior,
     { role: "user", content: message },
   ];
@@ -162,7 +184,17 @@ async function parseBody(request: Request): Promise<ChatBody> {
     }
   }
 
-  return { message, conversationId, history };
+  // Mode: na ho ya ajnaat ho to 'general'. Galat type par request galat.
+  let mode: ChatMode = "general";
+  const modeRaw = parsed.mode;
+  if (modeRaw !== undefined && modeRaw !== null) {
+    if (typeof modeRaw !== "string" || !(CHAT_MODES as readonly string[]).includes(modeRaw)) {
+      throw invalid();
+    }
+    mode = modeRaw as ChatMode;
+  }
+
+  return { message, conversationId, history, mode };
 }
 
 // Pehchan: Authorization token ho to user, warna guest. Token galat ho to 'unauthenticated'.
@@ -451,7 +483,7 @@ async function handleUserChat(
     }
   }
 
-  const messages = buildMessages(userCtx.language, priorMessages, body.message);
+  const messages = buildMessages(userCtx.language, body.mode, priorMessages, body.message);
   const inputEstimate = estimateInput(messages);
 
   // 4. Daily token quota
@@ -501,7 +533,7 @@ async function handleGuestChat(
   // Guest ka message limit pehle lagta hai, taaki limit ke baad koi kaam na ho.
   await reserveGuestMessage(env, guest);
 
-  const messages = buildMessages(GUEST_LANGUAGE, body.history, body.message);
+  const messages = buildMessages(GUEST_LANGUAGE, body.mode, body.history, body.message);
   const inputEstimate = estimateInput(messages);
 
   return runChat({
