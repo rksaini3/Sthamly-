@@ -1,8 +1,9 @@
 # Sthamly AI Worker: Cloudflare config (dev aur production)
 # Secrets yahan NAHI. Woh `wrangler secret put <NAME> --env <env>` se set hote hain.
+# Live Worker ka naam: sthamly (https://sthamly.rajasaini22086.workers.dev).
 # Dev Worker ka naam: sthamly-api-dev. Production abhi placeholder hai.
 
-name = "sthamly-api"
+name = "sthamly"
 main = "src/index.ts"
 compatibility_date = "2026-01-01"
 workers_dev = true
