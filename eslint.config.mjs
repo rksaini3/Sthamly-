@@ -1,14 +1,21 @@
-import { FlatCompat } from "@eslint/eslintrc";
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
+import nextTypescript from "eslint-config-next/typescript";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const compat = new FlatCompat({ baseDirectory: __dirname });
-
+// eslint-config-next 16 खुद flat config देता है, इसलिए FlatCompat की ज़रूरत नहीं।
 export default [
   {
-    ignores: [".next/**", "node_modules/**", "next-env.d.ts", "types/database.ts"],
+    ignores: [".next/**", "node_modules/**", "next-env.d.ts", "types/database.ts", "worker/**", "web/**", "shell/**"],
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...nextCoreWebVitals,
+  ...nextTypescript,
+  {
+    // नए React नियम (effect में setState, render में purity, apostrophe) की मौजूदा जगहें
+    // अभी चेतावनी हैं, गलती नहीं। UI बदलने से पहले इन्हें अलग से ठीक किया जाएगा।
+    rules: {
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/immutability": "warn",
+      "react-hooks/purity": "warn",
+      "react/no-unescaped-entities": "warn",
+    },
+  },
 ];
