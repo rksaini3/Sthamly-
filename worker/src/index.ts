@@ -13,6 +13,9 @@
 //   *      /api/images                   image banao aur list (routes/images.ts)
 //   GET    /api/images/:id/url           image ka signed link (routes/images.ts)
 //   DELETE /api/images/:id               apni image hatao (routes/images.ts)
+//   POST   /api/project                  project ka plan banao (routes/project.ts)
+//   GET    /api/project/:id              project aur uske steps ki sthiti
+//   POST   /api/project/:id/next         agla step chalao (ek call = ek step)
 // CORS: sirf ALLOWED_ORIGINS wale origins. Baaki origins ko koi ACAO header nahi jaata.
 // Capacitor (Android) ke origins ALLOWED_ORIGINS mein hone chahiye, jaise https://localhost.
 // Scheduled: har 15 minute budget check, taaki alert traffic ke bina bhi chale.
@@ -22,6 +25,7 @@ import { loadConfig, type Config, type Env } from "./env";
 import { ApiError, toErrorResponse } from "./errors";
 import { handleChat } from "./routes/chat";
 import { handleCreate } from "./routes/create";
+import { handleProject } from "./routes/project";
 import { handleHistory } from "./routes/history";
 import { handleImages } from "./routes/images";
 import { handleUser } from "./routes/user";
@@ -35,7 +39,7 @@ const ALLOWED_HEADERS =
 const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
-type Route = "chat" | "history" | "user" | "voice" | "create" | "images";
+type Route = "chat" | "history" | "user" | "voice" | "create" | "images" | "project";
 
 // Request ke Origin ko allowed list se milata hai. Na mile to null.
 function allowedOrigin(request: Request, config: Config): string | null {
@@ -130,6 +134,7 @@ function routeFor(pathname: string): Route | null {
   if (pathname.startsWith("/api/user/")) return "user";
   if (pathname.startsWith("/api/voice/")) return "voice";
   if (pathname === "/api/create" || pathname.startsWith("/api/create/")) return "create";
+  if (pathname === "/api/project" || pathname.startsWith("/api/project/")) return "project";
   if (pathname === "/api/images" || pathname.startsWith("/api/images/")) return "images";
   return null;
 }
@@ -180,6 +185,9 @@ export default {
           break;
         case "images":
           response = await handleImages(request, env, ctx);
+          break;
+        case "project":
+          response = await handleProject(request, env, ctx);
           break;
         default:
           throw new ApiError("invalid_request", "रास्ता नहीं मिला।");
