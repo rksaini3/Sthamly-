@@ -9,7 +9,6 @@ const serverSchema = z.object({
   CRON_SECRET: z.string().min(16),
   // Worker का base URL (जैसे https://sthamly.<account>.workers.dev), orchestrator के proxy routes इसी से बोलते हैं।
   WORKER_API_URL: z.string().url().optional(),
-  FAL_KEY: z.string().optional(),
   OPENROUTER_API_KEY: z.string().optional(),
   OPENROUTER_MODEL: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
