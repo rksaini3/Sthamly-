@@ -16,7 +16,7 @@
 //   POST   /api/project                  project ka plan banao (routes/project.ts)
 //   GET    /api/project/:id              project aur uske steps ki sthiti
 //   POST   /api/project/:id/next         agla step chalao (ek call = ek step)
-// CORS: sirf ALLOWED_ORIGINS wale origins. Baaki origins ko koi ACAO header nahi jaata.
+// CORS: sirf ALLOWED_ORIGINS wale origins aur is project ke Vercel preview URLs. Baaki origins ko koi ACAO header nahi jaata.
 // Capacitor (Android) ke origins ALLOWED_ORIGINS mein hone chahiye, jaise https://localhost.
 // Scheduled: har 15 minute budget check, taaki alert traffic ke bina bhi chale.
 
@@ -39,13 +39,24 @@ const ALLOWED_HEADERS =
 const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
+// Vercel ke preview URLs (jaise web-xxxx-rajasaini22086-7683s-projects.vercel.app).
+// Har nayi preview deploy ka naya URL banta hai, isliye regex se maante hain.
+// Production ke liye ye line hata sakte hain.
+const PREVIEW_ORIGIN_RE =
+  /^https:\/\/web-[a-z0-9-]+-rajasaini22086-7683s-projects\.vercel\.app$/;
+
 type Route = "chat" | "history" | "user" | "voice" | "create" | "images" | "project";
+
+// Origin allowed list mein hai ya preview regex se match hota hai.
+function isAllowedOrigin(origin: string, config: Config): boolean {
+  return config.allowedOrigins.includes(origin) || PREVIEW_ORIGIN_RE.test(origin);
+}
 
 // Request ke Origin ko allowed list se milata hai. Na mile to null.
 function allowedOrigin(request: Request, config: Config): string | null {
   const origin = request.headers.get("Origin");
   if (origin === null) return null;
-  return config.allowedOrigins.includes(origin) ? origin : null;
+  return isAllowedOrigin(origin, config) ? origin : null;
 }
 
 // Response mein CORS headers jodta hai. Origin allowed na ho to response waisa hi rehta hai.
