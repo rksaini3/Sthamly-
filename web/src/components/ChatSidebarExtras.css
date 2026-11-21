@@ -1,0 +1,142 @@
+/* Sthamly AI web: sidebar ke naye hisse. Pin ka button, profile card aur profile menu.
+   Rang styles.css ke tokens se aate hain, isliye light aur dark dono mode mein sahi rehte hain.
+   Ye ChatSidebar.css ke baad load hota hai, isliye iske rules purane ko overwrite karte hain. */
+
+/* ---------- Chat ke saath pin ka button ---------- */
+
+.cs-item-act {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.cs-item:hover .cs-item-act,
+.cs-item.active .cs-item-act,
+.cs-item-act.on,
+.cs-item-act:focus-visible {
+  opacity: 1;
+}
+
+.cs-item-act.on {
+  color: var(--accent-strong);
+}
+
+.cs-item-act:hover:not(:disabled) {
+  background: var(--cs-hover);
+  color: var(--text);
+}
+
+@media (hover: none) {
+  .cs-item-act {
+    opacity: 1;
+  }
+}
+
+/* ---------- Profile card (neeche, sirf ek) ---------- */
+
+.cs-menu-wrap {
+  position: relative;
+}
+
+.cs-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.cs-user-btn:hover {
+  background: var(--cs-hover);
+}
+
+.cs-user-btn .cs-chevron {
+  font-size: 14px;
+  margin-left: auto;
+}
+
+/* ---------- Profile menu (upar ki taraf khulta hai) ---------- */
+
+.cs-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 8px 28px var(--scrim);
+}
+
+.cs-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+}
+
+.cs-menu-item:hover {
+  background: var(--cs-hover);
+}
+
+.cs-menu-label {
+  flex: 1;
+}
+
+.cs-menu-value {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.cs-menu-item.danger {
+  color: var(--danger);
+}
+
+.cs-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+
+/* Menu ke andar bhasha ki list: poori chaudai mein, andar scroll. */
+.cs-menu .cs-lang-list {
+  max-height: 220px;
+  margin: 0 0 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-item-act,
+  .cs-menu-item {
+    transition: none;
+  }
+}
