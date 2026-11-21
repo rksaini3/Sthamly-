@@ -15,6 +15,7 @@
 //   DELETE /api/images/:id               apni image hatao (routes/images.ts)
 //   POST   /api/image-tools/remove-background  tasveer ka background hatao, PNG wapas (routes/image-tools.ts)
 //   POST   /api/image-chat/edit          chat mein tasveer edit karo, naya file link (routes/image-chat.ts)
+//   POST   /api/document-chat/ask        chat mein PDF par sawal ya summary (routes/document-chat.ts)
 //   POST   /api/project                  project ka plan banao (routes/project.ts)
 //   GET    /api/project/:id              project aur uske steps ki sthiti
 //   POST   /api/project/:id/next         agla step chalao (ek call = ek step)
@@ -32,6 +33,7 @@ import { handleHistory } from "./routes/history";
 import { handleImages } from "./routes/images";
 import { handleImageTools } from "./routes/image-tools";
 import { handleImageChat } from "./routes/image-chat";
+import { handleDocumentChat } from "./routes/document-chat";
 import { handleUser } from "./routes/user";
 import { handleVoice } from "./routes/voice";
 import { createSupabase } from "./supabase";
@@ -52,6 +54,7 @@ type Route =
   | "images"
   | "imageTools"
   | "imageChat"
+  | "documentChat"
   | "project";
 
 // Request ke Origin ko allowed list se milata hai. Na mile to null.
@@ -151,6 +154,7 @@ function routeFor(pathname: string): Route | null {
   if (pathname === "/api/images" || pathname.startsWith("/api/images/")) return "images";
   if (pathname.startsWith("/api/image-tools/")) return "imageTools";
   if (pathname.startsWith("/api/image-chat/")) return "imageChat";
+  if (pathname.startsWith("/api/document-chat/")) return "documentChat";
   return null;
 }
 
@@ -206,6 +210,9 @@ export default {
           break;
         case "imageChat":
           response = await handleImageChat(request, env, ctx);
+          break;
+        case "documentChat":
+          response = await handleDocumentChat(request, env, ctx);
           break;
         case "project":
           response = await handleProject(request, env, ctx);
