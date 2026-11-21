@@ -22,6 +22,7 @@ import {
   type StoredMessage,
 } from "../api/client";
 import { PushToTalkButton } from "../voice/PushToTalkButton";
+import { ChatSidebar } from "../components/ChatSidebar";
 
 const CONVERSATION_PAGE = 30;
 const HISTORY_LIMIT = 20;
@@ -479,85 +480,25 @@ export function ChatPage() {
 
   return (
     <div className="chat-layout">
-      <aside className={`chat-sidebar${sidebarOpen ? " open" : ""}`} aria-label="बातचीत की सूची">
-        <div className="sidebar-top">
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleNewChat}
-            disabled={status === "loading"}
-          >
-            + नई बातचीत
-          </button>
-          <button
-            type="button"
-            className="btn-ghost sidebar-close"
-            onClick={() => setSidebarOpen(false)}
-          >
-            बंद करें
-          </button>
-        </div>
-
-        {isMember &&
-          (profile === null ? (
-            <p className="muted">लोड हो रहा है…</p>
-          ) : profile.history_enabled ? (
-            <>
-              <ul className="conv-list">
-                {conversations.map((c) => (
-                  <li key={c.id} className={c.id === activeId ? "conv-item active" : "conv-item"}>
-                    <button
-                      type="button"
-                      className="conv-open"
-                      onClick={() => openConversation(c.id)}
-                      disabled={sending}
-                    >
-                      {c.title}
-                    </button>
-                    <button
-                      type="button"
-                      className="conv-delete"
-                      aria-label="बातचीत हटाएँ"
-                      onClick={() => void handleDelete(c.id)}
-                      disabled={sending}
-                    >
-                      ✕
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {nextCursor !== null && (
-                <button type="button" className="btn-ghost" onClick={() => void handleLoadMore()}>
-                  और देखें
-                </button>
-              )}
-            </>
-          ) : (
-            <p className="muted">इतिहास बंद है। सेटिंग्स में चालू करें।</p>
-          ))}
-
-        {isGuest && (
-          <p className="muted small">
-            मेहमान मोड में बातचीत सेव नहीं होती। लॉग-इन करने पर इतिहास मिलेगा।
-          </p>
-        )}
-
-        <nav className="sidebar-nav">
-          <Link to="/create">बनाएँ (तस्वीर, स्लाइड, वेबसाइट, दस्तावेज़)</Link>
-          {isMember ? (
-            <>
-              <Link to="/usage">उपयोग</Link>
-              <Link to="/settings">सेटिंग्स</Link>
-              <button type="button" className="btn-ghost" onClick={() => void handleSignOut()}>
-                लॉग-आउट
-              </button>
-            </>
-          ) : (
-            <Link to="/login">लॉग-इन करें</Link>
-          )}
-        </nav>
-        {isMember && user?.email && <p className="muted small sidebar-user">{user.email}</p>}
-      </aside>
+      <ChatSidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        isGuest={isGuest}
+        isMember={isMember}
+        email={isMember ? (user?.email ?? null) : null}
+        planName={plan?.name ?? null}
+        historyState={profile === null ? "loading" : profile.history_enabled ? "on" : "off"}
+        conversations={conversations}
+        activeId={activeId}
+        hasMore={nextCursor !== null}
+        busy={sending}
+        newChatDisabled={status === "loading"}
+        onNewChat={handleNewChat}
+        onOpen={openConversation}
+        onDelete={(id) => void handleDelete(id)}
+        onLoadMore={() => void handleLoadMore()}
+        onSignOut={() => void handleSignOut()}
+      />
 
       <main className="chat-main">
         <header className="chat-header">
