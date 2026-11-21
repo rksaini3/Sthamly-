@@ -380,6 +380,7 @@ export function ChatPage() {
           conversationId: isGuest ? null : activeId,
           history: sendHistory ? priorTurns : undefined,
           idempotencyKey: crypto.randomUUID(),
+          mode,
         },
         {
           onDelta: (chunk) => {
