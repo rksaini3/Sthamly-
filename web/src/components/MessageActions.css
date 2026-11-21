@@ -1,0 +1,14 @@
+/* Sthamly AI web: jawab ke neeche ke buttons ka layout. Icon aur label ek line mein.
+   Baaki rang aur hover ChatExtras.css mein hain. */
+
+.msg-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.msg-action.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
