@@ -233,6 +233,8 @@ export interface StreamChatInput {
   history?: ChatTurn[];
   // Har send ke liye naya key: retry ka double usage nahi banta.
   idempotencyKey: string;
+  // Role mode. Na ho to server 'general' maanta hai.
+  mode?: "general" | "shop" | "study" | "legal" | "creator";
 }
 
 export interface StreamChatHandlers {
@@ -311,6 +313,7 @@ export async function streamChat(
     conversation_id: input.conversationId,
   };
   if (input.history) payload.history = input.history;
+  if (input.mode) payload.mode = input.mode;
 
   // Login hai to token, nahi to guest ID. Dono ek saath nahi jaate.
   const identity: Record<string, string> =
