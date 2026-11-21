@@ -1,0 +1,140 @@
+/* Sthamly AI web: plan aur top-up screen. Rang styles.css ke tokens se aate hain (light aur dark dono). */
+
+.plans-page {
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 24px 16px 40px;
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.plans-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plans-head h1 {
+  font-size: 26px;
+  margin: 4px 0 0;
+  color: var(--text);
+}
+
+.plans-back {
+  align-self: flex-start;
+  font-size: 14px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.plans-back:hover {
+  color: var(--text);
+}
+
+.plans-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 820px) {
+  .plans-grid {
+    grid-template-columns: repeat(3, 1fr);
+    align-items: stretch;
+  }
+}
+
+.plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 20px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.plan-card.featured {
+  border: 2px solid var(--accent);
+  background: var(--bg);
+}
+
+.plan-card h2 {
+  margin: 0;
+  font-size: 19px;
+  color: var(--text);
+}
+
+.plan-tag {
+  position: absolute;
+  top: -11px;
+  left: 20px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.price {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.benefits {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.pack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pack {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.pack-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pack .price {
+  font-size: 18px;
+}
+
+.plan-cta {
+  margin-top: auto;
+  width: 100%;
+  padding: 11px 16px;
+}
+
+.plans-login {
+  text-align: center;
+}
