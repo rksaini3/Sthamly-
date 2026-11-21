@@ -1,7 +1,7 @@
 # Sthamly AI: CI (Blueprint 3.0, section 11)
 # Har pull request aur main par chalta hai. main protected hai: sab jobs pass hona zaroori hai.
 # Jobs: secret scan, root (typecheck, tests), Worker typecheck aur tests, web typecheck, build aur tests.
-# Deploy is file mein nahi hai. Worker ka deploy alag workflow mein hoga.
+# Deploy is file mein nahi hai: Worker aur web dono ka deploy apne platform (Cloudflare, Vercel) se hota hai.
 #
 # Zaroori: har package folder (root, web, worker) ka package-lock.json repo mein commit hona chahiye,
 # warna npm ci fail hoga.
