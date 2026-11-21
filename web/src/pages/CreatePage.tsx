@@ -20,6 +20,7 @@ import {
   type CreateKind,
   type CreatedFile,
 } from "../api/create";
+import { ImageViewer } from "../components/ImageViewer";
 
 const MAX_PROMPT_CHARS = 2000;
 
@@ -100,6 +101,8 @@ function Preview({ file, token }: { file: CreatedFile; token: string }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Tasveer par tap karne par full-screen viewer khulta hai.
+  const [viewing, setViewing] = useState(false);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -137,11 +140,23 @@ function Preview({ file, token }: { file: CreatedFile; token: string }) {
 
   if (imageUrl !== null) {
     return (
-      <img
-        src={imageUrl}
-        alt={file.title}
-        style={{ maxWidth: "100%", borderRadius: 12 }}
-      />
+      <>
+        <button
+          type="button"
+          onClick={() => setViewing(true)}
+          aria-label="तस्वीर बड़ी करके देखें"
+          style={{ padding: 0, border: "none", background: "transparent", display: "block", maxWidth: "100%" }}
+        >
+          <img
+            src={imageUrl}
+            alt={file.title}
+            style={{ maxWidth: "100%", borderRadius: 12, display: "block" }}
+          />
+        </button>
+        {viewing && (
+          <ImageViewer src={imageUrl} alt={file.title} onClose={() => setViewing(false)} />
+        )}
+      </>
     );
   }
 
