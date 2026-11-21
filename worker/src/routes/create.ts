@@ -53,7 +53,7 @@ const MAX_BODY_BYTES = 16 * 1024;
 const TITLE_FROM_PROMPT_CHARS = 40;
 
 // Kharcha (rupees, estimate). Vendor price se verify karke badlein.
-const COST_INR = {
+export const COST_INR = {
   image: 3.5,
   slides: 2,
   website: 2,
@@ -143,11 +143,11 @@ function readIdempotencyKey(request: Request): string | null {
 }
 
 // Budget feature: image ko 'vision' (mehnga) maante hain, baaki text-based ko 'document'.
-function budgetFeatureFor(kind: CreateKind): CostFeature {
+export function budgetFeatureFor(kind: CreateKind): CostFeature {
   return kind === "image" ? "vision" : "document";
 }
 
-async function planLimits(
+export async function planLimits(
   db: SupabaseClient,
   plan: string,
 ): Promise<{ dailyImages: number; dailyCreations: number }> {
@@ -160,7 +160,7 @@ async function planLimits(
   return { dailyImages: row.daily_images, dailyCreations: row.daily_creations };
 }
 
-async function countToday(
+export async function countToday(
   db: SupabaseClient,
   fn: "user_images_today" | "user_creations_today",
   userId: string,
@@ -169,7 +169,7 @@ async function countToday(
   return typeof used === "number" ? used : 0;
 }
 
-async function insertPending(
+export async function insertPending(
   db: SupabaseClient,
   userId: string,
   kind: CreateKind,
@@ -188,7 +188,7 @@ async function insertPending(
   return row;
 }
 
-async function markReady(
+export async function markReady(
   db: SupabaseClient,
   fileId: string,
   path: string,
@@ -203,7 +203,7 @@ async function markReady(
   });
 }
 
-async function markFailed(db: SupabaseClient, fileId: string): Promise<void> {
+export async function markFailed(db: SupabaseClient, fileId: string): Promise<void> {
   await db
     .update("generated_files", `id=eq.${fileId}`, { status: "failed" })
     .catch(() => undefined);
@@ -330,7 +330,7 @@ async function produceDocument(
   };
 }
 
-async function produce(
+export async function produce(
   kind: CreateKind,
   env: Env,
   config: Config,
@@ -343,7 +343,7 @@ async function produce(
   return produceDocument(env, prompt, signal);
 }
 
-async function recordUsage(
+export async function recordUsage(
   db: SupabaseClient,
   p: {
     userId: string;
