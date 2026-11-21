@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { LoginPage } from "./pages/LoginPage";
 import { ChatPage } from "./pages/ChatPage";
 import { CreatePage } from "./pages/CreatePage";
+import { PlansPage } from "./pages/PlansPage";
 import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -56,6 +57,9 @@ function AppRoutes() {
 
       {/* Creation sabke liye khula hai. Guest ko CreatePage ke andar login card dikhta hai. */}
       <Route path="/create" element={<CreatePage />} />
+
+      {/* Plan aur top-up: sabke liye khula. Kharidne ke liye login PlansPage mein poochha jaata hai. */}
+      <Route path="/plans" element={<PlansPage />} />
 
       <Route
         path="/usage"
