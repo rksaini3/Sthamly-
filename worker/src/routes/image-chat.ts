@@ -12,6 +12,7 @@ import { ApiError, toErrorResponse } from "../errors";
 import { loadUserContext, type UserContext } from "../plan";
 import { cleanImagePrompt } from "../providers/image";
 import { editImageWithGemini, type InputImage } from "../providers/gemini-image";
+import { isBackgroundRemoval, removeBackgroundWithCloudflare } from "../providers/cf-image";
 import { ProviderError } from "../providers/types";
 import { signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
@@ -210,13 +211,19 @@ async function editImage(
   const row = await insertPending(db, ctx.userId, title, requestId);
 
   try {
-    const edited = await editImageWithGemini(env, {
-      model: GEMINI_EDIT_MODEL,
-      prompt,
-      image: body.image,
-      // Client ne request band ki (Stop) to Gemini ka call bhi band ho.
-      signal: request.signal,
-    });
+    // Background hatana: Cloudflare Workers AI (free tier). Baaki edit: Gemini (abhi billing wala).
+    const edited = isBackgroundRemoval(prompt)
+      ? await removeBackgroundWithCloudflare(
+          env,
+          `data:${body.image.mimeType};base64,${body.image.base64}`,
+        )
+      : await editImageWithGemini(env, {
+          model: GEMINI_EDIT_MODEL,
+          prompt,
+          image: body.image,
+          // Client ne request band ki (Stop) to Gemini ka call bhi band ho.
+          signal: request.signal,
+        });
 
     const stored = await uploadObject(env, {
       userId: ctx.userId,
