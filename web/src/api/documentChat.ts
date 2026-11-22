@@ -59,7 +59,7 @@ async function errorFrom(res: Response): Promise<ApiClientError> {
 // PDF (data URL) aur prompt bhejta hai. Jawab mein AI ka text milta hai.
 export async function askDocument(
   token: string,
-  input: { pdfDataUrl: string; prompt: string },
+  input: { pdfDataUrl: string; prompt: string; signal?: AbortSignal },
 ): Promise<DocumentChatResult> {
   let res: Response;
   try {
@@ -70,6 +70,7 @@ export async function askDocument(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ pdf: input.pdfDataUrl, prompt: input.prompt }),
+      signal: input.signal,
     });
   } catch {
     throw new ApiClientError("internal", "नेटवर्क में दिक्कत है। दोबारा कोशिश करें।", true, null);
