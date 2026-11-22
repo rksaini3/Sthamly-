@@ -1,27 +1,80 @@
-/* Sthamly AI web: composer mein chhoti chip (chuni hui tasveer ya PDF, ya galti ka message).
-   Ye chip composer ke upar tairti hai, textarea ko dhakti nahi. */
+/* Sthamly AI web: composer ka dabba (+, text, mic, bhejo sab ek hi dabbe mein), uske andar chip,
+   aur AI ke banane ke dauran dikhne wali status patti. */
 
+.composer-form {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.composer-box {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: var(--surface);
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.composer-input {
+  flex: 1;
+  min-width: 0;
+  max-height: 160px;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  padding: 10px 6px;
+}
+
+.composer-input::placeholder {
+  color: var(--muted);
+}
+
+.composer-mic {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.composer-action {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--surface);
+}
+
+.composer-action:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Chip ab dabbe ke andar, text ke upar. */
 .cp-chip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  z-index: 15;
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: min(320px, 80vw);
-  padding: 8px 8px 8px 12px;
+  max-width: 100%;
+  margin: 4px 4px 6px;
+  padding: 6px 6px 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: 14px;
+  background: var(--bg);
   color: var(--text);
-  box-shadow: 0 6px 18px var(--scrim);
-}
-
-.cp-chip-error {
-  border-color: var(--danger);
-  background: var(--danger-bg);
-  color: var(--danger);
 }
 
 .cp-chip-text {
@@ -44,17 +97,13 @@
   color: var(--muted);
 }
 
-.cp-chip-error .cp-chip-text span {
-  color: var(--danger);
-}
-
 .cp-chip-thumb {
   width: 44px;
   height: 44px;
   flex-shrink: 0;
   border-radius: 8px;
   object-fit: cover;
-  background: var(--bg);
+  background: var(--surface);
 }
 
 .cp-chip-doc {
@@ -82,6 +131,47 @@
 }
 
 .cp-chip-x:hover {
-  background: var(--cs-hover, rgb(127 127 127 / 0.12));
+  background: color-mix(in srgb, var(--text) 10%, transparent);
   color: var(--text);
+}
+
+/* AI ke banane ke dauran status: chalti hui patti + text. */
+.gen-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 10px 2px;
+}
+
+.gen-bar {
+  width: 56px;
+  height: 4px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--accent-strong) 0%, transparent 100%);
+  background-size: 200% 100%;
+  animation: gen-slide 1.2s linear infinite;
+}
+
+@keyframes gen-slide {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .composer-form {
+    padding: 8px 12px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gen-bar {
+    animation: none;
+  }
 }
