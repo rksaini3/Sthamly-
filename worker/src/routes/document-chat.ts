@@ -161,7 +161,8 @@ export async function handleDocumentChat(
         model: GEMINI_DOCUMENT_MODEL,
         prompt,
         pdfBase64: body.pdfBase64,
-        signal: new AbortController().signal,
+        // Client ne request band ki (Stop) to Gemini ka call bhi band ho.
+        signal: request.signal,
       });
 
       execCtx.waitUntil(
