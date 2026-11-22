@@ -214,7 +214,8 @@ async function editImage(
       model: GEMINI_EDIT_MODEL,
       prompt,
       image: body.image,
-      signal: new AbortController().signal,
+      // Client ne request band ki (Stop) to Gemini ka call bhi band ho.
+      signal: request.signal,
     });
 
     const stored = await uploadObject(env, {
