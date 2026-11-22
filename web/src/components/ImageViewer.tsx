@@ -3,6 +3,7 @@
 // Esc ya ✕ se band. Bahar ka background dhundhla rehta hai.
 
 import { useEffect, useState, type ReactNode } from "react";
+import { toWhiteBackground } from "../lib/whiteBackground";
 import "./ImageViewer.css";
 
 interface ImageViewerProps {
@@ -48,6 +49,24 @@ export function ImageViewer({ src, alt, onClose }: ImageViewerProps) {
     };
   }, [onClose]);
 
+  // Paardarshi tasveer ko safed background ke saath download karna.
+  async function downloadWhite(): Promise<void> {
+    try {
+      const blob = await toWhiteBackground(src);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "sthamly-white.png";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNote(null);
+    } catch {
+      setNote("सफ़ेद बैकग्राउंड नहीं बन सका। तस्वीर फिर से खोलें।");
+    }
+  }
+
   async function share(): Promise<void> {
     if (!canShare) {
       setNote("इस browser में शेयर सुविधा नहीं है।");
@@ -90,6 +109,14 @@ export function ImageViewer({ src, alt, onClose }: ImageViewerProps) {
               <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
             </Icon>
           </a>
+          <button
+            type="button"
+            className="iv-share"
+            onClick={() => void downloadWhite()}
+            title="सफ़ेद बैकग्राउंड के साथ डाउनलोड"
+          >
+            सफ़ेद बैकग्राउंड
+          </button>
           <button type="button" className="iv-share" onClick={() => void share()}>
             शेयर
           </button>
