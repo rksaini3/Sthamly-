@@ -17,6 +17,7 @@ export interface Env {
   // ---- Secrets (wrangler secret put) ----
   SUPABASE_SERVICE_ROLE_KEY: string;
   GROQ_API_KEY: string;
+  OPENROUTER_API_KEY?: string;        // tasveer ke sawal (vision) ke liye. Free models. Zaroori hai ask feature ke liye.
   GEMINI_API_KEY?: string;            // abhi optional: billing ke baad hi zaroori. Image aur PDF Cloudflare/Groq par chalte hain.
   TOKEN_ENCRYPTION_KEY: string;
   CRON_SECRET: string;
@@ -66,7 +67,7 @@ export function loadConfig(env: Env): Config {
 }
 
 // Secrets ki presence check. Value kabhi log nahi hoti, sirf naam.
-// GEMINI_API_KEY is list mein nahi: uski zaroorat sirf us call par padegi jo use Gemini karta hai.
+// OPENROUTER_API_KEY aur GEMINI_API_KEY is list mein nahi: unki zaroorat sirf us call par padegi jo unhe use karta hai.
 export function assertSecretsPresent(env: Env): void {
   const required = [
     "SUPABASE_SERVICE_ROLE_KEY",
