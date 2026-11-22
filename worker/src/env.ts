@@ -17,10 +17,16 @@ export interface Env {
   // ---- Secrets (wrangler secret put) ----
   SUPABASE_SERVICE_ROLE_KEY: string;
   GROQ_API_KEY: string;
-  OPENROUTER_API_KEY?: string;        // tasveer ke sawal (vision) ke liye. Free models. Zaroori hai ask feature ke liye.
   GEMINI_API_KEY?: string;            // abhi optional: billing ke baad hi zaroori. Image aur PDF Cloudflare/Groq par chalte hain.
   TOKEN_ENCRYPTION_KEY: string;
   CRON_SECRET: string;
+
+  // ---- WhatsApp OTP login (optional: sirf tab chahiye jab phone login chalu ho) ----
+  SUPABASE_AUTH_HOOK_SECRET?: string; // Supabase Send SMS hook ka secret (v1,whsec_...)
+  WHATSAPP_TOKEN?: string;            // Meta permanent access token
+  WHATSAPP_PHONE_NUMBER_ID?: string;  // Meta WhatsApp phone number ID
+  WHATSAPP_OTP_TEMPLATE?: string;     // approved authentication template ka naam
+  WHATSAPP_OTP_LANG?: string;         // template ki language code, jaise "en" ya "hi"
 }
 
 // Parsed, typed config jo baaki code use karega.
@@ -67,7 +73,7 @@ export function loadConfig(env: Env): Config {
 }
 
 // Secrets ki presence check. Value kabhi log nahi hoti, sirf naam.
-// OPENROUTER_API_KEY aur GEMINI_API_KEY is list mein nahi: unki zaroorat sirf us call par padegi jo unhe use karta hai.
+// GEMINI_API_KEY aur WhatsApp wale secrets is list mein nahi: unki zaroorat sirf unke call par padegi.
 export function assertSecretsPresent(env: Env): void {
   const required = [
     "SUPABASE_SERVICE_ROLE_KEY",
