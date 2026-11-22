@@ -1,6 +1,6 @@
 // Sthamly AI Worker: POST /api/image-chat/edit (chat mein tasveer bhejo)
 // Sirf login user. Body: { image: "data:image/...;base64,...", prompt: string, intent?: "auto" | "ask" | "edit" | "remove_bg" }.
-// intent "auto" (default): server prompt padh kar tay karta hai. "ask": tasveer dekh kar text jawab (Cloudflare vision).
+// intent "auto" (default): server prompt padh kar tay karta hai. "ask": tasveer dekh kar text jawab (OpenRouter free vision).
 // "edit": tasveer badlo ya banao (Cloudflare FLUX.2 klein). "remove_bg": background hatao (Cloudflare bria).
 // Edit ke order: login -> body -> intent -> daily limit -> budget -> pending row -> edit -> storage -> ready row -> signed link.
 // Nakaam hone par row 'failed' hoti hai, aur failed row limit mein nahi ginti (slot wapas aata hai).
@@ -15,7 +15,7 @@ import { cleanImagePrompt } from "../providers/image";
 import type { InputImage } from "../providers/gemini-image";
 import { removeBackgroundWithCloudflare } from "../providers/cf-image";
 import { CF_EDIT_MODEL, editImageWithCloudflare } from "../providers/cf-image-edit";
-import { CF_VISION_MODEL, askImageWithCloudflare } from "../providers/cf-vision";
+import { askImageWithOpenRouter } from "../providers/openrouter-vision";
 import { classifyImageIntent, type ResolvedIntent } from "../providers/intent";
 import { ProviderError } from "../providers/types";
 import { signedDownloadUrl, uploadObject } from "../storage";
@@ -30,7 +30,8 @@ const INTENTS: readonly RequestIntent[] = ["auto", "ask", "edit", "remove_bg"];
 const EDIT_COST_INR_ESTIMATE = 3.5;
 const EDIT_FEATURE = "image";
 const DEFAULT_EDIT = "इस तस्वीर को बेहतर बनाओ।";
-// Sawal (vision) ka kharcha aur daily limit.
+// Sawal (vision) ka kharcha aur daily limit. OpenRouter free models par ye kharcha 0 hai,
+// lekin budget ginti ke liye chhota estimate rakha hai.
 const ASK_COST_INR_ESTIMATE = 0.5;
 const ASK_FEATURE = "vision";
 const ASK_DAILY_LIMIT = 30;
@@ -238,16 +239,21 @@ async function recordEditUsage(
   );
 }
 
-// Usage: sawal (vision) ka record.
-async function recordAskUsage(db: SupabaseClient, userId: string, traceId: string): Promise<void> {
+// Usage: sawal (vision) ka record. Model wahi jo jawab de paya.
+async function recordAskUsage(
+  db: SupabaseClient,
+  userId: string,
+  traceId: string,
+  model: string,
+): Promise<void> {
   await db.insert(
     "usage_logs",
     {
       user_id: userId,
       request_id: `${userId}:vision:${traceId}`,
       feature: ASK_FEATURE,
-      provider: "cloudflare",
-      model: CF_VISION_MODEL,
+      provider: "openrouter",
+      model,
       input_tokens: 0,
       output_tokens: 0,
       estimated_cost_inr: Number(ASK_COST_INR_ESTIMATE.toFixed(4)),
@@ -274,15 +280,15 @@ async function askImage(
       isFreePlan: ctx.plan.plan === "free",
     });
 
-    const text = await askImageWithCloudflare(env, { question, image });
+    const answer = await askImageWithOpenRouter(env, { question, image });
 
     execCtx.waitUntil(
-      recordAskUsage(db, ctx.userId, traceId).catch(() => {
+      recordAskUsage(db, ctx.userId, traceId, answer.model).catch(() => {
         console.error(JSON.stringify({ event: "vision_usage_write_failed", request_id: traceId }));
       }),
     );
 
-    return json({ file: null, download_url: null, text, request_id: traceId }, 200);
+    return json({ file: null, download_url: null, text: answer.text, request_id: traceId }, 200);
   } catch (err) {
     await releaseAskSlot(env, ctx.userId);
     if (err instanceof ProviderError) throw new ApiError("provider_unavailable");
