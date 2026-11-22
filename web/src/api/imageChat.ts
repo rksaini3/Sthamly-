@@ -1,5 +1,5 @@
 // Sthamly AI web: chat mein tasveer bhejne ka API. Sirf login user.
-// Worker: POST /api/image-chat/edit. intent: "ask" (sawal, text jawab), "edit" (tasveer badlo), "remove_bg" (background hatao).
+// Worker: POST /api/image-chat/edit. intent: "auto" (server prompt dekhe), "ask" (text jawab), "edit", "remove_bg".
 
 import { ApiClientError, type ErrorCode } from "./client";
 
@@ -23,9 +23,9 @@ const FALLBACK: Partial<Record<ErrorCode, string>> = {
   invalid_request: "यह तस्वीर इस्तेमाल नहीं हो सकती।",
 };
 
-export type ImageIntent = "ask" | "edit" | "remove_bg";
+export type ImageIntent = "auto" | "ask" | "edit" | "remove_bg";
 
-// Worker jawab ka shape. "ask" mein file और download_url null होते हैं, सिर्फ़ text आता है।
+// Worker jawab ka shape. Sawal mein file और download_url null हो सकते हैं, सिर्फ़ text आता है।
 export interface ImageChatResult {
   file: {
     id: string;
@@ -67,7 +67,7 @@ async function errorFrom(res: Response): Promise<ApiClientError> {
   return new ApiClientError(code, message, retryable, requestId);
 }
 
-// Tasveer (data URL) aur prompt bhejta hai. intent ke hisaab se text jawab ya edit ki hui tasveer milti hai.
+// Tasveer (data URL) aur prompt bhejta hai. Jawab mein text, ya edit ki hui tasveer ka link.
 export async function editImageInChat(
   token: string,
   input: { imageDataUrl: string; prompt: string; intent: ImageIntent; signal?: AbortSignal },
@@ -97,10 +97,13 @@ export async function editImageInChat(
   const text = typeof body.text === "string" && body.text.length > 0 ? body.text : null;
   const downloadUrl = typeof body.download_url === "string" ? body.download_url : null;
 
-  if (input.intent === "ask" && text === null) {
-    throw new ApiClientError("internal", "जवाब समझ नहीं आया। दोबारा कोशिश करें।", true, null);
-  }
-  if (input.intent !== "ask" && downloadUrl === null) {
+  const ok =
+    input.intent === "ask"
+      ? text !== null
+      : input.intent === "auto"
+        ? text !== null || downloadUrl !== null
+        : downloadUrl !== null;
+  if (!ok) {
     throw new ApiClientError("internal", "जवाब समझ नहीं आया। दोबारा कोशिश करें।", true, null);
   }
 
