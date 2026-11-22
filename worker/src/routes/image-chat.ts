@@ -4,6 +4,7 @@
 //        -> Cloudflare edit (bria ya FLUX.2 klein) -> storage -> ready row -> signed link.
 // Nakaam hone par row 'failed' hoti hai, aur failed row limit mein nahi ginti (slot wapas aata hai).
 // Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate.
+// Log mein sirf error ka naam aur chhota message jaata hai (prompt ya image nahi).
 
 import { authenticate } from "../auth";
 import { assertBudget } from "../budget";
@@ -19,11 +20,13 @@ import { signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 const ROUTE = "/api/image-chat/edit";
+// Chat mein edit ka kharcha rupees mein (estimate). Image banane ke barabar hi maana hai.
 const EDIT_COST_INR_ESTIMATE = 3.5;
 const EDIT_FEATURE = "image";
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const TITLE_CHARS = 40;
+const DETAIL_CHARS = 300;
 
 // data:image/jpeg|png|webp;base64,...  (sirf yahi formats)
 const DATA_URI_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+=*)$/;
@@ -61,6 +64,14 @@ function json(body: unknown, status = 200): Response {
       "Cache-Control": "no-store",
     },
   });
+}
+
+// Error ka naam aur chhota message, log ke liye. Prompt ya image yahan nahi aate.
+function errorDetail(err: unknown): string {
+  if (err instanceof Error) {
+    return `${err.name}: ${err.message}`.slice(0, DETAIL_CHARS);
+  }
+  return "non-error";
 }
 
 // Body padhta hai aur image ko check karta hai. Galat ho to saaf Hindi message.
@@ -104,7 +115,7 @@ async function imagesToday(db: SupabaseClient, userId: string): Promise<number> 
   return typeof used === "number" ? used : 0;
 }
 
-// Plan ki daily image limit. Plan row mein 'daily_images' column hai (migration 0003).
+// Plan ki daily image limit. Plan row mein 'daily_images' column hai.
 async function dailyImageLimit(db: SupabaseClient, plan: string): Promise<number> {
   const rows = await db.select<{ daily_images: number }>(
     "plans",
@@ -281,7 +292,14 @@ export async function handleImageChat(
     return await editImage(request, env, config, db, ctx, traceId, execCtx);
   } catch (err) {
     const code = err instanceof ApiError ? err.code : "internal";
-    console.error(JSON.stringify({ event: "image_chat_request_failed", code, request_id: traceId }));
+    console.error(
+      JSON.stringify({
+        event: "image_chat_request_failed",
+        code,
+        detail: code === "internal" ? errorDetail(err) : undefined,
+        request_id: traceId,
+      }),
+    );
     return toErrorResponse(err, traceId);
   }
 }
