@@ -5,8 +5,8 @@
 
 import { ApiError } from "./errors";
 
-// Text model (slides, website, document). Google docs se verify karke badlein.
-export const CREATE_TEXT_MODEL = "gemini-2.5-flash";
+// Text model (slides, website, document). Groq par free tier mein chalta hai.
+export const CREATE_TEXT_MODEL = "llama-3.3-70b-versatile";
 
 export const MAX_PROMPT_CHARS = 2000;
 export const MAX_TITLE_CHARS = 60;
