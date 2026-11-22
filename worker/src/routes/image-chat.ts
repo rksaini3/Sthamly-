@@ -1,8 +1,8 @@
 // Sthamly AI Worker: POST /api/image-chat/edit (chat mein tasveer bhejo)
-// Sirf login user. Body: { image: "data:image/...;base64,...", prompt: string, intent?: "ask" | "edit" | "remove_bg" }.
-// intent "ask" (default): tasveer dekh kar text jawab (Cloudflare vision). Image nahi banti.
-// intent "edit": tasveer badlo (Cloudflare FLUX.2 klein). intent "remove_bg": background hatao (Cloudflare bria).
-// Edit ke order: login -> body -> daily limit -> budget -> pending row -> edit -> storage -> ready row -> signed link.
+// Sirf login user. Body: { image: "data:image/...;base64,...", prompt: string, intent?: "auto" | "ask" | "edit" | "remove_bg" }.
+// intent "auto" (default): server prompt padh kar tay karta hai. "ask": tasveer dekh kar text jawab (Cloudflare vision).
+// "edit": tasveer badlo ya banao (Cloudflare FLUX.2 klein). "remove_bg": background hatao (Cloudflare bria).
+// Edit ke order: login -> body -> intent -> daily limit -> budget -> pending row -> edit -> storage -> ready row -> signed link.
 // Nakaam hone par row 'failed' hoti hai, aur failed row limit mein nahi ginti (slot wapas aata hai).
 // Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate. Log mein sirf error ka naam aur chhota message.
 
@@ -16,17 +16,20 @@ import type { InputImage } from "../providers/gemini-image";
 import { removeBackgroundWithCloudflare } from "../providers/cf-image";
 import { CF_EDIT_MODEL, editImageWithCloudflare } from "../providers/cf-image-edit";
 import { CF_VISION_MODEL, askImageWithCloudflare } from "../providers/cf-vision";
+import { classifyImageIntent, type ResolvedIntent } from "../providers/intent";
 import { ProviderError } from "../providers/types";
 import { signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 const ROUTE = "/api/image-chat/edit";
-type Intent = "ask" | "edit" | "remove_bg";
-const INTENTS: readonly Intent[] = ["ask", "edit", "remove_bg"];
+type RequestIntent = "auto" | ResolvedIntent;
+type EditIntent = Exclude<ResolvedIntent, "ask">;
+const INTENTS: readonly RequestIntent[] = ["auto", "ask", "edit", "remove_bg"];
 
 // Edit ka kharcha rupees mein (estimate). Image banane ke barabar hi maana hai.
 const EDIT_COST_INR_ESTIMATE = 3.5;
 const EDIT_FEATURE = "image";
+const DEFAULT_EDIT = "इस तस्वीर को बेहतर बनाओ।";
 // Sawal (vision) ka kharcha aur daily limit.
 const ASK_COST_INR_ESTIMATE = 0.5;
 const ASK_FEATURE = "vision";
@@ -58,7 +61,7 @@ interface GeneratedFileRow {
 interface ParsedBody {
   image: InputImage;
   prompt: string;
-  intent: Intent;
+  intent: RequestIntent;
 }
 
 function invalid(message?: string): ApiError {
@@ -141,8 +144,8 @@ async function readBody(request: Request): Promise<ParsedBody> {
   const decodedBytes = Math.floor((match[2].length * 3) / 4);
   if (decodedBytes > MAX_IMAGE_BYTES) throw invalid("तस्वीर बहुत बड़ी है। छोटी तस्वीर चुनें।");
 
-  // intent na ho to "ask" (ChatGPT jaisa: pehle sawal samjho, edit sirf kehne par).
-  let intent: Intent = "ask";
+  // intent na ho to "auto": server prompt padh kar khud tay karega.
+  let intent: RequestIntent = "auto";
   if (parsed.intent !== undefined) {
     const found = INTENTS.find((i) => i === parsed.intent);
     if (!found) throw invalid();
@@ -253,7 +256,7 @@ async function recordAskUsage(db: SupabaseClient, userId: string, traceId: strin
   );
 }
 
-// Intent "ask": tasveer dekh kar text jawab. Koi image nahi banti, sirf text lautta hai.
+// Intent "ask": tasveer dekh kar text jawab. Koi image nahi banti.
 async function askImage(
   env: Env,
   config: Config,
@@ -293,12 +296,14 @@ async function editImage(
   config: Config,
   db: SupabaseClient,
   ctx: UserContext,
-  body: ParsedBody,
+  image: InputImage,
   prompt: string,
+  intent: EditIntent,
   traceId: string,
   execCtx: ExecutionContext,
 ): Promise<Response> {
-  const title = Array.from(prompt).slice(0, TITLE_CHARS).join("");
+  const editPrompt = prompt.trim().length > 0 ? prompt : DEFAULT_EDIT;
+  const title = Array.from(editPrompt).slice(0, TITLE_CHARS).join("");
   const requestId = `${ctx.userId}:imgedit:${traceId}`;
 
   // Daily limit: images ka wahi quota jo tasveer banane par lagta hai.
@@ -321,12 +326,9 @@ async function editImage(
   try {
     // Background hatana: bria. Baaki edit: FLUX.2 klein. Dono Cloudflare Workers AI par (free tier).
     const edited =
-      body.intent === "remove_bg"
-        ? await removeBackgroundWithCloudflare(
-            env,
-            `data:${body.image.mimeType};base64,${body.image.base64}`,
-          )
-        : await editImageWithCloudflare(env, { prompt, image: body.image });
+      intent === "remove_bg"
+        ? await removeBackgroundWithCloudflare(env, `data:${image.mimeType};base64,${image.base64}`)
+        : await editImageWithCloudflare(env, { prompt: editPrompt, image });
 
     const stored = await uploadObject(env, {
       userId: ctx.userId,
@@ -369,7 +371,7 @@ async function editImage(
   }
 }
 
-// Body ke intent ke hisaab se sahi raasta chunta hai.
+// Prompt (ya chuna hua intent) dekh kar sahi raasta chunta hai.
 async function runImageChat(
   request: Request,
   env: Env,
@@ -381,12 +383,15 @@ async function runImageChat(
 ): Promise<Response> {
   const body = await readBody(request);
   const prompt = cleanImagePrompt(body.prompt);
+  const question = prompt.trim().length > 0 ? prompt : DEFAULT_QUESTION;
 
-  if (body.intent === "ask") {
-    const question = prompt.trim().length > 0 ? prompt : DEFAULT_QUESTION;
+  const intent: ResolvedIntent =
+    body.intent === "auto" ? await classifyImageIntent(env, question, request.signal) : body.intent;
+
+  if (intent === "ask") {
     return askImage(env, config, db, ctx, body.image, question, traceId, execCtx);
   }
-  return editImage(env, config, db, ctx, body, prompt, traceId, execCtx);
+  return editImage(env, config, db, ctx, body.image, prompt, intent, traceId, execCtx);
 }
 
 export async function handleImageChat(
