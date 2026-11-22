@@ -2,7 +2,7 @@
 // Input: multipart/form-data. Tasveer 'input_image_0' mein, prompt 'prompt' mein.
 // Output: base64 image (env.AI.run ka 'image' field). Koi API key nahi, sirf binding.
 // Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate.
-// Note: flux-2-dev ke example (Cloudflare blog) se banaya gaya hai. flux-2-klein-4b par live test zaroori hai.
+// Multipart: FormData ko Response mein daal kar asli body aur boundary wala content-type lete hain.
 
 import type { Env } from "../env";
 import { ApiError } from "../errors";
@@ -52,6 +52,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+// FormData ko sahi multipart body mein badalta hai: body stream aur boundary wala content-type.
+function buildMultipart(form: FormData): { body: ReadableStream<Uint8Array> | null; contentType: string } {
+  const serialized = new Response(form);
+  const contentType = serialized.headers.get("content-type");
+  if (!contentType || !contentType.startsWith("multipart/form-data")) {
+    throw new ApiError("provider_unavailable");
+  }
+  return { body: serialized.body, contentType };
+}
+
 // Tasveer + prompt bhejkar edit ki hui tasveer lautata hai.
 export async function editImageWithCloudflare(
   env: Env,
@@ -69,9 +79,11 @@ export async function editImageWithCloudflare(
   );
   form.append("prompt", opts.prompt);
 
+  const multipart = buildMultipart(form);
+
   const output = await withTimeout(
     ai.run(CF_EDIT_MODEL, {
-      multipart: { body: form, contentType: "multipart/form-data" },
+      multipart: { body: multipart.body, contentType: multipart.contentType },
     }),
     AI_TIMEOUT_MS,
   );
