@@ -1,6 +1,6 @@
 // Sthamly AI Worker: POST /api/document-chat/ask (chat mein PDF bhejo, sawal ya summary lo)
 // Sirf login user. Body: { pdf: "data:application/pdf;base64,...", prompt: string }.
-// Order: login -> body check -> prompt check -> daily limit (KV) -> budget -> Gemini -> usage -> text.
+// Order: login -> body check -> prompt check -> daily limit (KV) -> budget -> PDF text (Cloudflare) -> jawab (Groq) -> usage -> text.
 // Nakaam hone par slot wapas aata hai. Raw provider error, prompt aur PDF bytes kabhi log ya client tak nahi jaate.
 
 import { authenticate } from "../auth";
@@ -8,14 +8,17 @@ import { assertBudget } from "../budget";
 import { assertSecretsPresent, loadConfig, type Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
 import { loadUserContext } from "../plan";
-import { askAboutPdf } from "../providers/gemini-document";
+import { pdfToText } from "../providers/cf-document";
+import { askGroqText } from "../providers/groq-text";
 import { cleanImagePrompt } from "../providers/image";
 import { ProviderError } from "../providers/types";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 const ROUTE = "/api/document-chat/ask";
-// Gemini document model (docs ke examples mein yahi naam hai). Badalna ho to yahin badlein.
-const GEMINI_DOCUMENT_MODEL = "gemini-3.8-flash";
+// Groq text model (PDF ke text par jawab). Groq ki list mein model naam badle to yahin badlein.
+const GROQ_TEXT_MODEL = "llama-3.3-70b-versatile";
+// Model ko bheja jaane wala PDF text ka upper limit (characters).
+const PDF_TEXT_CHARS = 24000;
 // PDF ka kharcha rupees mein (estimate). Verify karke update karein.
 const DOCUMENT_COST_INR_ESTIMATE = 1.0;
 const DOCUMENT_FEATURE = "document";
@@ -24,7 +27,7 @@ const DAILY_LIMIT = 10;
 const SLOT_TTL_SECONDS = 2 * 24 * 60 * 60;
 const SLOT_PREFIX = "docq";
 const MAX_BODY_BYTES = 14 * 1024 * 1024;
-// Gemini inline limit 50MB hai, par hum apni taraf se 10MB rakhte hain (cost aur memory ke liye).
+// PDF ki upper limit (apni taraf se), taaki cost aur memory kaabu mein rahe.
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 // data:application/pdf;base64,...
@@ -116,8 +119,8 @@ async function recordUsage(db: SupabaseClient, userId: string, requestId: string
       user_id: userId,
       request_id: requestId,
       feature: DOCUMENT_FEATURE,
-      provider: "gemini",
-      model: GEMINI_DOCUMENT_MODEL,
+      provider: "groq",
+      model: GROQ_TEXT_MODEL,
       input_tokens: 0,
       output_tokens: 0,
       estimated_cost_inr: Number(DOCUMENT_COST_INR_ESTIMATE.toFixed(4)),
@@ -157,11 +160,18 @@ export async function handleDocumentChat(
         isFreePlan: ctx.plan.plan === "free",
       });
 
-      const text = await askAboutPdf(env, {
-        model: GEMINI_DOCUMENT_MODEL,
-        prompt,
-        pdfBase64: body.pdfBase64,
-        // Client ne request band ki (Stop) to Gemini ka call bhi band ho.
+      // Step 1: PDF se text (Cloudflare Workers AI, free). Step 2: text par jawab (Groq, free).
+      const pdfText = await pdfToText(env, body.pdfBase64);
+      const clipped = Array.from(pdfText).slice(0, PDF_TEXT_CHARS).join("");
+
+      const text = await askGroqText(env, {
+        model: GROQ_TEXT_MODEL,
+        system:
+          "तुम एक सहायक हो। नीचे दिए PDF के text के आधार पर ही जवाब दो। जवाब सरल हिंदी या Hinglish में दो। " +
+          "अगर जवाब PDF में नहीं है तो साफ़ लिख दो।",
+        user: `${prompt}\n\n--- PDF का text ---\n${clipped}`,
+        maxTokens: 2048,
+        // Client ne request band ki (Stop) to model ka call bhi band ho.
         signal: request.signal,
       });
 
