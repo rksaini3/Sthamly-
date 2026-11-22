@@ -1,10 +1,10 @@
-// Sthamly AI Worker: POST /api/image-chat/edit (chat mein tasveer bhejo, edit ya background hatao, naya jawab)
-// Sirf login user. Body: { image: "data:image/...;base64,...", prompt: string }.
-// Order: login -> body check -> prompt check -> daily limit (images ka hi quota) -> budget -> pending row
-//        -> Cloudflare edit (bria ya FLUX.2 klein) -> storage -> ready row -> signed link.
+// Sthamly AI Worker: POST /api/image-chat/edit (chat mein tasveer bhejo)
+// Sirf login user. Body: { image: "data:image/...;base64,...", prompt: string, intent?: "ask" | "edit" | "remove_bg" }.
+// intent "ask" (default): tasveer dekh kar text jawab (Cloudflare vision). Image nahi banti.
+// intent "edit": tasveer badlo (Cloudflare FLUX.2 klein). intent "remove_bg": background hatao (Cloudflare bria).
+// Edit ke order: login -> body -> daily limit -> budget -> pending row -> edit -> storage -> ready row -> signed link.
 // Nakaam hone par row 'failed' hoti hai, aur failed row limit mein nahi ginti (slot wapas aata hai).
-// Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate.
-// Log mein sirf error ka naam aur chhota message jaata hai (prompt ya image nahi).
+// Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate. Log mein sirf error ka naam aur chhota message.
 
 import { authenticate } from "../auth";
 import { assertBudget } from "../budget";
@@ -13,16 +13,28 @@ import { ApiError, toErrorResponse } from "../errors";
 import { loadUserContext, type UserContext } from "../plan";
 import { cleanImagePrompt } from "../providers/image";
 import type { InputImage } from "../providers/gemini-image";
-import { isBackgroundRemoval, removeBackgroundWithCloudflare } from "../providers/cf-image";
+import { removeBackgroundWithCloudflare } from "../providers/cf-image";
 import { CF_EDIT_MODEL, editImageWithCloudflare } from "../providers/cf-image-edit";
+import { CF_VISION_MODEL, askImageWithCloudflare } from "../providers/cf-vision";
 import { ProviderError } from "../providers/types";
 import { signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 const ROUTE = "/api/image-chat/edit";
-// Chat mein edit ka kharcha rupees mein (estimate). Image banane ke barabar hi maana hai.
+type Intent = "ask" | "edit" | "remove_bg";
+const INTENTS: readonly Intent[] = ["ask", "edit", "remove_bg"];
+
+// Edit ka kharcha rupees mein (estimate). Image banane ke barabar hi maana hai.
 const EDIT_COST_INR_ESTIMATE = 3.5;
 const EDIT_FEATURE = "image";
+// Sawal (vision) ka kharcha aur daily limit.
+const ASK_COST_INR_ESTIMATE = 0.5;
+const ASK_FEATURE = "vision";
+const ASK_DAILY_LIMIT = 30;
+const ASK_SLOT_TTL_SECONDS = 2 * 24 * 60 * 60;
+const ASK_SLOT_PREFIX = "visq";
+const DEFAULT_QUESTION = "इस तस्वीर में क्या है? विस्तार से बताओ।";
+
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const TITLE_CHARS = 40;
@@ -46,6 +58,7 @@ interface GeneratedFileRow {
 interface ParsedBody {
   image: InputImage;
   prompt: string;
+  intent: Intent;
 }
 
 function invalid(message?: string): ApiError {
@@ -72,6 +85,32 @@ function errorDetail(err: unknown): string {
     return `${err.name}: ${err.message}`.slice(0, DETAIL_CHARS);
   }
   return "non-error";
+}
+
+function utcDay(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function askSlotKey(userId: string): string {
+  return `${ASK_SLOT_PREFIX}:${userId}:${utcDay()}`;
+}
+
+// Sawal ki daily ginti (KV par, approximate).
+async function takeAskSlot(env: Env, userId: string): Promise<void> {
+  const key = askSlotKey(userId);
+  const current = Number((await env.STATE.get(key)) ?? "0");
+  if (current >= ASK_DAILY_LIMIT) {
+    throw new ApiError("rate_limited", "आज तस्वीर के सवालों की सीमा पूरी हो गई। कल फिर कोशिश करें।");
+  }
+  await env.STATE.put(key, String(current + 1), { expirationTtl: ASK_SLOT_TTL_SECONDS });
+}
+
+async function releaseAskSlot(env: Env, userId: string): Promise<void> {
+  const key = askSlotKey(userId);
+  const current = Number((await env.STATE.get(key)) ?? "0");
+  if (current > 0) {
+    await env.STATE.put(key, String(current - 1), { expirationTtl: ASK_SLOT_TTL_SECONDS });
+  }
 }
 
 // Body padhta hai aur image ko check karta hai. Galat ho to saaf Hindi message.
@@ -102,10 +141,19 @@ async function readBody(request: Request): Promise<ParsedBody> {
   const decodedBytes = Math.floor((match[2].length * 3) / 4);
   if (decodedBytes > MAX_IMAGE_BYTES) throw invalid("तस्वीर बहुत बड़ी है। छोटी तस्वीर चुनें।");
 
+  // intent na ho to "ask" (ChatGPT jaisa: pehle sawal samjho, edit sirf kehne par).
+  let intent: Intent = "ask";
+  if (parsed.intent !== undefined) {
+    const found = INTENTS.find((i) => i === parsed.intent);
+    if (!found) throw invalid();
+    intent = found;
+  }
+
   const mimeType = match[1] as InputImage["mimeType"];
   return {
     image: { mimeType, base64: match[2] },
     prompt: parsed.prompt,
+    intent,
   };
 }
 
@@ -166,7 +214,7 @@ async function markFailed(db: SupabaseClient, fileId: string): Promise<void> {
     .catch(() => undefined);
 }
 
-// Usage: feature 'image', ek hi baar (request_id unique).
+// Usage: edit ka record, ek hi baar (request_id unique).
 async function recordEditUsage(
   db: SupabaseClient,
   p: { userId: string; requestId: string },
@@ -187,18 +235,69 @@ async function recordEditUsage(
   );
 }
 
-// Poora edit flow. Har failure par row 'failed' hoti hai, aur user ko saaf message.
-async function editImage(
-  request: Request,
+// Usage: sawal (vision) ka record.
+async function recordAskUsage(db: SupabaseClient, userId: string, traceId: string): Promise<void> {
+  await db.insert(
+    "usage_logs",
+    {
+      user_id: userId,
+      request_id: `${userId}:vision:${traceId}`,
+      feature: ASK_FEATURE,
+      provider: "cloudflare",
+      model: CF_VISION_MODEL,
+      input_tokens: 0,
+      output_tokens: 0,
+      estimated_cost_inr: Number(ASK_COST_INR_ESTIMATE.toFixed(4)),
+    },
+    { onConflict: "request_id", conflict: "ignore" },
+  );
+}
+
+// Intent "ask": tasveer dekh kar text jawab. Koi image nahi banti, sirf text lautta hai.
+async function askImage(
   env: Env,
   config: Config,
   db: SupabaseClient,
   ctx: UserContext,
+  image: InputImage,
+  question: string,
   traceId: string,
   execCtx: ExecutionContext,
 ): Promise<Response> {
-  const body = await readBody(request);
-  const prompt = cleanImagePrompt(body.prompt);
+  await takeAskSlot(env, ctx.userId);
+  try {
+    await assertBudget(env, db, config, {
+      feature: ASK_FEATURE,
+      isFreePlan: ctx.plan.plan === "free",
+    });
+
+    const text = await askImageWithCloudflare(env, { question, image });
+
+    execCtx.waitUntil(
+      recordAskUsage(db, ctx.userId, traceId).catch(() => {
+        console.error(JSON.stringify({ event: "vision_usage_write_failed", request_id: traceId }));
+      }),
+    );
+
+    return json({ file: null, download_url: null, text, request_id: traceId }, 200);
+  } catch (err) {
+    await releaseAskSlot(env, ctx.userId);
+    if (err instanceof ProviderError) throw new ApiError("provider_unavailable");
+    throw err;
+  }
+}
+
+// Intent "edit" ya "remove_bg": tasveer banti hai, storage mein jaati hai, link milta hai.
+async function editImage(
+  env: Env,
+  config: Config,
+  db: SupabaseClient,
+  ctx: UserContext,
+  body: ParsedBody,
+  prompt: string,
+  traceId: string,
+  execCtx: ExecutionContext,
+): Promise<Response> {
   const title = Array.from(prompt).slice(0, TITLE_CHARS).join("");
   const requestId = `${ctx.userId}:imgedit:${traceId}`;
 
@@ -220,13 +319,14 @@ async function editImage(
   const row = await insertPending(db, ctx.userId, title, requestId);
 
   try {
-    // Sab edit Cloudflare Workers AI par (free tier). Background hatana: bria. Baaki: FLUX.2 klein.
-    const edited = isBackgroundRemoval(prompt)
-      ? await removeBackgroundWithCloudflare(
-          env,
-          `data:${body.image.mimeType};base64,${body.image.base64}`,
-        )
-      : await editImageWithCloudflare(env, { prompt, image: body.image });
+    // Background hatana: bria. Baaki edit: FLUX.2 klein. Dono Cloudflare Workers AI par (free tier).
+    const edited =
+      body.intent === "remove_bg"
+        ? await removeBackgroundWithCloudflare(
+            env,
+            `data:${body.image.mimeType};base64,${body.image.base64}`,
+          )
+        : await editImageWithCloudflare(env, { prompt, image: body.image });
 
     const stored = await uploadObject(env, {
       userId: ctx.userId,
@@ -269,6 +369,26 @@ async function editImage(
   }
 }
 
+// Body ke intent ke hisaab se sahi raasta chunta hai.
+async function runImageChat(
+  request: Request,
+  env: Env,
+  config: Config,
+  db: SupabaseClient,
+  ctx: UserContext,
+  traceId: string,
+  execCtx: ExecutionContext,
+): Promise<Response> {
+  const body = await readBody(request);
+  const prompt = cleanImagePrompt(body.prompt);
+
+  if (body.intent === "ask") {
+    const question = prompt.trim().length > 0 ? prompt : DEFAULT_QUESTION;
+    return askImage(env, config, db, ctx, body.image, question, traceId, execCtx);
+  }
+  return editImage(env, config, db, ctx, body, prompt, traceId, execCtx);
+}
+
 export async function handleImageChat(
   request: Request,
   env: Env,
@@ -289,7 +409,7 @@ export async function handleImageChat(
     const db = createSupabase(env);
     const ctx = await loadUserContext(db, user);
 
-    return await editImage(request, env, config, db, ctx, traceId, execCtx);
+    return await runImageChat(request, env, config, db, ctx, traceId, execCtx);
   } catch (err) {
     const code = err instanceof ApiError ? err.code : "internal";
     console.error(
