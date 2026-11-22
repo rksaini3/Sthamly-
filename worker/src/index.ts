@@ -1,6 +1,7 @@
 // Sthamly AI Worker: entry point (Blueprint 3.0 section 3, 6, 9, 11; Blueprint 4.0 creation)
 // Routes:
 //   GET    /health                       uptime monitor (bina secret ke, sirf ok ya degraded)
+//   POST   /api/auth/sms-hook            Supabase Send SMS hook, OTP WhatsApp par (routes/auth-hook.ts)
 //   POST   /api/ai/chat                  streaming chat, logged-in user ya guest (routes/chat.ts)
 //   *      /api/chat/history             conversations (routes/history.ts)
 //   *      /api/user/*                   profile, usage, export, delete (routes/user.ts)
@@ -26,6 +27,7 @@
 import { budgetStatus } from "./budget";
 import { loadConfig, type Config, type Env } from "./env";
 import { ApiError, toErrorResponse } from "./errors";
+import { handleAuthHook } from "./routes/auth-hook";
 import { handleChat } from "./routes/chat";
 import { handleCreate } from "./routes/create";
 import { handleProject } from "./routes/project";
@@ -46,6 +48,7 @@ const EXPOSED_HEADERS = "X-Request-Id, X-Conversation-Id";
 const PREFLIGHT_MAX_AGE_SECONDS = "600";
 
 type Route =
+  | "authHook"
   | "chat"
   | "history"
   | "user"
@@ -145,6 +148,7 @@ async function runBudgetCheck(env: Env): Promise<void> {
 
 // Path ke hisaab se route chunta hai.
 function routeFor(pathname: string): Route | null {
+  if (pathname === "/api/auth/sms-hook") return "authHook";
   if (pathname === "/api/ai/chat") return "chat";
   if (pathname === "/api/chat/history") return "history";
   if (pathname.startsWith("/api/user/")) return "user";
@@ -187,6 +191,9 @@ export default {
       let response: Response;
 
       switch (routeFor(url.pathname)) {
+        case "authHook":
+          response = await handleAuthHook(request, env);
+          break;
         case "chat":
           response = await handleChat(request, env, ctx);
           break;
