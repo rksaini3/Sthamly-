@@ -1,7 +1,7 @@
 // Sthamly AI Worker: POST /api/image-chat/edit (chat mein tasveer bhejo, edit ya background hatao, naya jawab)
 // Sirf login user. Body: { image: "data:image/...;base64,...", prompt: string }.
 // Order: login -> body check -> prompt check -> daily limit (images ka hi quota) -> budget -> pending row
-//        -> Gemini edit -> storage -> ready row -> signed link.
+//        -> Cloudflare edit (bria ya FLUX.2 klein) -> storage -> ready row -> signed link.
 // Nakaam hone par row 'failed' hoti hai, aur failed row limit mein nahi ginti (slot wapas aata hai).
 // Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate.
 
@@ -11,16 +11,14 @@ import { assertSecretsPresent, loadConfig, type Config, type Env } from "../env"
 import { ApiError, toErrorResponse } from "../errors";
 import { loadUserContext, type UserContext } from "../plan";
 import { cleanImagePrompt } from "../providers/image";
-import { editImageWithGemini, type InputImage } from "../providers/gemini-image";
+import type { InputImage } from "../providers/gemini-image";
 import { isBackgroundRemoval, removeBackgroundWithCloudflare } from "../providers/cf-image";
+import { CF_EDIT_MODEL, editImageWithCloudflare } from "../providers/cf-image-edit";
 import { ProviderError } from "../providers/types";
 import { signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 const ROUTE = "/api/image-chat/edit";
-// Gemini image model. Plan ke hisaab se badalna ho to yahin badlein (aur docs se verify karein).
-const GEMINI_EDIT_MODEL = "gemini-3.1-flash-lite-image";
-// Chat mein edit ka kharcha rupees mein (estimate). Image banane ke barabar hi maana hai.
 const EDIT_COST_INR_ESTIMATE = 3.5;
 const EDIT_FEATURE = "image";
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -168,8 +166,8 @@ async function recordEditUsage(
       user_id: p.userId,
       request_id: p.requestId,
       feature: EDIT_FEATURE,
-      provider: "gemini",
-      model: GEMINI_EDIT_MODEL,
+      provider: "cloudflare",
+      model: CF_EDIT_MODEL,
       input_tokens: 0,
       output_tokens: 0,
       estimated_cost_inr: Number(EDIT_COST_INR_ESTIMATE.toFixed(4)),
@@ -211,19 +209,13 @@ async function editImage(
   const row = await insertPending(db, ctx.userId, title, requestId);
 
   try {
-    // Background hatana: Cloudflare Workers AI (free tier). Baaki edit: Gemini (abhi billing wala).
+    // Sab edit Cloudflare Workers AI par (free tier). Background hatana: bria. Baaki: FLUX.2 klein.
     const edited = isBackgroundRemoval(prompt)
       ? await removeBackgroundWithCloudflare(
           env,
           `data:${body.image.mimeType};base64,${body.image.base64}`,
         )
-      : await editImageWithGemini(env, {
-          model: GEMINI_EDIT_MODEL,
-          prompt,
-          image: body.image,
-          // Client ne request band ki (Stop) to Gemini ka call bhi band ho.
-          signal: request.signal,
-        });
+      : await editImageWithCloudflare(env, { prompt, image: body.image });
 
     const stored = await uploadObject(env, {
       userId: ctx.userId,
