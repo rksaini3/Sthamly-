@@ -425,10 +425,18 @@ export function ChatPage() {
       { key: assistantKey, role: "assistant", content: "", pending: true },
     ]);
 
+    // Stop dabane par ye controller request ko rokta hai (abortRef se handleStop yahi band karta hai).
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const token = await authToken();
       if (att.kind === "image") {
-        const res = await editImageInChat(token, { imageDataUrl: att.dataUrl, prompt });
+        const res = await editImageInChat(token, {
+          imageDataUrl: att.dataUrl,
+          prompt,
+          signal: controller.signal,
+        });
         setMessages((prev) =>
           prev.map((m) =>
             m.key === assistantKey
@@ -437,17 +445,29 @@ export function ChatPage() {
           ),
         );
       } else {
-        const res = await askDocument(token, { pdfDataUrl: att.dataUrl, prompt });
+        const res = await askDocument(token, {
+          pdfDataUrl: att.dataUrl,
+          prompt,
+          signal: controller.signal,
+        });
         setMessages((prev) =>
           prev.map((m) => (m.key === assistantKey ? { ...m, pending: false, content: res.text } : m)),
         );
       }
     } catch (err) {
+      if (isAbort(err)) {
+        // User ne roka: sandesh aur cheez dono wapas, taaki wo dobara bhej sake. Error nahi dikhana.
+        setMessages((prev) => prev.filter((m) => m.key !== userKey && m.key !== assistantKey));
+        setInput(opts.restoreText);
+        setAttachment((prev) => prev ?? att);
+        return;
+      }
       setError(errorText(err));
       setMessages((prev) => prev.filter((m) => m.key !== userKey && m.key !== assistantKey));
       setInput(opts.restoreText);
       setAttachment((prev) => prev ?? att);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setSending(false);
     }
   }
@@ -898,6 +918,7 @@ export function ChatPage() {
             modeLabel={findMode(mode).label}
             disabled={sending || !ready || guestBlocked}
             attachment={attachment}
+            isGuest={isGuest}
             onFile={(file) => void handleFile(file)}
             onClearAttachment={clearAttachment}
           />
