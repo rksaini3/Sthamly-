@@ -32,10 +32,10 @@ import {
 import { findMode, type ModeKey } from "../lib/modes";
 import { ModeChips, Suggestions } from "../components/ModeBar";
 import { MessageActions } from "../components/MessageActions";
-import { ComposerPlus } from "../components/ComposerPlus";
+import { ComposerChip, ComposerPlus } from "../components/ComposerPlus";
 import { ImageViewer } from "../components/ImageViewer";
 import { AiImageBlock, UserAttachment, type MessageAttachment } from "../components/ChatMedia";
-import { editImageInChat } from "../api/imageChat";
+import { editImageInChat, type ImageIntent } from "../api/imageChat";
 import { askDocument } from "../api/documentChat";
 import {
   fileToAttachment,
@@ -63,6 +63,8 @@ interface DisplayMessage {
   attachment?: MessageAttachment;
   // AI ne jo tasveer banayi (signed link).
   image?: string;
+  // Banne ke dauran dikhne wali status line (sirf pending sandesh mein).
+  status?: string;
 }
 
 // Role (mode) ke hisaab se tasveer aur PDF ke prompt mein chhota sandarbh.
@@ -168,6 +170,8 @@ export function ChatPage() {
   const [mode, setMode] = useState<ModeKey>("general");
   // Chat mein bhejne ke liye chuni hui tasveer ya PDF (composer ke chip mein dikhti hai).
   const [attachment, setAttachment] = useState<Attachment | null>(null);
+  // Edit button se chuni tasveer ho to agla sandesh edit hoga.
+  const [editNext, setEditNext] = useState(false);
   // Jo AI ki tasveer full-screen dekhi ja rahi hai.
   const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null);
 
@@ -383,8 +387,9 @@ export function ChatPage() {
     }
   }
 
-  // Chip se hatana: tasveer ka preview URL bhi saaf.
+  // Chip se hatana: tasveer ka preview URL bhi saaf, aur edit mode bhi band.
   function clearAttachment(): void {
+    setEditNext(false);
     setAttachment((prev) => {
       if (prev?.kind === "image") URL.revokeObjectURL(prev.previewUrl);
       return null;
@@ -398,15 +403,36 @@ export function ChatPage() {
     prompt: string;
     att: Attachment;
     restoreText: string;
+    intent?: ImageIntent;
   }): Promise<void> {
     const { att } = opts;
+    // Edit button se chuni tasveer ho to "edit"; warna tasveer ke liye "auto" (server prompt padh kar tay karega).
+    const intent: ImageIntent =
+      opts.intent ?? (editNext ? "edit" : att.kind === "image" ? "auto" : "ask");
+    const typed = opts.prompt.trim();
     const label =
       opts.label.trim().length > 0
         ? opts.label.trim()
-        : att.kind === "image"
+        : intent === "edit"
           ? "इस तस्वीर को बेहतर बनाओ"
-          : "इस PDF का सारांश दो";
-    const prompt = `${MODE_HINT[mode]}${opts.prompt.trim().length > 0 ? opts.prompt.trim() : label}`;
+          : att.kind === "image"
+            ? "इस तस्वीर के बारे में बताओ"
+            : "इस PDF का सारांश दो";
+    const text = typed.length > 0 ? typed : label;
+    // Mode ki hint sirf PDF aur edit ke liye; tasveer ke sawal mein seedha wahi sawal jaata hai.
+    const prompt = att.kind === "pdf" || intent === "edit" ? `${MODE_HINT[mode]}${text}` : text;
+
+    // Sirf dikhane ke liye: user ko pata rahe ki tasveer ban rahi hai ya jawab likha ja raha hai.
+    const IMAGE_WORDS =
+      /बनाओ|बना\s*दो|बना\s*दे|बदल|एडिट|edit|बैकग्राउंड|background|हटाओ|हटा\s*दो|remove|सफ़ेद|सफेद|generate|make|इमेज\s*बना|बेहतर|सुधार/i;
+    const drawing =
+      intent === "edit" || intent === "remove_bg" || (intent === "auto" && IMAGE_WORDS.test(text));
+    const status =
+      att.kind === "pdf"
+        ? "PDF पढ़ी जा रही है…"
+        : drawing
+          ? "तस्वीर बन रही है… इसमें कुछ सेकंड लग सकते हैं।"
+          : "जवाब लिखा जा रहा है…";
 
     const userKey = crypto.randomUUID();
     const assistantKey = crypto.randomUUID();
@@ -417,12 +443,13 @@ export function ChatPage() {
 
     setInput("");
     setAttachment(null);
+    setEditNext(false);
     setError(null);
     setSending(true);
     setMessages((prev) => [
       ...prev,
       { key: userKey, role: "user", content: label, attachment: shown },
-      { key: assistantKey, role: "assistant", content: "", pending: true },
+      { key: assistantKey, role: "assistant", content: "", pending: true, status },
     ]);
 
     // Stop dabane par ye controller request ko rokta hai (abortRef se handleStop yahi band karta hai).
@@ -435,12 +462,18 @@ export function ChatPage() {
         const res = await editImageInChat(token, {
           imageDataUrl: att.dataUrl,
           prompt,
+          intent,
           signal: controller.signal,
         });
         setMessages((prev) =>
           prev.map((m) =>
             m.key === assistantKey
-              ? { ...m, pending: false, content: res.text ?? "", image: res.download_url }
+              ? {
+                  ...m,
+                  pending: false,
+                  content: res.text ?? "",
+                  image: res.download_url ?? undefined,
+                }
               : m,
           ),
         );
@@ -481,13 +514,15 @@ export function ChatPage() {
         if (prev?.kind === "image") URL.revokeObjectURL(prev.previewUrl);
         return next;
       });
+      // Agla sandesh edit hoga.
+      setEditNext(true);
       textareaRef.current?.focus();
     } catch {
       setError("यह तस्वीर अभी नहीं खुल पा रही। डाउनलोड करके फिर से चुनें।");
     }
   }
 
-  // Ek tap mein background hatana: AI ko seedha kaam dete hain.
+  // Ek tap mein background hatana.
   async function removeBackgroundFrom(src: string): Promise<void> {
     if (sending) return;
     setError(null);
@@ -499,6 +534,7 @@ export function ChatPage() {
           "इस तस्वीर का बैकग्राउंड हटाओ। मुख्य चीज़ को जैसा है वैसा रखो, और बैकग्राउंड को साफ़ सफ़ेद कर दो।",
         att: next,
         restoreText: "",
+        intent: "remove_bg",
       });
     } catch {
       setError("यह तस्वीर अभी नहीं खुल पा रही। डाउनलोड करके फिर से चुनें।");
@@ -825,14 +861,21 @@ export function ChatPage() {
                   onRemoveBackground={(src) => void removeBackgroundFrom(src)}
                 />
               )}
-              <div className="bubble-text">
-                {m.content}
-                {m.pending && (
-                  <span className="cursor" aria-hidden="true">
-                    ▍
-                  </span>
-                )}
-              </div>
+              {m.pending && m.status !== undefined ? (
+                <div className="gen-status" role="status">
+                  <span className="gen-bar" aria-hidden="true" />
+                  <span>{m.status}</span>
+                </div>
+              ) : (
+                <div className="bubble-text">
+                  {m.content}
+                  {m.pending && (
+                    <span className="cursor" aria-hidden="true">
+                      ▍
+                    </span>
+                  )}
+                </div>
+              )}
               {m.role === "user" && !m.pending && (
                 <div className="msg-actions" role="group" aria-label="सवाल के विकल्प">
                   <button
@@ -913,45 +956,80 @@ export function ChatPage() {
 
         <ModeChips mode={mode} onChange={setMode} disabled={sending} />
 
-        <form className="composer" onSubmit={handleSubmit}>
-          <ComposerPlus
-            modeLabel={findMode(mode).label}
-            disabled={sending || !ready || guestBlocked}
-            attachment={attachment}
-            isGuest={isGuest}
-            onFile={(file) => void handleFile(file)}
-            onClearAttachment={clearAttachment}
-          />
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            maxLength={MAX_INPUT_CHARS}
-            disabled={!ready || guestBlocked}
-            aria-label="संदेश"
-          />
+        <form className="composer-form" onSubmit={handleSubmit}>
+          <div className="composer-box">
+            {attachment !== null && (
+              <ComposerChip attachment={attachment} onClear={clearAttachment} />
+            )}
+            <div className="composer-row">
+              <ComposerPlus
+                modeLabel={findMode(mode).label}
+                disabled={sending || !ready || guestBlocked}
+                isGuest={isGuest}
+                onFile={(file) => void handleFile(file)}
+              />
+              <textarea
+                ref={textareaRef}
+                className="composer-input"
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder}
+                maxLength={MAX_INPUT_CHARS}
+                disabled={!ready || guestBlocked}
+                aria-label="संदेश"
+              />
 
-          {isMember && (
-            <PushToTalkButton
-              getToken={() => getAccessToken()}
-              onTranscript={handleTranscript}
-              onError={(message: string) => setError(message)}
-              disabled={!ready || sending}
-            />
-          )}
+              {isMember && (
+                <span className="composer-mic">
+                  <PushToTalkButton
+                    getToken={() => getAccessToken()}
+                    onTranscript={handleTranscript}
+                    onError={(message: string) => setError(message)}
+                    disabled={!ready || sending}
+                  />
+                </span>
+              )}
 
-          {sending ? (
-            <button type="button" className="btn-stop" onClick={handleStop}>
-              रोकें
-            </button>
-          ) : (
-            <button type="submit" className="btn-primary" disabled={!canSend}>
-              भेजें
-            </button>
-          )}
+              {sending ? (
+                <button
+                  type="button"
+                  className="composer-action"
+                  onClick={handleStop}
+                  aria-label="रोकें"
+                  title="रोकें"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  className="composer-action"
+                  disabled={!canSend}
+                  aria-label="भेजें"
+                  title="भेजें"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
         </form>
       </main>
 
