@@ -361,7 +361,7 @@ export async function recordUsage(
       user_id: p.userId,
       request_id: p.requestId,
       feature: `create_${p.kind}`,
-      provider: "gemini",
+      provider: "groq",
       model: p.model,
       input_tokens: p.inputTokens,
       output_tokens: p.outputTokens,
