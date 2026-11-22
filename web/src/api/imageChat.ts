@@ -68,7 +68,7 @@ async function errorFrom(res: Response): Promise<ApiClientError> {
 // Tasveer (data URL) aur prompt bhejta hai. Jawab mein edit ki hui tasveer ka link milta hai.
 export async function editImageInChat(
   token: string,
-  input: { imageDataUrl: string; prompt: string },
+  input: { imageDataUrl: string; prompt: string; signal?: AbortSignal },
 ): Promise<ImageChatResult> {
   let res: Response;
   try {
@@ -79,6 +79,7 @@ export async function editImageInChat(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ image: input.imageDataUrl, prompt: input.prompt }),
+      signal: input.signal,
     });
   } catch {
     throw new ApiClientError("internal", "नेटवर्क में दिक्कत है। दोबारा कोशिश करें।", true, null);
