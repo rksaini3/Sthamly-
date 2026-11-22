@@ -1,12 +1,13 @@
-// Sthamly AI Worker: Gemini text generation (creation ke liye: slides JSON, website HTML, document markdown)
-// API key header mein jaati hai, URL mein nahi. Raw response, prompt aur key kabhi log ya client tak nahi.
-// Ek hi call, koi retry nahi. Caller ProviderError dekh kar user ko clean message deta hai.
+// Sthamly AI Worker: Groq text generation (creation ke liye: slides JSON, website HTML, document markdown)
+// Groq ka OpenAI-jaisa endpoint, free tier par chalta hai. API key header mein jaati hai, URL mein nahi.
+// Raw response, prompt aur key kabhi log ya client tak nahi. Ek hi call, koi retry nahi.
+// Caller ProviderError dekh kar user ko clean message deta hai.
 
 import type { Env } from "../env";
 import { ApiError } from "../errors";
 import { ProviderError } from "./types";
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const TIMEOUT_MS = 90_000;
 
 export interface TextResult {
@@ -15,13 +16,16 @@ export interface TextResult {
   outputTokens: number;
 }
 
-interface GeminiTextResponse {
-  candidates?: Array<{
-    content?: { parts?: Array<{ text?: string }> };
-    finishReason?: string;
+interface GroqChatResponse {
+  choices?: Array<{
+    message?: { content?: string | null };
+    finish_reason?: string | null;
   }>;
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
-  promptFeedback?: { blockReason?: string };
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export async function generateText(
@@ -41,25 +45,28 @@ export async function generateText(
 
   let res: Response;
   try {
-    res = await fetch(`${GEMINI_BASE}/${encodeURIComponent(opts.model)}:generateContent`, {
+    res = await fetch(GROQ_URL, {
       method: "POST",
       headers: {
-        "x-goog-api-key": env.GEMINI_API_KEY,
+        Authorization: `Bearer ${env.GROQ_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: opts.system }] },
-        contents: [{ role: "user", parts: [{ text: opts.user }] }],
-        generationConfig: {
-          maxOutputTokens: opts.maxOutputTokens,
-          temperature: 0.7,
-          responseMimeType: opts.json ? "application/json" : "text/plain",
-        },
+        model: opts.model,
+        messages: [
+          { role: "system", content: opts.system },
+          { role: "user", content: opts.user },
+        ],
+        max_tokens: opts.maxOutputTokens,
+        temperature: 0.7,
+        stream: false,
+        // JSON mode: sirf tab jab caller ko JSON chahiye (slides). Prompt mein "JSON" shabd hona zaroori hai.
+        ...(opts.json ? { response_format: { type: "json_object" } } : {}),
       }),
       signal,
     });
   } catch {
-    throw new ProviderError("gemini", null, true);
+    throw new ProviderError("groq", null, true);
   } finally {
     clearTimeout(timer);
   }
@@ -67,36 +74,42 @@ export async function generateText(
   if (!res.ok) {
     const retryable = res.status >= 500 || res.status === 429;
     await res.body?.cancel().catch(() => undefined);
-    throw new ProviderError("gemini", res.status, retryable);
+    throw new ProviderError("groq", res.status, retryable);
   }
 
-  let body: GeminiTextResponse;
+  let body: unknown;
   try {
-    body = (await res.json()) as GeminiTextResponse;
+    body = await res.json();
   } catch {
-    throw new ProviderError("gemini", res.status, true);
+    throw new ProviderError("groq", res.status, true);
   }
 
-  if (body.promptFeedback?.blockReason) {
+  if (!isRecord(body) || !Array.isArray(body.choices)) {
+    throw new ProviderError("groq", null, false);
+  }
+
+  const first: unknown = body.choices[0];
+  if (!isRecord(first)) throw new ProviderError("groq", null, false);
+
+  // Output limit tak pahunch gaya to jawab adhoora hai (HTML ya JSON toota hoga). Saaf error do.
+  if (first.finish_reason === "length") {
     throw new ApiError(
-      "invalid_request",
-      "यह विषय सहायता के लिए उपलब्ध नहीं है। विवरण बदलकर दोबारा कोशिश करें।",
+      "provider_unavailable",
+      "विवरण बहुत लंबा हो गया। छोटा विवरण देकर दोबारा कोशिश करें।",
     );
   }
 
-  const candidate = body.candidates?.[0];
-  const text = (candidate?.content?.parts ?? [])
-    .map((part) => part.text ?? "")
-    .join("")
-    .trim();
+  const message = isRecord(first.message) ? first.message.content : null;
+  const text = typeof message === "string" ? message.trim() : "";
 
   if (text.length === 0) {
     throw new ApiError("invalid_request", "सामग्री नहीं बन सकी। विवरण बदलकर दोबारा कोशिश करें।");
   }
 
+  const usage = isRecord(body.usage) ? body.usage : {};
   return {
     text,
-    inputTokens: body.usageMetadata?.promptTokenCount ?? 0,
-    outputTokens: body.usageMetadata?.candidatesTokenCount ?? 0,
+    inputTokens: typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : 0,
+    outputTokens: typeof usage.completion_tokens === "number" ? usage.completion_tokens : 0,
   };
 }
