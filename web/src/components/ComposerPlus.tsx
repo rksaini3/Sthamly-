@@ -1,6 +1,6 @@
-// Sthamly AI web: composer ka "+" menu. Yahan se फ़ोटो, कैमरा, या PDF चुनकर chat mein bhej sakte hain.
-// Chuni hui cheez composer ke upar chip mein dikhti hai, user prompt likhkar bhejta hai.
-// Tasveer kahin edit nahi hoti: edit AI karta hai (chat mein). Menu bahar click ya Esc se band hota hai.
+// Sthamly AI web: composer ka "+" menu aur chuni hui cheez ki chip.
+// ComposerPlus: "+" button aur uska menu (फ़ोटो, कैमरा, PDF). ComposerChip: chuni hui tasveer ya PDF, composer ke andar.
+// Tasveer kahin edit nahi hoti: AI chat mein karta hai. Menu bahar click ya Esc se band hota hai.
 
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -11,13 +11,15 @@ import type { Attachment } from "../lib/attachment";
 interface ComposerPlusProps {
   modeLabel: string;
   disabled?: boolean;
-  // Abhi chuni hui cheez (chip mein dikhti hai).
-  attachment: Attachment | null;
   // User ne file chuni. Conversion aur galti ka message parent sambhalta hai.
   onFile: (file: File) => void;
-  onClearAttachment: () => void;
   // Guest (login nahi): menu mein saaf likha dikhta hai ki tasveer aur PDF ke liye login chahiye.
   isGuest?: boolean;
+}
+
+interface ComposerChipProps {
+  attachment: Attachment;
+  onClear: () => void;
 }
 
 function Icon({ children }: { children: ReactNode }) {
@@ -39,12 +41,42 @@ function Icon({ children }: { children: ReactNode }) {
   );
 }
 
+// Composer ke dabbe ke andar dikhne wali chip: chuni hui tasveer ya PDF.
+export function ComposerChip({ attachment, onClear }: ComposerChipProps) {
+  return (
+    <div className="cp-chip" role="status">
+      {attachment.kind === "image" ? (
+        <img className="cp-chip-thumb" src={attachment.previewUrl} alt="" />
+      ) : (
+        <span className="cp-chip-doc" aria-hidden="true">
+          PDF
+        </span>
+      )}
+      <div className="cp-chip-text">
+        <strong>{attachment.name}</strong>
+        <span>
+          {attachment.kind === "image"
+            ? "सवाल लिखकर भेजें, या बताएँ क्या बदलना है"
+            : "सवाल लिखकर भेजें, AI पढ़कर जवाब देगा"}
+        </span>
+      </div>
+      <button
+        type="button"
+        className="cp-chip-x"
+        onClick={onClear}
+        aria-label="चुनी हुई चीज़ हटाएँ"
+        title="हटाएँ"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 export function ComposerPlus({
   modeLabel,
   disabled = false,
-  attachment,
   onFile,
-  onClearAttachment,
   isGuest = false,
 }: ComposerPlusProps) {
   const [open, setOpen] = useState(false);
@@ -89,35 +121,6 @@ export function ComposerPlus({
 
   return (
     <div className="cp-wrap" ref={wrapRef}>
-      {attachment !== null && (
-        <div className="cp-chip" role="status">
-          {attachment.kind === "image" ? (
-            <img className="cp-chip-thumb" src={attachment.previewUrl} alt="" />
-          ) : (
-            <span className="cp-chip-doc" aria-hidden="true">
-              PDF
-            </span>
-          )}
-          <div className="cp-chip-text">
-            <strong>{attachment.name}</strong>
-            <span>
-              {attachment.kind === "image"
-                ? "प्रॉम्प्ट लिखकर भेजें, AI बदलकर देगा"
-                : "प्रॉम्प्ट लिखकर भेजें, AI पढ़कर जवाब देगा"}
-            </span>
-          </div>
-          <button
-            type="button"
-            className="cp-chip-x"
-            onClick={onClearAttachment}
-            aria-label="चुनी हुई चीज़ हटाएँ"
-            title="हटाएँ"
-          >
-            ✕
-          </button>
-        </div>
-      )}
-
       {open && (
         <div className="cp-menu" role="menu" aria-label="और विकल्प">
           <button type="button" role="menuitem" className="cp-item" onClick={() => pick("photo")}>
@@ -173,13 +176,7 @@ export function ComposerPlus({
       </button>
 
       {/* Chhupe inputs: menu ke buttons inhe khol dete hain. */}
-      <input
-        ref={photoRef}
-        type="file"
-        accept="image/*"
-        hidden
-        onChange={onInputChange}
-      />
+      <input ref={photoRef} type="file" accept="image/*" hidden onChange={onInputChange} />
       <input
         ref={cameraRef}
         type="file"
