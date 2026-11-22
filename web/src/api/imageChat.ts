@@ -1,5 +1,5 @@
-// Sthamly AI web: chat mein tasveer edit karwane ka API. Sirf login user.
-// Worker: POST /api/image-chat/edit. Jawab mein naya file ka link (download_url) aur chhota text hota hai.
+// Sthamly AI web: chat mein tasveer bhejne ka API. Sirf login user.
+// Worker: POST /api/image-chat/edit. intent: "ask" (sawal, text jawab), "edit" (tasveer badlo), "remove_bg" (background hatao).
 
 import { ApiClientError, type ErrorCode } from "./client";
 
@@ -23,7 +23,9 @@ const FALLBACK: Partial<Record<ErrorCode, string>> = {
   invalid_request: "यह तस्वीर इस्तेमाल नहीं हो सकती।",
 };
 
-// Worker jawab ka shape: file ki jaankari, signed link, aur model ka chhota text.
+export type ImageIntent = "ask" | "edit" | "remove_bg";
+
+// Worker jawab ka shape. "ask" mein file और download_url null होते हैं, सिर्फ़ text आता है।
 export interface ImageChatResult {
   file: {
     id: string;
@@ -32,8 +34,8 @@ export interface ImageChatResult {
     mime_type: string;
     size_bytes: number;
     status: "ready";
-  };
-  download_url: string;
+  } | null;
+  download_url: string | null;
   text: string | null;
   request_id: string;
 }
@@ -65,10 +67,10 @@ async function errorFrom(res: Response): Promise<ApiClientError> {
   return new ApiClientError(code, message, retryable, requestId);
 }
 
-// Tasveer (data URL) aur prompt bhejta hai. Jawab mein edit ki hui tasveer ka link milta hai.
+// Tasveer (data URL) aur prompt bhejta hai. intent ke hisaab se text jawab ya edit ki hui tasveer milti hai.
 export async function editImageInChat(
   token: string,
-  input: { imageDataUrl: string; prompt: string; signal?: AbortSignal },
+  input: { imageDataUrl: string; prompt: string; intent: ImageIntent; signal?: AbortSignal },
 ): Promise<ImageChatResult> {
   let res: Response;
   try {
@@ -78,7 +80,7 @@ export async function editImageInChat(
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ image: input.imageDataUrl, prompt: input.prompt }),
+      body: JSON.stringify({ image: input.imageDataUrl, prompt: input.prompt, intent: input.intent }),
       signal: input.signal,
     });
   } catch {
@@ -88,8 +90,24 @@ export async function editImageInChat(
   if (!res.ok) throw await errorFrom(res);
 
   const body: unknown = await res.json();
-  if (!isRecord(body) || typeof body.download_url !== "string" || !isRecord(body.file)) {
+  if (!isRecord(body) || typeof body.request_id !== "string") {
     throw new ApiClientError("internal", "जवाब समझ नहीं आया। दोबारा कोशिश करें।", true, null);
   }
-  return body as unknown as ImageChatResult;
+
+  const text = typeof body.text === "string" && body.text.length > 0 ? body.text : null;
+  const downloadUrl = typeof body.download_url === "string" ? body.download_url : null;
+
+  if (input.intent === "ask" && text === null) {
+    throw new ApiClientError("internal", "जवाब समझ नहीं आया। दोबारा कोशिश करें।", true, null);
+  }
+  if (input.intent !== "ask" && downloadUrl === null) {
+    throw new ApiClientError("internal", "जवाब समझ नहीं आया। दोबारा कोशिश करें।", true, null);
+  }
+
+  return {
+    file: isRecord(body.file) ? (body.file as unknown as ImageChatResult["file"]) : null,
+    download_url: downloadUrl,
+    text,
+    request_id: body.request_id,
+  };
 }
