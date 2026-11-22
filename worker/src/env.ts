@@ -7,7 +7,7 @@ export interface Env {
   SUPABASE_URL: string;
   ALLOWED_ORIGINS: string;            // comma-separated
   LIVE_MODEL: string;                 // server config, app mein kabhi nahi
-  IMAGE_MODEL: string;                // image banane ka Gemini model, server config
+  IMAGE_MODEL: string;                // image banane ka model (Cloudflare Workers AI), server config
   DAILY_BUDGET_INR: string;           // number as string, loadConfig se number banega
   LIVE_MAX_SECONDS_PER_SESSION: string;
 
@@ -17,7 +17,7 @@ export interface Env {
   // ---- Secrets (wrangler secret put) ----
   SUPABASE_SERVICE_ROLE_KEY: string;
   GROQ_API_KEY: string;
-  GEMINI_API_KEY: string;
+  GEMINI_API_KEY?: string;            // abhi optional: billing ke baad hi zaroori. Image aur PDF Cloudflare/Groq par chalte hain.
   TOKEN_ENCRYPTION_KEY: string;
   CRON_SECRET: string;
 }
@@ -66,11 +66,11 @@ export function loadConfig(env: Env): Config {
 }
 
 // Secrets ki presence check. Value kabhi log nahi hoti, sirf naam.
+// GEMINI_API_KEY is list mein nahi: uski zaroorat sirf us call par padegi jo use Gemini karta hai.
 export function assertSecretsPresent(env: Env): void {
   const required = [
     "SUPABASE_SERVICE_ROLE_KEY",
     "GROQ_API_KEY",
-    "GEMINI_API_KEY",
     "TOKEN_ENCRYPTION_KEY",
     "CRON_SECRET",
   ] as const;
