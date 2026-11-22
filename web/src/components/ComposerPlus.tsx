@@ -16,6 +16,8 @@ interface ComposerPlusProps {
   // User ne file chuni. Conversion aur galti ka message parent sambhalta hai.
   onFile: (file: File) => void;
   onClearAttachment: () => void;
+  // Guest (login nahi): menu mein saaf likha dikhta hai ki tasveer aur PDF ke liye login chahiye.
+  isGuest?: boolean;
 }
 
 function Icon({ children }: { children: ReactNode }) {
@@ -43,6 +45,7 @@ export function ComposerPlus({
   attachment,
   onFile,
   onClearAttachment,
+  isGuest = false,
 }: ComposerPlusProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -149,6 +152,7 @@ export function ComposerPlus({
           </Link>
 
           <div className="cp-sep" aria-hidden="true" />
+          {isGuest && <p className="cp-note">फ़ोटो और PDF के लिए लॉग-इन करें।</p>}
           <p className="cp-note">मोड: {modeLabel}</p>
         </div>
       )}
@@ -187,7 +191,7 @@ export function ComposerPlus({
       <input
         ref={fileRef}
         type="file"
-        accept="image/*,application/pdf"
+        accept="image/*,application/pdf,.pdf"
         hidden
         onChange={onInputChange}
       />
