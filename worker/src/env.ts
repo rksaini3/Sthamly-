@@ -21,6 +21,7 @@ export interface Env {
   // billing ke baad hi zaroori hai, aur sirf us call par check hota hai jo ise use karta hai. Startup par nahi.
   GEMINI_API_KEY: string;
   OPENROUTER_API_KEY?: string;        // free vision (tasveer se sawal). Missing ho to saaf error, crash nahi.
+  TAVILY_API_KEY?: string;            // live search (train, hotel, khabar). Missing ho to live search band, chat chalti rahti hai.
   TOKEN_ENCRYPTION_KEY: string;
   CRON_SECRET: string;
 
