@@ -3,19 +3,17 @@
 //  - Logged-in user (Authorization token): history DB mein, usage ek baar, quota aur budget.
 //  - Guest (token nahi, X-Guest-Id header): din ke limited messages (guest.ts). Chat DB mein save nahi.
 //    Guest ki history client bhejta hai, aur wo sirf is request ke liye use hoti hai.
-// Logged-in user ke liye orchestrator (planner) pehle tay karta hai: ye baatcheet hai (chat streaming)
-// ya kuch banana hai (project ke kaam ek request mein chalkar file ke links). Guest ke liye sirf chat.
 // Order: body validate -> caller pehchan -> limit aur quota -> budget -> model chunav -> stream.
 // Provider ka error pehle JSON mein jaata hai, stream tab shuru hoti hai jab reply aane lage.
 // Tool loop Phase 3 mein aayega.
 
+import { detectAutoRole } from "../providers/intent";
 import { getBearerToken, verifySupabaseUser, type AuthUser } from "../auth";
 import { assertBudget } from "../budget";
 import { assertSecretsPresent, loadConfig, type Config, type Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
 import { identifyGuest, reserveGuestMessage, type GuestIdentity } from "../guest";
 import { assertWithinDailyQuota, loadUserContext, type UserContext } from "../plan";
-import { detectAutoRole } from "../providers/intent";
 import { planProject, type Plan } from "../orchestrator/planner";
 import { runProjectNow, type StepOutcome } from "./project";
 import { CREATE_TEXT_MODEL, type CreateKind } from "../creators";
@@ -666,7 +664,7 @@ async function handleUserChat(
   });
 }
 
-// Guest ka flow: login nahi, limited messages, kuch save nahi. Orchestrator yahan nahi chalta.
+// Guest ka flow: login nahi, limited messages, kuch save nahi.
 async function handleGuestChat(
   request: Request,
   env: Env,
