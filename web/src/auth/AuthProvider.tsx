@@ -1,5 +1,5 @@
-// Sthamly AI web: session, login, signup, Google login aur logout (Blueprint 3.0, section 9 aur 10)
-// Email/password aur Google (OAuth) dono ek hi session mein milte hain.
+// Sthamly AI web: session, login, signup, Google login, phone OTP aur logout (Blueprint 3.0, section 9 aur 10)
+// Email/password, Google aur phone OTP (WhatsApp par) ek hi session mein milte hain.
 // Supabase Auth browser mein token sambhalta hai (auto refresh ke saath).
 // Worker ko token getAccessToken() se milta hai. Token kabhi console ya log mein nahi jaata.
 // Raw Supabase error UI tak nahi jaata, sirf Hindi message jaata hai.
@@ -41,6 +41,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD = 8;
 const MAX_PASSWORD = 72;
 const MAX_NAME = 60;
+// Bharatiya mobile: 10 ank, 6 se 9 se shuru.
+const INDIA_MOBILE_RE = /^[6-9]\d{9}$/;
 
 export type AuthStatus = "loading" | "signed_in" | "signed_out";
 
@@ -60,6 +62,10 @@ interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<SignUpResult>;
   signInWithGoogle: () => Promise<void>;
+  // Phone par OTP bhejta hai. Safal hone par normalized +91 wala number lautata hai.
+  signInWithPhone: (phone: string) => Promise<string>;
+  // OTP check karta hai. Sahi hone par session ban jaata hai.
+  verifyPhoneOtp: (e164Phone: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
   getAccessToken: () => Promise<string | null>;
 }
@@ -77,7 +83,13 @@ function friendlyError(err: AuthError | null, fallback: string): Error {
   if (code === "invalid_credentials") return new Error("ईमेल या पासवर्ड गलत है।");
   if (code === "email_not_confirmed") return new Error("पहले अपना ईमेल कन्फर्म करें।");
   if (code === "user_already_exists") return new Error("इस ईमेल से खाता पहले से है।");
-  if (code === "over_request_rate_limit" || err?.status === 429) {
+  if (code === "otp_expired") return new Error("OTP की समय सीमा खत्म हो गई। नया OTP मँगाएँ।");
+  if (code === "phone_provider_disabled") return new Error("फ़ोन से लॉग-इन अभी चालू नहीं है।");
+  if (
+    code === "over_request_rate_limit" ||
+    code === "over_sms_send_rate_limit" ||
+    err?.status === 429
+  ) {
     return new Error("बहुत कोशिशें हो गईं। थोड़ी देर बाद कोशिश करें।");
   }
   return new Error(fallback);
@@ -85,6 +97,13 @@ function friendlyError(err: AuthError | null, fallback: string): Error {
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+// 10 ank ka mobile ya +91 ke saath number, dono ko +91XXXXXXXXXX banata hai. Galat ho to null.
+function toIndiaE164(input: string): string | null {
+  const digits = input.replace(/\D/g, "");
+  const local = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits;
+  return INDIA_MOBILE_RE.test(local) ? `+91${local}` : null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -180,6 +199,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw friendlyError(error, "Google से लॉग-इन नहीं हो सका। दोबारा कोशिश करें।");
   }, []);
 
+  // Phone par OTP. Supabase hook ke zariye ye OTP WhatsApp par jaata hai (Worker: /api/auth/sms-hook).
+  // Naya number ho to khata apne-aap bante hai, alag signup ki zaroorat nahi.
+  const signInWithPhone = useCallback(async (phone: string): Promise<string> => {
+    const e164 = toIndiaE164(phone);
+    if (!e164) throw new Error("सही 10 अंकों का मोबाइल नंबर डालें।");
+
+    const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
+    if (error) throw friendlyError(error, "OTP नहीं भेजा जा सका। थोड़ी देर बाद कोशिश करें।");
+    return e164;
+  }, []);
+
+  const verifyPhoneOtp = useCallback(async (e164Phone: string, token: string): Promise<void> => {
+    const clean = token.replace(/\D/g, "");
+    if (clean.length < 4) throw new Error("OTP सही नहीं है।");
+
+    const { error } = await supabase.auth.verifyOtp({
+      phone: e164Phone,
+      token: clean,
+      type: "sms",
+    });
+    if (error) throw friendlyError(error, "OTP सही नहीं है या समय खत्म हो गया।");
+  }, []);
+
   // Sirf is device ka session hatata hai. Doosre devices par login rehta hai.
   const signOut = useCallback(async (): Promise<void> => {
     const { error } = await supabase.auth.signOut({ scope: "local" });
@@ -193,8 +235,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, signIn, signUp, signInWithGoogle, signOut, getAccessToken }),
-    [status, user, signIn, signUp, signInWithGoogle, signOut, getAccessToken],
+    () => ({
+      status,
+      user,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signInWithPhone,
+      verifyPhoneOtp,
+      signOut,
+      getAccessToken,
+    }),
+    [
+      status,
+      user,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signInWithPhone,
+      verifyPhoneOtp,
+      signOut,
+      getAccessToken,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
