@@ -3,6 +3,8 @@
 //  - Logged-in user (Authorization token): history DB mein, usage ek baar, quota aur budget.
 //  - Guest (token nahi, X-Guest-Id header): din ke limited messages (guest.ts). Chat DB mein save nahi.
 //    Guest ki history client bhejta hai, aur wo sirf is request ke liye use hoti hai.
+// Logged-in user ke liye orchestrator (planner) pehle tay karta hai: ye baatcheet hai (chat streaming)
+// ya kuch banana hai (project ke kaam ek request mein chalkar file ke links). Guest ke liye sirf chat.
 // Order: body validate -> caller pehchan -> limit aur quota -> budget -> model chunav -> stream.
 // Provider ka error pehle JSON mein jaata hai, stream tab shuru hoti hai jab reply aane lage.
 // Tool loop Phase 3 mein aayega.
@@ -13,9 +15,14 @@ import { assertSecretsPresent, loadConfig, type Config, type Env } from "../env"
 import { ApiError, toErrorResponse } from "../errors";
 import { identifyGuest, reserveGuestMessage, type GuestIdentity } from "../guest";
 import { assertWithinDailyQuota, loadUserContext, type UserContext } from "../plan";
+import { detectAutoRole } from "../providers/intent";
+import { planProject, type Plan } from "../orchestrator/planner";
+import { runProjectNow, type StepOutcome } from "./project";
+import { CREATE_TEXT_MODEL, type CreateKind } from "../creators";
 import { routeChat } from "../providers/router";
 import { estimateCostInr, type ChatMessage } from "../providers/types";
 import { createSseResponse } from "../sse";
+import { signedDownloadUrl } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
 // ---- Limits ----
@@ -448,6 +455,141 @@ async function runChat(run: ChatRun): Promise<Response> {
   return response;
 }
 
+// Planner ka fallback: error aaye to user ka sawal chat mein hi jaata hai.
+async function planOrChat(env: Env, message: string, signal: AbortSignal, traceId: string): Promise<Plan> {
+  try {
+    return (await planProject(env, message, signal)).plan;
+  } catch {
+    console.error(JSON.stringify({ event: "planner_failed", request_id: traceId }));
+    return { route: "chat", role: "general", steps: [] };
+  }
+}
+
+const KIND_LABEL: Record<CreateKind, string> = {
+  image: "तस्वीर",
+  slides: "स्लाइड्स",
+  website: "वेबसाइट",
+  document: "दस्तावेज़",
+};
+
+interface ReadyFile {
+  id: string;
+  kind: CreateKind;
+  title: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  download_url: string;
+}
+
+// Jo kaam ready hue, unke signed download link (1 ghanta chalte hain).
+async function readyFiles(env: Env, outcomes: readonly StepOutcome[]): Promise<ReadyFile[]> {
+  const files: ReadyFile[] = [];
+  for (const o of outcomes) {
+    if (o.status !== "ready" || o.fileId === null || o.storagePath === null) continue;
+    files.push({
+      id: o.fileId,
+      kind: o.kind,
+      title: o.title,
+      mime_type: o.mimeType,
+      size_bytes: o.sizeBytes,
+      download_url: await signedDownloadUrl(env, o.storagePath),
+    });
+  }
+  return files;
+}
+
+// Saved jawab mein link nahi jaate (link 1 ghante mein expire hote hain). Sirf kaam ka saar.
+function summaryText(outcomes: readonly StepOutcome[], allDone: boolean): string {
+  const header = allDone ? "आपका काम तैयार है:" : "काम पूरा नहीं हो सका। जितना बना, वो नीचे है:";
+  const lines = outcomes.map((o) =>
+    o.status === "ready"
+      ? `✅ ${KIND_LABEL[o.kind]}: ${o.title}`
+      : `❌ ${KIND_LABEL[o.kind]}: नहीं बन सका (${o.errorCode ?? "त्रुटि"})`,
+  );
+  return [header, ...lines].join("\n");
+}
+
+// Orchestrator ka rasta: kaam chalao, file banao, aur chat mein saar aur download link do.
+async function handleCreateRoute(
+  request: Request,
+  env: Env,
+  config: Config,
+  db: SupabaseClient,
+  user: AuthUser,
+  userCtx: UserContext,
+  body: ChatBody,
+  plan: Plan,
+  traceId: string,
+  execCtx: ExecutionContext,
+): Promise<Response> {
+  // Conversation: history on ho to naya ya wahi jo user ne bheja (ownership pehle check ho chuki hai).
+  const conversationId = userCtx.historyEnabled
+    ? (body.conversationId ?? (await createConversation(db, user.id, body.message)))
+    : null;
+
+  const response = createSseResponse(async (send) => {
+    await send({ event: "delta", data: { text: "योजना बन गई। काम शुरू कर रहा हूँ…\n" } });
+
+    const run = await runProjectNow(env, config, db, userCtx, body.message, plan, request.signal, execCtx);
+    const summary = summaryText(run.outcomes, run.status === "done");
+    const files = await readyFiles(env, run.outcomes);
+
+    const links =
+      files.length === 0
+        ? ""
+        : "\n\nडाउनलोड लिंक (1 घंटे तक चलेंगे):\n" +
+          files.map((f) => `${KIND_LABEL[f.kind]} – ${f.title}: ${f.download_url}`).join("\n");
+    await send({ event: "delta", data: { text: `\n${summary}${links}` } });
+
+    if (conversationId !== null) {
+      execCtx.waitUntil(
+        saveTurn(db, {
+          conversationId,
+          traceId,
+          userMessage: body.message,
+          reply: summary,
+          provider: "groq",
+          model: CREATE_TEXT_MODEL,
+          inputTokens: 0,
+          outputTokens: 0,
+          finishReason: "stop",
+        }).catch(logFailure("save_turn_failed", traceId)),
+      );
+    }
+
+    // Idempotency ke liye ek usage row: same Idempotency-Key par dobara kaam nahi chalega.
+    const usageRequestId = `${user.id}:${readIdempotencyKey(request) ?? traceId}`;
+    execCtx.waitUntil(
+      recordUsage(db, {
+        userId: user.id,
+        usageRequestId,
+        provider: "groq",
+        model: CREATE_TEXT_MODEL,
+        inputTokens: 0,
+        outputTokens: 0,
+        costInr: 0,
+      }).catch(logFailure("usage_write_failed", traceId)),
+    );
+
+    await send({
+      event: "done",
+      data: {
+        request_id: traceId,
+        provider: "groq",
+        model: CREATE_TEXT_MODEL,
+        input_tokens: 0,
+        output_tokens: 0,
+        finish_reason: "stop",
+      },
+    });
+  }, traceId);
+
+  if (conversationId !== null) {
+    response.headers.set("X-Conversation-Id", conversationId);
+  }
+  return response;
+}
+
 // Logged-in user ka poora flow.
 async function handleUserChat(
   request: Request,
@@ -483,7 +625,16 @@ async function handleUserChat(
     }
   }
 
-  const messages = buildMessages(userCtx.language, body.mode, priorMessages, body.message);
+  // Orchestrator: planner tay karta hai ki ye baatcheet hai ya kuch banana hai.
+  const plan = await planOrChat(env, body.message, request.signal, traceId);
+
+  if (plan.route === "create") {
+    return handleCreateRoute(request, env, config, db, user, userCtx, body, plan, traceId, execCtx);
+  }
+
+  // Mode "general" (default) ho to planner ka role lete hain. Chip se chuna role wahi rehta hai.
+  const mode = body.mode === "general" ? plan.role : body.mode;
+  const messages = buildMessages(userCtx.language, mode, priorMessages, body.message);
   const inputEstimate = estimateInput(messages);
 
   // 4. Daily token quota
@@ -515,7 +666,7 @@ async function handleUserChat(
   });
 }
 
-// Guest ka flow: login nahi, limited messages, kuch save nahi.
+// Guest ka flow: login nahi, limited messages, kuch save nahi. Orchestrator yahan nahi chalta.
 async function handleGuestChat(
   request: Request,
   env: Env,
@@ -533,7 +684,9 @@ async function handleGuestChat(
   // Guest ka message limit pehle lagta hai, taaki limit ke baad koi kaam na ho.
   await reserveGuestMessage(env, guest);
 
-  const messages = buildMessages(GUEST_LANGUAGE, body.mode, body.history, body.message);
+  const mode =
+    body.mode === "general" ? await detectAutoRole(env, body.message, request.signal) : body.mode;
+  const messages = buildMessages(GUEST_LANGUAGE, mode, body.history, body.message);
   const inputEstimate = estimateInput(messages);
 
   return runChat({
