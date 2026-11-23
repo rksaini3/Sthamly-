@@ -16,7 +16,7 @@ import type { InputImage } from "../providers/gemini-image";
 import { removeBackgroundWithCloudflare } from "../providers/cf-image";
 import { CF_EDIT_MODEL, editImageWithCloudflare } from "../providers/cf-image-edit";
 import { askImageWithOpenRouter } from "../providers/openrouter-vision";
-import { classifyImageIntent, type ResolvedIntent } from "../providers/intent";
+import { classifyImageRequest, type ImageDecision, type ResolvedIntent } from "../providers/intent";
 import { ProviderError } from "../providers/types";
 import { signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
@@ -89,6 +89,22 @@ function errorDetail(err: unknown): string {
     return `${err.name}: ${err.message}`.slice(0, DETAIL_CHARS);
   }
   return "non-error";
+}
+
+// Kis kadam par kya galat hua: "ask" (OpenRouter vision) ya "edit" (Cloudflare). Provider ka naam aur status bhi.
+function logStageFailure(stage: "ask" | "edit", err: unknown, traceId: string): void {
+  const provider = err instanceof ProviderError ? err.provider : null;
+  const status = err instanceof ProviderError ? err.status : null;
+  console.error(
+    JSON.stringify({
+      event: "image_chat_stage_failed",
+      stage,
+      provider,
+      status,
+      detail: errorDetail(err),
+      request_id: traceId,
+    }),
+  );
 }
 
 function utcDay(): string {
@@ -291,6 +307,7 @@ async function askImage(
     return json({ file: null, download_url: null, text: answer.text, request_id: traceId }, 200);
   } catch (err) {
     await releaseAskSlot(env, ctx.userId);
+    logStageFailure("ask", err, traceId);
     if (err instanceof ProviderError) throw new ApiError("provider_unavailable");
     throw err;
   }
@@ -305,11 +322,14 @@ async function editImage(
   image: InputImage,
   prompt: string,
   intent: EditIntent,
+  modelPrompt: string | null,
   traceId: string,
   execCtx: ExecutionContext,
 ): Promise<Response> {
-  const editPrompt = prompt.trim().length > 0 ? prompt : DEFAULT_EDIT;
-  const title = Array.from(editPrompt).slice(0, TITLE_CHARS).join("");
+  // Title user ke apne shabdon se. Image model ko English nirdesh (modelPrompt) mil sakta hai.
+  const editPrompt = modelPrompt ?? (prompt.trim().length > 0 ? prompt : DEFAULT_EDIT);
+  const titleSource = prompt.trim().length > 0 ? prompt : editPrompt;
+  const title = Array.from(titleSource).slice(0, TITLE_CHARS).join("");
   const requestId = `${ctx.userId}:imgedit:${traceId}`;
 
   // Daily limit: images ka wahi quota jo tasveer banane par lagta hai.
@@ -370,6 +390,7 @@ async function editImage(
     );
   } catch (err) {
     await markFailed(db, row.id);
+    logStageFailure("edit", err, traceId);
     if (err instanceof ProviderError) {
       throw new ApiError("provider_unavailable");
     }
@@ -391,13 +412,27 @@ async function runImageChat(
   const prompt = cleanImagePrompt(body.prompt);
   const question = prompt.trim().length > 0 ? prompt : DEFAULT_QUESTION;
 
-  const intent: ResolvedIntent =
-    body.intent === "auto" ? await classifyImageIntent(env, question, request.signal) : body.intent;
+  // "auto": server prompt padhkar tay karta hai ki sawal hai ya tasveer banani hai.
+  const decision: ImageDecision =
+    body.intent === "auto"
+      ? await classifyImageRequest(env, question, request.signal)
+      : { intent: body.intent, imagePrompt: null };
 
-  if (intent === "ask") {
+  if (decision.intent === "ask") {
     return askImage(env, config, db, ctx, body.image, question, traceId, execCtx);
   }
-  return editImage(env, config, db, ctx, body.image, prompt, intent, traceId, execCtx);
+  return editImage(
+    env,
+    config,
+    db,
+    ctx,
+    body.image,
+    prompt,
+    decision.intent,
+    decision.imagePrompt,
+    traceId,
+    execCtx,
+  );
 }
 
 export async function handleImageChat(
