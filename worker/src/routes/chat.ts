@@ -53,6 +53,8 @@ export const CHAT_MODES = ["general", "shop", "study", "legal", "creator"] as co
 export type ChatMode = (typeof CHAT_MODES)[number];
 
 // Ye batata hai ki app kya-kya bana sakta hai, taaki model khud ko sirf text AI na kahe.
+import { fetchLiveAnswer, needsLiveInfo, withLiveContext } from "../providers/web-grounding";
+
 const CAPABILITY_NOTE =
   "Sthamly AI can also create images (posters, logos, product pictures), slides, one-page websites and documents. " +
   "When the user asks for one of these in chat, do not say you cannot make images. Briefly say you will make it, " +
@@ -646,7 +648,12 @@ async function handleUserChat(
 
   // Mode "general" (default) ho to planner ka role lete hain. Chip se chuna role wahi rehta hai.
   const mode = body.mode === "general" ? plan.role : body.mode;
-  const messages = buildMessages(userCtx.language, mode, priorMessages, body.message);
+  let messages = buildMessages(userCtx.language, mode, priorMessages, body.message);
+  // Taaza jaankari wale sawal (train, hotel, kiraya, khabar): Google Search se live data.
+  if (needsLiveInfo(body.message)) {
+    const live = await fetchLiveAnswer(env, body.message, request.signal);
+    if (live !== null) messages = withLiveContext(messages, live);
+  }
   const inputEstimate = estimateInput(messages);
 
   // 4. Daily token quota
