@@ -1,4 +1,4 @@
-// Sthamly AI Worker: POST /api/images (Blueprint 4.0, Phase 1, image banana)
+ Sthamly AI Worker: POST /api/images (Blueprint 4.0, Phase 1, image banana)
 // Sirf login user. Guest ko image nahi milti (Blueprint section 4).
 // Order: login -> prompt -> daily limit -> budget -> pending row -> Gemini -> storage -> ready -> signed link.
 // Nakaam hone par row 'failed' hoti hai, aur failed row limit mein nahi ginti (slot wapas aata hai).
