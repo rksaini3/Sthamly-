@@ -22,11 +22,22 @@
   display: block;
   width: 100%;
   height: auto;
+  min-height: 180px;
   max-height: 420px;
   object-fit: contain;
   border-radius: 14px;
   background: var(--bg);
   border: 1px solid var(--border);
+}
+
+/* AI ki tasveer ka frame hamesha poora dikhe, load na ho to bhi chhota error jaisa nahi lagta. */
+.chat-media-open {
+  display: block;
+  width: 100%;
+}
+
+.chat-media-open img {
+  width: 100%;
 }
 
 /* User ki bheji tasveer: chhoti thumbnail, taaki chat mein bahut badi na dikhe. */
