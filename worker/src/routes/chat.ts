@@ -52,6 +52,13 @@ const SYSTEM_PROMPTS: Record<UserContext["language"], string> = {
 export const CHAT_MODES = ["general", "shop", "study", "legal", "creator"] as const;
 export type ChatMode = (typeof CHAT_MODES)[number];
 
+// Ye batata hai ki app kya-kya bana sakta hai, taaki model khud ko sirf text AI na kahe.
+const CAPABILITY_NOTE =
+  "Sthamly AI can also create images (posters, logos, product pictures), slides, one-page websites and documents. " +
+  "When the user asks for one of these in chat, do not say you cannot make images. Briefly say you will make it, " +
+  "and if the details are missing, ask for them in one short line (name, price, colours, language). " +
+  "Never describe yourself only as a text-based AI.";
+
 // Har mode ka chhota instruction. Base prompt (bhasha wala) ke baad jodta hai.
 // General mode mein kuch nahi jodte, taaki purana behavior waisa hi rahe.
 const MODE_HINTS: Record<ChatMode, string | null> = {
@@ -122,7 +129,8 @@ function buildMessages(
   message: string,
 ): ChatMessage[] {
   const hint = MODE_HINTS[mode];
-  const system = hint === null ? SYSTEM_PROMPTS[language] : `${SYSTEM_PROMPTS[language]}\n\n${hint}`;
+  const base = `${SYSTEM_PROMPTS[language]}\n\n${CAPABILITY_NOTE}`;
+  const system = hint === null ? base : `${base}\n\n${hint}`;
   return [
     { role: "system", content: system },
     ...prior,
@@ -454,9 +462,15 @@ async function runChat(run: ChatRun): Promise<Response> {
 }
 
 // Planner ka fallback: error aaye to user ka sawal chat mein hi jaata hai.
-async function planOrChat(env: Env, message: string, signal: AbortSignal, traceId: string): Promise<Plan> {
+async function planOrChat(
+  env: Env,
+  message: string,
+  recent: ChatMessage[],
+  signal: AbortSignal,
+  traceId: string,
+): Promise<Plan> {
   try {
-    return (await planProject(env, message, signal)).plan;
+    return (await planProject(env, message, signal, recent)).plan;
   } catch {
     console.error(JSON.stringify({ event: "planner_failed", request_id: traceId }));
     return { route: "chat", role: "general", steps: [] };
@@ -624,7 +638,7 @@ async function handleUserChat(
   }
 
   // Orchestrator: planner tay karta hai ki ye baatcheet hai ya kuch banana hai.
-  const plan = await planOrChat(env, body.message, request.signal, traceId);
+  const plan = await planOrChat(env, body.message, priorMessages, request.signal, traceId);
 
   if (plan.route === "create") {
     return handleCreateRoute(request, env, config, db, user, userCtx, body, plan, traceId, execCtx);
