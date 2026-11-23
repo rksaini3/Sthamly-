@@ -13,6 +13,9 @@ const CALL_TIMEOUT_MS = 8_000;
 
 export const SIGNED_URL_SECONDS = 60 * 60;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+// Slides ki HTML mein images base64 ke roop mein hoti hain (lagbhag 33% bada), isliye text files ki limit alag.
+// Bucket ki limit 16 MB hai (migration 0007), usse neeche rakho.
+export const MAX_TEXT_FILE_BYTES = 15 * 1024 * 1024;
 
 // Allowed types. Dusre types par upload hi nahi hota.
 const MIME_TO_EXT: Readonly<Record<string, string>> = {
@@ -84,7 +87,8 @@ export async function uploadObject(
   env: Env,
   p: { userId: string; fileId: string; mimeType: string; bytes: ArrayBuffer },
 ): Promise<StoredObject> {
-  if (p.bytes.byteLength <= 0 || p.bytes.byteLength > MAX_FILE_BYTES) {
+  const limit = p.mimeType.startsWith("text/") ? MAX_TEXT_FILE_BYTES : MAX_FILE_BYTES;
+  if (p.bytes.byteLength <= 0 || p.bytes.byteLength > limit) {
     throw new ApiError("provider_unavailable");
   }
 
