@@ -1,12 +1,13 @@
 // Sthamly AI Worker: Supabase Storage helper (Blueprint 4.0, ek creation flow)
-// Bucket: sthamly-generated (private). Client ko direct access nahi, sirf Worker ka signed link (1 ghanta).
+// Bucket: outputs (private, supabase/migrations/0006 aur 0007 se bana). Client ko direct access nahi, sirf Worker ka signed link (1 ghanta).
 // Path: <user_id>/<file_id>.<ext>. user_id Worker ke verify kiye token se aata hai, client se nahi.
 // Upload, signed link aur delete sirf Worker karta hai (service role key se). Key kabhi client tak nahi.
 
 import type { Env } from "./env";
 import { ApiError } from "./errors";
 
-const BUCKET = "sthamly-generated";
+// Migration 0006 se bana 'outputs' bucket. Pehle "sthamly-generated" tha, jo kisi migration mein nahi bana.
+const BUCKET = "outputs";
 const UPLOAD_TIMEOUT_MS = 30_000;
 const CALL_TIMEOUT_MS = 8_000;
 
