@@ -1,75 +1,70 @@
-/* Sthamly AI web: chat bubble mein tasveer aur PDF ka layout. Rang styles.css ke tokens se. */
+// Sthamly AI web: chat ke bubble mein tasveer aur PDF dikhane wale chhote hisse.
+// AiImageBlock: AI ki bani tasveer, uske neeche "एडिट करें" aur "बैकग्राउंड हटाएँ".
+// UserAttachment: user ne jo tasveer ya PDF bheji, wo sandesh ke upar dikhti hai.
 
-.chat-media {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 6px 0;
-  max-width: min(360px, 100%);
+import type { ReactNode } from "react";
+import "./ChatMedia.css";
+
+export interface MessageAttachment {
+  kind: "image" | "pdf";
+  name: string;
+  previewUrl?: string;
 }
 
-.chat-media-open {
-  padding: 0;
-  border: none;
-  background: transparent;
-  line-height: 0;
-  border-radius: 14px;
-  overflow: hidden;
+interface AiImageBlockProps {
+  src: string;
+  disabled: boolean;
+  onOpen: (src: string) => void;
+  onEdit: (src: string) => void;
+  onRemoveBackground: (src: string) => void;
 }
 
-.chat-media-open img,
-.chat-media > img {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-height: 420px;
-  object-fit: contain;
-  border-radius: 14px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+export function AiImageBlock({ src, disabled, onOpen, onEdit, onRemoveBackground }: AiImageBlockProps) {
+  return (
+    <div className="chat-media">
+      <button
+        type="button"
+        className="chat-media-open"
+        onClick={() => onOpen(src)}
+        aria-label="तस्वीर बड़ी करके देखें"
+      >
+        <img src={src} alt="AI की बनाई तस्वीर" />
+      </button>
+      <div className="msg-actions" role="group" aria-label="तस्वीर के विकल्प">
+        <button type="button" className="msg-action" onClick={() => onEdit(src)} disabled={disabled}>
+          एडिट करें
+        </button>
+        <button
+          type="button"
+          className="msg-action"
+          onClick={() => onRemoveBackground(src)}
+          disabled={disabled}
+        >
+          बैकग्राउंड हटाएँ
+        </button>
+      </div>
+    </div>
+  );
 }
 
-/* User ki bheji tasveer: chhoti thumbnail, taaki chat mein bahut badi na dikhe. */
-.chat-media-user {
-  align-self: flex-end;
-  max-width: min(200px, 62%);
+interface UserAttachmentProps {
+  attachment: MessageAttachment;
 }
 
-.chat-media-user > img {
-  max-height: 200px;
-  width: auto;
-  max-width: 100%;
-  margin-left: auto;
-}
-
-.chat-media-doc {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 14px;
-}
-
-.chat-media-badge {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--accent-bg);
-  color: var(--accent-strong);
-  font-size: 12px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.chat-media-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+export function UserAttachment({ attachment }: UserAttachmentProps): ReactNode {
+  if (attachment.kind === "image" && attachment.previewUrl) {
+    return (
+      <div className="chat-media chat-media-user">
+        <img src={attachment.previewUrl} alt={attachment.name} />
+      </div>
+    );
+  }
+  return (
+    <div className="chat-media chat-media-user chat-media-doc">
+      <span className="chat-media-badge" aria-hidden="true">
+        PDF
+      </span>
+      <span className="chat-media-name">{attachment.name}</span>
+    </div>
+  );
 }
