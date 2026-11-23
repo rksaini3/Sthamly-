@@ -1,6 +1,13 @@
-// Sthamly AI Worker: planner ke jawab ki jaanch (model par bharosa nahi, isliye har galti ka fallback chat hai).
+// Sthamly AI Worker: planner ke jawab ki jaanch aur keyword fallback (model par bharosa nahi, isliye har galti ka fallback).
 import { describe, expect, it } from "vitest";
-import { estimatePlanCostInr, estimateStepCostInr, MAX_PLAN_STEPS, parsePlan } from "../src/orchestrator/planner";
+import {
+  composePlannerInput,
+  estimatePlanCostInr,
+  estimateStepCostInr,
+  guessPlanFromKeywords,
+  MAX_PLAN_STEPS,
+  parsePlan,
+} from "../src/orchestrator/planner";
 
 describe("parsePlan: chat route", () => {
   it("सवाल हो तो chat route और role लेता है", () => {
@@ -65,6 +72,48 @@ describe("parsePlan: create route", () => {
   it("```json code fence के अंदर का JSON भी पढ़ता है", () => {
     const raw = '```json\n{"route":"create","steps":[{"kind":"image","prompt":"लोगो"}]}\n```';
     expect(parsePlan(raw).steps).toEqual([{ kind: "image", prompt: "लोगो" }]);
+  });
+});
+
+describe("guessPlanFromKeywords", () => {
+  it("'bnao' के साथ तस्वीर का शब्द हो तो image create", () => {
+    const plan = guessPlanFromKeywords("Yeh jaisa hi hi waisa hi image bnao");
+    expect(plan?.route).toBe("create");
+    expect(plan?.steps[0]?.kind).toBe("image");
+  });
+
+  it("स्लाइड बनाने का अनुरोध slides बनता है", () => {
+    expect(guessPlanFromKeywords("मेरी दुकान पर स्लाइड बना दो")?.steps[0]?.kind).toBe("slides");
+  });
+
+  it("वेबसाइट बनाने का अनुरोध website बनता है", () => {
+    expect(guessPlanFromKeywords("दुकान की वेबसाइट banao")?.steps[0]?.kind).toBe("website");
+  });
+
+  it("सिर्फ़ सवाल या सलाह हो तो null (chat)", () => {
+    expect(guessPlanFromKeywords("पोस्टर कैसे बनाते हैं, सलाह दो")).toBeNull();
+    expect(guessPlanFromKeywords("मेरी दुकान का नाम क्या रखूँ")).toBeNull();
+  });
+
+  it("बनाने का शब्द हो पर किस चीज़ का नहीं, तो null", () => {
+    expect(guessPlanFromKeywords("इसका use case bnao")).toBeNull();
+  });
+});
+
+describe("composePlannerInput", () => {
+  it("बिना पिछली बातचीत के सिर्फ़ नया संदेश लौटाता है", () => {
+    expect(composePlannerInput("नमस्ते", [])).toBe("नमस्ते");
+  });
+
+  it("पिछली बातचीत और नया संदेश दोनों जोड़ता है", () => {
+    const out = composePlannerInput("ये जैसा image bnao", [
+      { role: "user", content: "HDFC, ICICI, Axis बैंक पर रिपोर्ट" },
+      { role: "assistant", content: "ये तीन बैंक टॉप पिक हैं" },
+    ]);
+    expect(out).toContain("पिछली बातचीत:");
+    expect(out).toContain("उपयोगकर्ता: HDFC, ICICI, Axis बैंक पर रिपोर्ट");
+    expect(out).toContain("सहायक: ये तीन बैंक टॉप पिक हैं");
+    expect(out.endsWith("नया संदेश: ये जैसा image bnao")).toBe(true);
   });
 });
 
