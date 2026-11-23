@@ -1,51 +1,29 @@
-// Sthamly AI Worker: POST /api/image-chat/edit (chat mein tasveer bhejo)
-// Sirf login user. Body: { image: "data:image/...;base64,...", prompt: string, intent?: "auto" | "ask" | "edit" | "remove_bg" }.
-// intent "auto" (default): server prompt padh kar tay karta hai. "ask": tasveer dekh kar text jawab (OpenRouter free vision).
-// "edit": tasveer badlo ya banao (Cloudflare FLUX.2 klein). "remove_bg": background hatao (Cloudflare bria).
-// Edit ke order: login -> body -> intent -> daily limit -> budget -> pending row -> edit -> storage -> ready row -> signed link.
+// Sthamly AI Worker: POST /api/images (Blueprint 4.0, Phase 1, image banana)
+// Sirf login user. Guest ko image nahi milti (Blueprint section 4).
+// Order: login -> prompt -> daily limit -> budget -> pending row -> Gemini -> storage -> ready -> signed link.
 // Nakaam hone par row 'failed' hoti hai, aur failed row limit mein nahi ginti (slot wapas aata hai).
-// Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate. Log mein sirf error ka naam aur chhota message.
+// Image ka cost chat se alag, aur ye usage_logs mein feature 'image' se darj hota hai.
+// Raw provider error, prompt aur image bytes kabhi log ya client tak nahi jaate.
 
 import { authenticate } from "../auth";
 import { assertBudget } from "../budget";
 import { assertSecretsPresent, loadConfig, type Config, type Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
 import { loadUserContext, type UserContext } from "../plan";
-import { cleanImagePrompt } from "../providers/image";
-import type { InputImage } from "../providers/gemini-image";
-import { removeBackgroundWithCloudflare } from "../providers/cf-image";
-import { CF_EDIT_MODEL, editImageWithCloudflare } from "../providers/cf-image-edit";
-import { askImageWithOpenRouter } from "../providers/openrouter-vision";
-import { classifyImageRequest, type ImageDecision, type ResolvedIntent } from "../providers/intent";
+import { cleanImagePrompt, generateImage } from "../providers/image";
 import { ProviderError } from "../providers/types";
-import { signedDownloadUrl, uploadObject } from "../storage";
+import { assertPathBelongsTo, deleteObject, signedDownloadUrl, uploadObject } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
 
-const ROUTE = "/api/image-chat/edit";
-type RequestIntent = "auto" | ResolvedIntent;
-type EditIntent = Exclude<ResolvedIntent, "ask">;
-const INTENTS: readonly RequestIntent[] = ["auto", "ask", "edit", "remove_bg"];
+// Image model: model_registry mein 'image' tier wali row se aata hai. Abhi config se (verify karein).
+const IMAGE_FEATURE = "image";
+// Image ka kharcha rupees mein (estimate, open decision). Pehle price verify karein.
+const IMAGE_COST_INR_ESTIMATE = 3.5;
 
-// Edit ka kharcha rupees mein (estimate). Image banane ke barabar hi maana hai.
-const EDIT_COST_INR_ESTIMATE = 3.5;
-const EDIT_FEATURE = "image";
-const DEFAULT_EDIT = "इस तस्वीर को बेहतर बनाओ।";
-// Sawal (vision) ka kharcha aur daily limit. OpenRouter free models par ye kharcha 0 hai,
-// lekin budget ginti ke liye chhota estimate rakha hai.
-const ASK_COST_INR_ESTIMATE = 0.5;
-const ASK_FEATURE = "vision";
-const ASK_DAILY_LIMIT = 30;
-const ASK_SLOT_TTL_SECONDS = 2 * 24 * 60 * 60;
-const ASK_SLOT_PREFIX = "visq";
-const DEFAULT_QUESTION = "इस तस्वीर में क्या है? विस्तार से बताओ।";
-
-const MAX_BODY_BYTES = 8 * 1024 * 1024;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const TITLE_CHARS = 40;
-const DETAIL_CHARS = 300;
-
-// data:image/jpeg|png|webp;base64,...  (sirf yahi formats)
-const DATA_URI_RE = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+=*)$/;
+const IDEMPOTENCY_RE = /^[A-Za-z0-9_-]{8,128}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const IMAGE_ROUTE = "/api/images";
+const FILE_ROUTE_RE = /^\/api\/images\/([0-9a-f-]{36})\/url$/i;
 
 interface GeneratedFileRow {
   id: string;
@@ -57,12 +35,6 @@ interface GeneratedFileRow {
   size_bytes: number | null;
   title: string;
   created_at: string;
-}
-
-interface ParsedBody {
-  image: InputImage;
-  prompt: string;
-  intent: RequestIntent;
 }
 
 function invalid(message?: string): ApiError {
@@ -83,48 +55,14 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// Error ka naam aur chhota message, log ke liye. Prompt ya image yahan nahi aate.
-function errorDetail(err: unknown): string {
-  if (err instanceof Error) {
-    return `${err.name}: ${err.message}`.slice(0, DETAIL_CHARS);
-  }
-  return "non-error";
-}
-
-function utcDay(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function askSlotKey(userId: string): string {
-  return `${ASK_SLOT_PREFIX}:${userId}:${utcDay()}`;
-}
-
-// Sawal ki daily ginti (KV par, approximate).
-async function takeAskSlot(env: Env, userId: string): Promise<void> {
-  const key = askSlotKey(userId);
-  const current = Number((await env.STATE.get(key)) ?? "0");
-  if (current >= ASK_DAILY_LIMIT) {
-    throw new ApiError("rate_limited", "आज तस्वीर के सवालों की सीमा पूरी हो गई। कल फिर कोशिश करें।");
-  }
-  await env.STATE.put(key, String(current + 1), { expirationTtl: ASK_SLOT_TTL_SECONDS });
-}
-
-async function releaseAskSlot(env: Env, userId: string): Promise<void> {
-  const key = askSlotKey(userId);
-  const current = Number((await env.STATE.get(key)) ?? "0");
-  if (current > 0) {
-    await env.STATE.put(key, String(current - 1), { expirationTtl: ASK_SLOT_TTL_SECONDS });
-  }
-}
-
-// Body padhta hai aur image ko check karta hai. Galat ho to saaf Hindi message.
-async function readBody(request: Request): Promise<ParsedBody> {
+// Body: { prompt: string, title?: string }. Size chhota rakhte hain.
+async function readBody(request: Request): Promise<{ prompt: string; title: string | null }> {
   const contentType = request.headers.get("Content-Type") ?? "";
   if (!contentType.toLowerCase().startsWith("application/json")) throw invalid();
 
   const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
-    throw invalid("तस्वीर बहुत बड़ी है।");
+  if (new TextEncoder().encode(raw).byteLength > 8 * 1024) {
+    throw invalid("अनुरोध बहुत बड़ा है।");
   }
 
   let parsed: unknown;
@@ -133,32 +71,23 @@ async function readBody(request: Request): Promise<ParsedBody> {
   } catch {
     throw invalid();
   }
-  if (!isRecord(parsed) || typeof parsed.image !== "string" || typeof parsed.prompt !== "string") {
-    throw invalid();
+  if (!isRecord(parsed) || typeof parsed.prompt !== "string") throw invalid();
+
+  let title: string | null = null;
+  if (parsed.title !== undefined && parsed.title !== null) {
+    if (typeof parsed.title !== "string") throw invalid();
+    const t = parsed.title.trim();
+    title = t.length > 0 ? Array.from(t).slice(0, 60).join("") : null;
   }
 
-  const match = DATA_URI_RE.exec(parsed.image);
-  if (!match || !match[1] || !match[2]) {
-    throw invalid("सिर्फ़ JPEG, PNG या WEBP तस्वीर चल सकती है।");
-  }
+  return { prompt: parsed.prompt, title };
+}
 
-  const decodedBytes = Math.floor((match[2].length * 3) / 4);
-  if (decodedBytes > MAX_IMAGE_BYTES) throw invalid("तस्वीर बहुत बड़ी है। छोटी तस्वीर चुनें।");
-
-  // intent na ho to "auto": server prompt padh kar khud tay karega.
-  let intent: RequestIntent = "auto";
-  if (parsed.intent !== undefined) {
-    const found = INTENTS.find((i) => i === parsed.intent);
-    if (!found) throw invalid();
-    intent = found;
-  }
-
-  const mimeType = match[1] as InputImage["mimeType"];
-  return {
-    image: { mimeType, base64: match[2] },
-    prompt: parsed.prompt,
-    intent,
-  };
+function readIdempotencyKey(request: Request): string | null {
+  const raw = request.headers.get("Idempotency-Key");
+  if (raw === null) return null;
+  if (!IDEMPOTENCY_RE.test(raw)) throw invalid();
+  return raw;
 }
 
 // Aaj ki image count DB function se (pending aur ready dono).
@@ -167,7 +96,7 @@ async function imagesToday(db: SupabaseClient, userId: string): Promise<number> 
   return typeof used === "number" ? used : 0;
 }
 
-// Plan ki daily image limit. Plan row mein 'daily_images' column hai.
+// Plan ki daily image limit. Plan row mein 'daily_images' column hai (migration 0003).
 async function dailyImageLimit(db: SupabaseClient, plan: string): Promise<number> {
   const rows = await db.select<{ daily_images: number }>(
     "plans",
@@ -178,7 +107,7 @@ async function dailyImageLimit(db: SupabaseClient, plan: string): Promise<number
   return row.daily_images;
 }
 
-// Pending row: ye limit ka slot pakadti hai.
+// Pending row banata hai. Ye limit ka slot pakadta hai.
 async function insertPending(
   db: SupabaseClient,
   userId: string,
@@ -218,104 +147,52 @@ async function markFailed(db: SupabaseClient, fileId: string): Promise<void> {
     .catch(() => undefined);
 }
 
-// Usage: edit ka record, ek hi baar (request_id unique).
-async function recordEditUsage(
+// Usage: feature 'image', cost rupees mein. Ek hi baar (request_id unique).
+async function recordImageUsage(
   db: SupabaseClient,
-  p: { userId: string; requestId: string },
+  p: { userId: string; requestId: string; model: string; inputTokens: number; outputTokens: number },
 ): Promise<void> {
   await db.insert(
     "usage_logs",
     {
       user_id: p.userId,
       request_id: p.requestId,
-      feature: EDIT_FEATURE,
-      provider: "cloudflare",
-      model: CF_EDIT_MODEL,
-      input_tokens: 0,
-      output_tokens: 0,
-      estimated_cost_inr: Number(EDIT_COST_INR_ESTIMATE.toFixed(4)),
+      feature: IMAGE_FEATURE,
+      provider: "gemini",
+      model: p.model,
+      input_tokens: p.inputTokens,
+      output_tokens: p.outputTokens,
+      estimated_cost_inr: Number(IMAGE_COST_INR_ESTIMATE.toFixed(4)),
     },
     { onConflict: "request_id", conflict: "ignore" },
   );
 }
 
-// Usage: sawal (vision) ka record. Model wahi jo jawab de paya.
-async function recordAskUsage(
+// Poora image flow. Har failure par row 'failed' hoti hai, aur user ko saaf message.
+async function createImage(
+  request: Request,
+  env: Env,
+  config: Config,
   db: SupabaseClient,
-  userId: string,
+  ctx: UserContext,
   traceId: string,
-  model: string,
-): Promise<void> {
-  await db.insert(
-    "usage_logs",
-    {
-      user_id: userId,
-      request_id: `${userId}:vision:${traceId}`,
-      feature: ASK_FEATURE,
-      provider: "openrouter",
-      model,
-      input_tokens: 0,
-      output_tokens: 0,
-      estimated_cost_inr: Number(ASK_COST_INR_ESTIMATE.toFixed(4)),
-    },
-    { onConflict: "request_id", conflict: "ignore" },
+  execCtx: ExecutionContext,
+): Promise<Response> {
+  const body = await readBody(request);
+  const prompt = cleanImagePrompt(body.prompt);
+  const title = body.title ?? prompt.slice(0, 40);
+
+  // Idempotency: same key se dobara aaye to naya image nahi banta.
+  const idemKey = readIdempotencyKey(request);
+  const requestId = `${ctx.userId}:image:${idemKey ?? traceId}`;
+
+  const dupes = await db.select<{ id: string }>(
+    "generated_files",
+    `request_id=eq.${encodeURIComponent(requestId)}&select=id&limit=1`,
   );
-}
+  if (dupes.length > 0) throw invalid("यह अनुरोध पहले ही हो चुका है।");
 
-// Intent "ask": tasveer dekh kar text jawab. Koi image nahi banti.
-async function askImage(
-  env: Env,
-  config: Config,
-  db: SupabaseClient,
-  ctx: UserContext,
-  image: InputImage,
-  question: string,
-  traceId: string,
-  execCtx: ExecutionContext,
-): Promise<Response> {
-  await takeAskSlot(env, ctx.userId);
-  try {
-    await assertBudget(env, db, config, {
-      feature: ASK_FEATURE,
-      isFreePlan: ctx.plan.plan === "free",
-    });
-
-    const answer = await askImageWithOpenRouter(env, { question, image });
-
-    execCtx.waitUntil(
-      recordAskUsage(db, ctx.userId, traceId, answer.model).catch(() => {
-        console.error(JSON.stringify({ event: "vision_usage_write_failed", request_id: traceId }));
-      }),
-    );
-
-    return json({ file: null, download_url: null, text: answer.text, request_id: traceId }, 200);
-  } catch (err) {
-    await releaseAskSlot(env, ctx.userId);
-    if (err instanceof ProviderError) throw new ApiError("provider_unavailable");
-    throw err;
-  }
-}
-
-// Intent "edit" ya "remove_bg": tasveer banti hai, storage mein jaati hai, link milta hai.
-async function editImage(
-  env: Env,
-  config: Config,
-  db: SupabaseClient,
-  ctx: UserContext,
-  image: InputImage,
-  prompt: string,
-  intent: EditIntent,
-  modelPrompt: string | null,
-  traceId: string,
-  execCtx: ExecutionContext,
-): Promise<Response> {
-  // Title user ke apne shabdon se. Image model ko English nirdesh (modelPrompt) mil sakta hai.
-  const editPrompt = modelPrompt ?? (prompt.trim().length > 0 ? prompt : DEFAULT_EDIT);
-  const titleSource = prompt.trim().length > 0 ? prompt : editPrompt;
-  const title = Array.from(titleSource).slice(0, TITLE_CHARS).join("");
-  const requestId = `${ctx.userId}:imgedit:${traceId}`;
-
-  // Daily limit: images ka wahi quota jo tasveer banane par lagta hai.
+  // Daily limit: pending aur ready dono ginte hain.
   const limit = await dailyImageLimit(db, ctx.plan.plan);
   const used = await imagesToday(db, ctx.userId);
   if (used >= limit) {
@@ -325,32 +202,40 @@ async function editImage(
     );
   }
 
+  // Budget (global, 100% par image band, 110% par free users band).
   await assertBudget(env, db, config, {
     feature: "image",
     isFreePlan: ctx.plan.plan === "free",
   });
 
+  // Pending row: ab ye slot pakad chuka hai.
   const row = await insertPending(db, ctx.userId, title, requestId);
 
   try {
-    // Background hatana: bria. Baaki edit: FLUX.2 klein. Dono Cloudflare Workers AI par (free tier).
-    const edited =
-      intent === "remove_bg"
-        ? await removeBackgroundWithCloudflare(env, `data:${image.mimeType};base64,${image.base64}`)
-        : await editImageWithCloudflare(env, { prompt: editPrompt, image });
+    const generated = await generateImage(env, {
+      model: config.imageModel,
+      prompt,
+      signal: new AbortController().signal,
+    });
 
     const stored = await uploadObject(env, {
       userId: ctx.userId,
       fileId: row.id,
-      mimeType: edited.mimeType,
-      bytes: edited.bytes,
+      mimeType: generated.mimeType,
+      bytes: generated.bytes,
     });
 
     await markReady(db, row.id, stored.path, stored.mimeType, stored.sizeBytes);
 
     execCtx.waitUntil(
-      recordEditUsage(db, { userId: ctx.userId, requestId }).catch(() => {
-        console.error(JSON.stringify({ event: "image_edit_usage_write_failed", request_id: traceId }));
+      recordImageUsage(db, {
+        userId: ctx.userId,
+        requestId,
+        model: config.imageModel,
+        inputTokens: generated.inputTokens,
+        outputTokens: generated.outputTokens,
+      }).catch(() => {
+        console.error(JSON.stringify({ event: "image_usage_write_failed", request_id: traceId }));
       }),
     );
 
@@ -364,14 +249,15 @@ async function editImage(
           mime_type: stored.mimeType,
           size_bytes: stored.sizeBytes,
           status: "ready",
+          expires_at: row.created_at,
         },
         download_url: url,
-        text: edited.text,
         request_id: traceId,
       },
       201,
     );
   } catch (err) {
+    // Koi bhi step fail: slot wapas (row failed), aur user ko saaf message.
     await markFailed(db, row.id);
     if (err instanceof ProviderError) {
       throw new ApiError("provider_unavailable");
@@ -380,44 +266,51 @@ async function editImage(
   }
 }
 
-// Prompt (ya chuna hua intent) dekh kar sahi raasta chunta hai.
-async function runImageChat(
-  request: Request,
-  env: Env,
-  config: Config,
-  db: SupabaseClient,
-  ctx: UserContext,
-  traceId: string,
-  execCtx: ExecutionContext,
-): Promise<Response> {
-  const body = await readBody(request);
-  const prompt = cleanImagePrompt(body.prompt);
-  const question = prompt.trim().length > 0 ? prompt : DEFAULT_QUESTION;
-
-  // "auto": server prompt padhkar tay karta hai ki sawal hai ya tasveer banani hai.
-  const decision: ImageDecision =
-    body.intent === "auto"
-      ? await classifyImageRequest(env, question, request.signal)
-      : { intent: body.intent, imagePrompt: null };
-
-  if (decision.intent === "ask") {
-    return askImage(env, config, db, ctx, body.image, question, traceId, execCtx);
-  }
-  return editImage(
-    env,
-    config,
-    db,
-    ctx,
-    body.image,
-    prompt,
-    decision.intent,
-    decision.imagePrompt,
-    traceId,
-    execCtx,
+// GET /api/images: user ki files ki list (ready aur pending).
+async function listImages(db: SupabaseClient, userId: string): Promise<Response> {
+  const rows = await db.select<GeneratedFileRow>(
+    "generated_files",
+    `user_id=eq.${userId}&deleted_at=is.null&status=neq.failed` +
+      `&select=id,kind,status,title,mime_type,size_bytes,created_at,expires_at` +
+      `&order=created_at.desc&limit=50`,
   );
+  return json({ files: rows });
 }
 
-export async function handleImageChat(
+// GET /api/images/:id/url: signed download link (1 ghanta). Sirf apni file.
+async function downloadUrl(db: SupabaseClient, env: Env, userId: string, fileId: string): Promise<Response> {
+  const rows = await db.select<GeneratedFileRow>(
+    "generated_files",
+    `id=eq.${fileId}&user_id=eq.${userId}&status=eq.ready&deleted_at=is.null&select=id,storage_path`,
+  );
+  const row = rows[0];
+  if (!row || !row.storage_path) throw invalid("फ़ाइल नहीं मिली।");
+
+  assertPathBelongsTo(row.storage_path, userId);
+  const url = await signedDownloadUrl(env, row.storage_path);
+  return json({ download_url: url });
+}
+
+// DELETE /api/images/:id: user apni file hata sake. Storage object bhi hatata hai.
+async function deleteImage(db: SupabaseClient, env: Env, userId: string, fileId: string): Promise<Response> {
+  const rows = await db.select<GeneratedFileRow>(
+    "generated_files",
+    `id=eq.${fileId}&user_id=eq.${userId}&deleted_at=is.null&select=id,storage_path`,
+  );
+  const row = rows[0];
+  if (!row) throw invalid("फ़ाइल नहीं मिली।");
+
+  if (row.storage_path) {
+    assertPathBelongsTo(row.storage_path, userId);
+    await deleteObject(env, row.storage_path);
+  }
+  await db.update("generated_files", `id=eq.${fileId}&user_id=eq.${userId}`, {
+    deleted_at: new Date().toISOString(),
+  });
+  return json({ deleted: true, file_id: fileId });
+}
+
+export async function handleImages(
   request: Request,
   env: Env,
   execCtx: ExecutionContext,
@@ -428,26 +321,36 @@ export async function handleImageChat(
     const config = loadConfig(env);
     assertSecretsPresent(env);
 
-    // Login zaroori. Guest ko ye feature nahi milta.
+    // Login zaroori. Guest ko image nahi milti.
     const user = await authenticate(request, env);
-
-    const { pathname } = new URL(request.url);
-    if (pathname !== ROUTE || request.method !== "POST") throw invalid();
-
     const db = createSupabase(env);
     const ctx = await loadUserContext(db, user);
 
-    return await runImageChat(request, env, config, db, ctx, traceId, execCtx);
+    const { pathname } = new URL(request.url);
+    const method = request.method;
+
+    if (pathname === IMAGE_ROUTE) {
+      if (method === "POST") return await createImage(request, env, config, db, ctx, traceId, execCtx);
+      if (method === "GET") return await listImages(db, user.id);
+      throw invalid();
+    }
+
+    const urlMatch = FILE_ROUTE_RE.exec(pathname);
+    if (urlMatch && urlMatch[1] && method === "GET") {
+      const fileId = urlMatch[1].toLowerCase();
+      if (!UUID_RE.test(fileId)) throw invalid();
+      return await downloadUrl(db, env, user.id, fileId);
+    }
+
+    const idMatch = /^\/api\/images\/([0-9a-f-]{36})$/i.exec(pathname);
+    if (idMatch && idMatch[1] && method === "DELETE") {
+      return await deleteImage(db, env, user.id, idMatch[1].toLowerCase());
+    }
+
+    throw new ApiError("invalid_request", "रास्ता नहीं मिला।");
   } catch (err) {
     const code = err instanceof ApiError ? err.code : "internal";
-    console.error(
-      JSON.stringify({
-        event: "image_chat_request_failed",
-        code,
-        detail: code === "internal" ? errorDetail(err) : undefined,
-        request_id: traceId,
-      }),
-    );
+    console.error(JSON.stringify({ event: "images_request_failed", code, request_id: traceId }));
     return toErrorResponse(err, traceId);
   }
 }
