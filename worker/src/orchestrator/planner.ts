@@ -2,8 +2,9 @@
 // Ek hi text model call se tay hota hai ki user ko chat ka jawab chahiye (route "chat"),
 // ya kuch banana hai (route "create", 1 se 4 kaam: image, slides, website, document).
 // Chat ka role (shop, study, legal, creator) bhi isi call se aata hai, alag call ki zaroorat nahi.
+// Pichhle kuch sandesh bhi dikhaye jaate hain, taaki "ye jaisa", "wahi wala" jaise shabd samajh aayein.
 // Model ka jawab JSON hai, par bharosa nahi: parsePlan har cheez check karta hai.
-// Kuch bhi galat ho to route "chat": user ka sawal kabhi bina wajah file mein nahi jaata.
+// Model fail ho to keyword se saaf pehchan (guessPlanFromKeywords). Usme bhi na ho to route "chat".
 
 import type { Env } from "../env";
 import { COST_INR } from "../routes/create";
@@ -17,10 +18,13 @@ import {
 } from "../creators";
 import { generateText } from "../providers/create-text";
 import type { AutoRole } from "../providers/intent";
+import type { ChatMessage } from "../providers/types";
 
 export const MAX_PLAN_STEPS = 4;
 export const MAX_STEP_PROMPT_CHARS = 1000;
 const PLAN_MAX_OUTPUT_TOKENS = 512;
+const CONTEXT_TURNS = 4;
+const CONTEXT_CHARS_PER_TURN = 400;
 const ROLES: readonly AutoRole[] = ["general", "shop", "study", "legal", "creator"];
 
 export interface PlanStep {
@@ -36,16 +40,20 @@ export interface Plan {
   steps: PlanStep[];
 }
 
-const PLANNER_SYSTEM = `आप Sthamly AI के मुख्य ऑर्केस्ट्रेटर हैं। उपयोगकर्ता का संदेश पढ़कर तय करें:
+const PLANNER_SYSTEM = `आप Sthamly AI के मुख्य ऑर्केस्ट्रेटर हैं। उपयोगकर्ता का नया संदेश पढ़कर तय करें:
 (A) उन्हें सिर्फ़ बातचीत का जवाब चाहिए: सवाल, सलाह, समझाना, या कोई संदेश/कैप्शन का मसौदा जो वे चैट में ही पढ़ेंगे। तो route "chat".
-(B) उन्हें कोई फ़ाइल या तस्वीर बनवानी है: पोस्टर, लोगो, स्लाइड्स, वेबसाइट, दस्तावेज़। तो route "create".
+(B) उन्हें कोई तस्वीर, पोस्टर, लोगो, स्लाइड्स, वेबसाइट या दस्तावेज़ बनवाना है, या किसी चीज़ को नया/बदला हुआ रूप देना है। तो route "create".
 
-role इनमें से एक चुनें:
-- "shop": दुकान या छोटा बिज़नेस (ऑफ़र, बिल, उधार, ग्राहक संदेश)
-- "study": पढ़ाई (नोट्स, प्रश्नोत्तर, परीक्षा)
-- "legal": कानूनी कागज़ (नोटिस, शिकायत, आवेदन, किराया, सरकारी काम)
-- "creator": सोशल मीडिया (रील, कैप्शन, हैशटैग, स्क्रिप्ट)
-- "general": बाकी सब
+नियम:
+- "बनाओ", "बना दो", "banao", "bnao", "bna do", "बनाइए", "create", "make", "design" के साथ कोई तस्वीर, पोस्टर, लोगो, स्लाइड, वेबसाइट या दस्तावेज़ का नाम हो, तो route "create" चुनें। विवरण थोड़ा कम हो तो भी।
+- "ये", "वैसा", "जैसा", "इसका", "वही" जैसे शब्द हों, तो पिछली बातचीत से विषय लें और काम के prompt में पूरा विवरण लिखें। पिछली बातचीत में जो दिखा है, वही लिखें।
+- सिर्फ़ पूछना कि कुछ कैसे बनाएँ, या सलाह चाहिए, तो route "chat"।
+- role इनमें से एक चुनें:
+  "shop": दुकान या छोटा बिज़नेस (ऑफ़र, बिल, उधार, ग्राहक संदेश)
+  "study": पढ़ाई (नोट्स, प्रश्नोत्तर, परीक्षा)
+  "legal": कानूनी कागज़ (नोटिस, शिकायत, आवेदन, किराया, सरकारी काम)
+  "creator": सोशल मीडिया (रील, कैप्शन, हैशटैग, स्क्रिप्ट)
+  "general": बाकी सब
 
 route "create" के लिए हर काम का kind इनमें से एक हो:
 - "image": एक तस्वीर (पोस्टर, प्रोडक्ट फ़ोटो, लोगो)
@@ -53,13 +61,24 @@ route "create" के लिए हर काम का kind इनमें स
 - "website": एक पेज की वेबसाइट (HTML)
 - "document": लिखित दस्तावेज़ (नोट्स, पत्र, योजना)
 
-नियम:
+और नियम:
 - route "create" में 1 से 4 काम। सरल अनुरोध के लिए एक ही काम काफ़ी है।
-- हर काम का "prompt" अपने आप में पूरा हो: नाम, कीमत, तारीख, भाषा, जो भी तथ्य चाहिए, सब उसी में लिखें, क्योंकि हर काम अलग चलता है।
-- शक हो तो route "chat" चुनें।
+- हर काम का "prompt" अपने आप में पूरा हो: नाम, कीमत, तारीख, भाषा, रंग, जो भी तथ्य चाहिए, सब उसी में लिखें, क्योंकि हर काम अलग चलता है।
+- शक हो और अनुरोध में बनाने का शब्द है, तो route "create"। बिना बनाने के शब्द के शक हो, तो route "chat"।
 - सिर्फ़ JSON लौटाएँ। इन रूपों में से एक:
 {"route":"chat","role":"general"}
 {"route":"create","role":"shop","steps":[{"kind":"image","prompt":"..."}]}`;
+
+// Pichhli baatcheet ko planner ke input mein jodta hai (sirf aakhri kuch sandesh, har ek chhota).
+export function composePlannerInput(prompt: string, recent: readonly ChatMessage[]): string {
+  const turns = recent.slice(-CONTEXT_TURNS);
+  if (turns.length === 0) return prompt;
+  const lines = turns.map((m) => {
+    const who = m.role === "user" ? "उपयोगकर्ता" : "सहायक";
+    return `${who}: ${Array.from(m.content).slice(0, CONTEXT_CHARS_PER_TURN).join("")}`;
+  });
+  return `पिछली बातचीत:\n${lines.join("\n")}\n\nनया संदेश: ${prompt}`;
+}
 
 // Model ke jawab ko jaanch kar saaf plan banata hai. Kuch bhi galat ho to route "chat".
 export function parsePlan(raw: string): Plan {
@@ -96,6 +115,24 @@ export function parsePlan(raw: string): Plan {
   return { route: "create", role, steps };
 }
 
+// Keyword se pehchan: model fail ho to bhi saaf "create" pakdna. Galat ho to null (chat).
+const CREATE_VERB =
+  /बनाओ|बना\s*दो|बना\s*दे|बनाइए|बनाएं|बनवा|banao|bnao|bana\s*do|bana\s*de|bna\s*do|bna\s*de|bnado|bnade|create|generate|make|design/i;
+const KIND_RULES: ReadonlyArray<{ kind: CreateKind; re: RegExp }> = [
+  { kind: "slides", re: /स्लाइड|slide|ppt|deck|प्रेज़ेंटेशन|presentation/i },
+  { kind: "website", re: /वेबसाइट|वेबसाइट|website|वेब\s*पेज|landing\s*page|html/i },
+  { kind: "document", re: /दस्तावेज़|दस्तावेज|document|पत्र|letter|नोट्स|notes|article|लेख/i },
+  { kind: "image", re: /तस्वीर|तसवीर|इमेज|image|फ़ोटो|फोटो|photo|पोस्टर|poster|लोगो|logo|collage|कोलाज|banner|बैनर/i },
+];
+
+export function guessPlanFromKeywords(message: string): Plan | null {
+  if (!CREATE_VERB.test(message)) return null;
+  const hit = KIND_RULES.find((r) => r.re.test(message));
+  if (!hit) return null;
+  const prompt = Array.from(message.trim()).slice(0, MAX_STEP_PROMPT_CHARS).join("");
+  return { route: "create", role: "general", steps: [{ kind: hit.kind, prompt }] };
+}
+
 // Ek kaam ka anumaanit kharcha (rupees). Slides mein zyada se zyada MAX_SLIDE_IMAGES tasveerein maante hain.
 export function estimateStepCostInr(kind: CreateKind): number {
   if (kind === "image") return COST_INR.image;
@@ -108,24 +145,32 @@ export function estimatePlanCostInr(steps: readonly PlanStep[]): number {
   return steps.reduce((sum, step) => sum + estimateStepCostInr(step.kind), 0);
 }
 
-// Planner ko ek baar chalata hai. Provider ka error caller ko milta hai, wahi fallback chunta hai.
+// Planner ko ek baar chalata hai. Model fail ho to keyword fallback, usme bhi na mile to chat.
 export async function planProject(
   env: Env,
   prompt: string,
   signal: AbortSignal,
+  recent: readonly ChatMessage[] = [],
 ): Promise<{ plan: Plan; model: string; inputTokens: number; outputTokens: number }> {
-  const res = await generateText(env, {
-    model: CREATE_TEXT_MODEL,
-    system: PLANNER_SYSTEM,
-    user: userText(prompt),
-    json: true,
-    maxOutputTokens: PLAN_MAX_OUTPUT_TOKENS,
-    signal,
-  });
-  return {
-    plan: parsePlan(res.text),
-    model: CREATE_TEXT_MODEL,
-    inputTokens: res.inputTokens,
-    outputTokens: res.outputTokens,
-  };
+  const input = composePlannerInput(prompt, recent);
+  try {
+    const res = await generateText(env, {
+      model: CREATE_TEXT_MODEL,
+      system: PLANNER_SYSTEM,
+      user: userText(input),
+      json: true,
+      maxOutputTokens: PLAN_MAX_OUTPUT_TOKENS,
+      signal,
+    });
+    return {
+      plan: parsePlan(res.text),
+      model: CREATE_TEXT_MODEL,
+      inputTokens: res.inputTokens,
+      outputTokens: res.outputTokens,
+    };
+  } catch (err) {
+    if (signal.aborted) throw err;
+    const plan = guessPlanFromKeywords(prompt) ?? { route: "chat", role: "general", steps: [] };
+    return { plan, model: "keyword", inputTokens: 0, outputTokens: 0 };
+  }
 }
