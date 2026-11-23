@@ -1,14 +1,13 @@
-// Sthamly AI Worker: live jaankari (train, hotel, kiraya, khabar, mausam) ke liye Google Search grounding.
-// Gemini interactions API, tools: [{ type: "google_search" }]. Key header mein jaati hai (URL mein nahi).
+// Sthamly AI Worker: live jaankari (train, hotel, kiraya, khabar, mausam) ke liye Tavily Search API.
+// Tavily ka free tier bina credit card ke, har mahine kuch sau/hazaar searches. Key header mein jaati hai (URL mein nahi).
 // Raw provider response, error body aur key kabhi bahar nahi jaate. Koi bhi galti ho to null: chat bina live data ke chalti hai.
 
 import type { Env } from "../env";
 import type { ChatMessage } from "./types";
 
-const INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions";
-// Gemini docs ka current example model. Naya model aaye to sirf is line ko badlein.
-const GROUNDING_MODEL = "gemini-3.8-flash";
-const TIMEOUT_MS = 25_000;
+const TAVILY_URL = "https://api.tavily.com/search";
+const TIMEOUT_MS = 15_000;
+const MAX_RESULTS = 5;
 const MAX_TEXT_CHARS = 3_000;
 const MAX_SOURCES = 5;
 
@@ -39,13 +38,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// 'content' kabhi array hota hai, kabhi ek object. Dono sambhalte hain.
-function asList(value: unknown): unknown[] {
-  if (Array.isArray(value)) return value;
-  if (isRecord(value)) return [value];
-  return [];
-}
-
 function safeHttpUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   try {
@@ -56,73 +48,66 @@ function safeHttpUrl(value: unknown): string | null {
   }
 }
 
-// Jawab ka text aur sources (url_citation annotations) nikalta hai. Shape na mile to null.
-export function parseLiveAnswer(body: unknown): LiveAnswer | null {
+// Tavily jawab: { answer, results: [{ title, url, content }] }. Shape na mile to null.
+export function parseTavilyAnswer(body: unknown): LiveAnswer | null {
   if (!isRecord(body)) return null;
 
-  let text = "";
   const sources: LiveSource[] = [];
   const seen = new Set<string>();
+  const snippets: string[] = [];
 
-  for (const step of asList(body.steps)) {
-    if (!isRecord(step) || step.type !== "model_output") continue;
-    for (const block of asList(step.content)) {
-      if (!isRecord(block)) continue;
-      if (typeof block.text === "string") text += block.text;
-      for (const ann of asList(block.annotations)) {
-        if (!isRecord(ann) || ann.type !== "url_citation") continue;
-        const url = safeHttpUrl(ann.url);
-        if (url === null || seen.has(url) || sources.length >= MAX_SOURCES) continue;
-        seen.add(url);
-        const title = typeof ann.title === "string" && ann.title.trim() !== "" ? ann.title.trim() : url;
-        sources.push({ title: title.slice(0, 160), url });
-      }
+  const results = Array.isArray(body.results) ? body.results : [];
+  for (const item of results) {
+    if (!isRecord(item)) continue;
+    const url = safeHttpUrl(item.url);
+    if (url === null || seen.has(url) || sources.length >= MAX_SOURCES) continue;
+    seen.add(url);
+    const title = typeof item.title === "string" && item.title.trim() !== "" ? item.title.trim() : url;
+    sources.push({ title: title.slice(0, 160), url });
+    if (typeof item.content === "string" && item.content.trim() !== "") {
+      snippets.push(item.content.trim().slice(0, 600));
     }
   }
 
-  const trimmed = text.trim();
-  if (trimmed === "") return null;
-  return { text: trimmed.slice(0, MAX_TEXT_CHARS), sources };
+  // Tavily ka seedha jawab (answer) pehle. Na ho to results ke snippets se.
+  const answer = typeof body.answer === "string" ? body.answer.trim() : "";
+  const text = answer !== "" ? answer : snippets.join("\n\n").trim();
+  if (text === "") return null;
+  return { text: text.slice(0, MAX_TEXT_CHARS), sources };
 }
 
-// Google Search se taaza jaankari. Key na ho, network fail ho ya jawab khaali ho, to null.
+// Tavily se taaza jaankari. Key na ho, network fail ho ya jawab khaali ho, to null.
 export async function fetchLiveAnswer(
   env: Env,
   message: string,
   signal: AbortSignal,
 ): Promise<LiveAnswer | null> {
-  if (!env.GEMINI_API_KEY) return null;
-
-  const input =
-    `आज की तारीख (भारत): ${todayIst()}. ` +
-    "नीचे का सवाल वेब सर्च से ताज़ा जानकारी लेकर जवाब दो। " +
-    "ट्रेन हो तो ट्रेन नंबर, नाम, निकलने और पहुँचने का समय, किराया और क्लास बताओ। " +
-    "होटल हो तो नाम, जगह और किराया बताओ। जो जानकारी न मिले उसे साफ़ कहो, अंदाज़ा मत लगाओ। " +
-    "जवाब हिंदी या Hinglish में, छोटा और साफ़।\n\nसवाल: " +
-    message;
+  if (!env.TAVILY_API_KEY) return null;
 
   let res: Response;
   try {
-    res = await fetch(INTERACTIONS_URL, {
+    res = await fetch(TAVILY_URL, {
       method: "POST",
       headers: {
-        "x-goog-api-key": env.GEMINI_API_KEY,
+        Authorization: `Bearer ${env.TAVILY_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: GROUNDING_MODEL,
-        input,
-        tools: [{ type: "google_search" }],
+        // Aaj ki tareekh query mein: purane nataije kam aayein.
+        query: `${message} (aaj ${todayIst()}, India)`,
+        search_depth: "basic",
+        include_answer: true,
+        max_results: MAX_RESULTS,
       }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]),
     });
   } catch {
-    console.error(JSON.stringify({ event: "live_search_failed", reason: "network" }));
+    console.error(JSON.stringify({ event: "live_search_failed", provider: "tavily", reason: "network" }));
     return null;
   }
 
   if (!res.ok) {
-    console.error(JSON.stringify({ event: "live_search_failed", status: res.status }));
+    console.error(JSON.stringify({ event: "live_search_failed", provider: "tavily", status: res.status }));
     await res.body?.cancel().catch(() => undefined);
     return null;
   }
@@ -131,13 +116,13 @@ export async function fetchLiveAnswer(
   try {
     body = await res.json();
   } catch {
-    console.error(JSON.stringify({ event: "live_search_failed", reason: "bad_json" }));
+    console.error(JSON.stringify({ event: "live_search_failed", provider: "tavily", reason: "bad_json" }));
     return null;
   }
 
-  const answer = parseLiveAnswer(body);
+  const answer = parseTavilyAnswer(body);
   if (answer === null) {
-    console.error(JSON.stringify({ event: "live_search_failed", reason: "empty" }));
+    console.error(JSON.stringify({ event: "live_search_failed", provider: "tavily", reason: "empty" }));
   }
   return answer;
 }
