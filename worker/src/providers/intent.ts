@@ -44,7 +44,7 @@ const ROLES: readonly AutoRole[] = ["shop", "study", "legal", "creator", "genera
 const REMOVE_BG_WORDS =
   /बैकग्राउंड|background|सफ़ेद कर|सफेद कर|सफ़ेद बना|सफेद बना|पीछे का हिस्सा|remove bg|remove background/i;
 const EDIT_WORDS =
-  /बनाओ|बना\s*दो|बना\s*दे|बनाइए|जोड़ो|जोड़\s*दो|शामिल|include|add|बदलो|बदल\s*दो|एडिट|edit|make|create|generate|design|poster|पोस्टर|collage|कोलाज|बिना\s*टेक्स्ट|without\s*text|बेहतर|सुधारो|सुधार\s*दो|improve|style/i;
+  /बनाओ|बना\s*दो|बना\s*दे|बनाइए|जोड़ो|जोड़\s*दो|शामिल|include|add|बदलो|बदल\s*दो|एडिट|edit|make|create|generate|design|poster|पोस्टर|collage|कोलाज|बिना\s*टेक्स्ट|without\s*text|बेहतर|सुधारो|सुधार\s*दो|improve|style|\bbn?a?n?ao\b|\bbanao\b|\bbna\s*do\b|\bbna\s*de\b|\bbnado\b|\bbnade\b|\bbana\s*do\b|\bbana\s*de\b/i;
 
 // Keyword se fallback intent. Sirf tab jab Groq se jawab na mile.
 function keywordIntent(prompt: string): ResolvedIntent {
