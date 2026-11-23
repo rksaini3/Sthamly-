@@ -17,7 +17,10 @@ export interface Env {
   // ---- Secrets (wrangler secret put) ----
   SUPABASE_SERVICE_ROLE_KEY: string;
   GROQ_API_KEY: string;
-  GEMINI_API_KEY?: string;            // abhi optional: billing ke baad hi zaroori. Image aur PDF Cloudflare/Groq par chalte hain.
+  // GEMINI_API_KEY: type mein string rakha hai taaki purane Gemini code type-safe rahe. Runtime par ye khaali ho sakta hai:
+  // billing ke baad hi zaroori hai, aur sirf us call par check hota hai jo ise use karta hai. Startup par nahi.
+  GEMINI_API_KEY: string;
+  OPENROUTER_API_KEY?: string;        // free vision (tasveer se sawal). Missing ho to saaf error, crash nahi.
   TOKEN_ENCRYPTION_KEY: string;
   CRON_SECRET: string;
 
