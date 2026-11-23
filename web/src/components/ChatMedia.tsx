@@ -1,4 +1,4 @@
-// Sthamly AI web: chat ke bubble mein tasveer aur PDF dikhane wale chhote hisse.
+ Sthamly AI web: chat ke bubble mein tasveer aur PDF dikhane wale chhote hisse.
 // AiImageBlock: AI ki bani tasveer, uske neeche "एडिट करें" aur "बैकग्राउंड हटाएँ".
 // UserAttachment: user ne jo tasveer ya PDF bheji, wo sandesh ke upar dikhti hai.
 
