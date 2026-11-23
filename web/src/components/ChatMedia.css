@@ -29,8 +29,17 @@
   border: 1px solid var(--border);
 }
 
+/* User ki bheji tasveer: chhoti thumbnail, taaki chat mein bahut badi na dikhe. */
 .chat-media-user {
   align-self: flex-end;
+  max-width: min(200px, 62%);
+}
+
+.chat-media-user > img {
+  max-height: 200px;
+  width: auto;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .chat-media-doc {
