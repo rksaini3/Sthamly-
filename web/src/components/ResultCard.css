@@ -1,0 +1,112 @@
+/* Sthamly AI web: nateeja card. Kagaz jaisa, shaant. Rang styles.css ke tokens se. */
+
+.result-card {
+  margin: 0 auto;
+  max-width: 720px;
+  padding: 20px 18px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg);
+  box-shadow: 0 1px 2px rgba(20, 22, 46, 0.04), 0 12px 30px rgba(20, 22, 46, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.result-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result-kind {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.result-title {
+  margin: 4px 0 0;
+  font-size: 20px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.result-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.result-preview {
+  min-width: 0;
+}
+
+.result-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Dono bade buttons: chhoti screen par bhi aasani se dabein (kam se kam 48px). */
+.result-primary,
+.result-secondary {
+  min-height: 48px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.result-primary {
+  border: 1px solid var(--text);
+  background: var(--text);
+  color: var(--bg);
+}
+
+.result-secondary {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.result-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.result-text {
+  min-height: 44px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.result-text:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.result-danger {
+  color: var(--danger);
+}
+
+.result-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.result-primary:disabled,
+.result-secondary:disabled,
+.result-text:disabled {
+  opacity: 0.55;
+}
