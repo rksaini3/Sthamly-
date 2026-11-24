@@ -24,7 +24,6 @@ import {
 } from "../api/client";
 import { PushToTalkButton } from "../voice/PushToTalkButton";
 import { ErrorPanel } from "../components/ErrorPanel";
-import { ExpertFab } from "../components/ExpertFab";
 import { PartnerHome, type PartnerAction } from "../components/PartnerHome";
 import {
   autoRetryDelay,
@@ -34,7 +33,7 @@ import {
   type FriendlyError,
 } from "../lib/friendlyError";
 import { enqueue, readOutbox, removeFromOutbox } from "../lib/outbox";
-import { applyPrefs, readPrefs, writePrefs, type Prefs, type TextSize } from "../lib/prefs";
+import { applyPrefs, readPrefs, writePrefs, type Prefs } from "../lib/prefs";
 import { ChatSidebar } from "../components/ChatSidebar";
 import {
   isSupportedLanguage,
@@ -42,7 +41,7 @@ import {
   writeGuestLanguage,
 } from "../lib/languages";
 import { findMode, type ModeKey } from "../lib/modes";
-import { ModeChips, Suggestions } from "../components/ModeBar";
+import { ModeChips } from "../components/ModeBar";
 import { MessageActions } from "../components/MessageActions";
 import { Markdown } from "../components/Markdown";
 import "../components/HomeCalm.css";
@@ -98,13 +97,6 @@ interface GuestUsage {
 function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
 }
-
-const TEXT_SIZES: TextSize[] = ["normal", "large", "xlarge"];
-const TEXT_SIZE_LABEL: Record<TextSize, string> = {
-  normal: "सामान्य अक्षर",
-  large: "बड़े अक्षर",
-  xlarge: "बहुत बड़े अक्षर",
-};
 
 function errorText(err: unknown): string {
   if (err instanceof ApiClientError) return err.message;
@@ -211,6 +203,8 @@ export function ChatPage() {
   const [editNext, setEditNext] = useState(false);
   // Jo AI ki tasveer full-screen dekhi ja rahi hai.
   const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null);
+  // Saved chat khuli, par usmein ek bhi sandesh nahi mila: saaf batana, khaali home jaisa nahi dikhana.
+  const [convoEmpty, setConvoEmpty] = useState(false);
 
   // Chal rahi request ka controller. Stop, chat badalne aur screen band hone par abort hota hai.
   const abortRef = useRef<AbortController | null>(null);
@@ -345,6 +339,7 @@ export function ChatPage() {
       loadedIdRef.current = null;
       setMessages([]);
       setLoadingMessages(false);
+      setConvoEmpty(false);
       return;
     }
 
@@ -374,7 +369,9 @@ export function ChatPage() {
         const res = await listMessages(token, activeId, ctrl.signal);
         if (ctrl.signal.aborted) return;
         loadedIdRef.current = activeId;
-        setMessages(res.messages.filter((m) => m.role !== "system").map(toDisplay));
+        const shown = res.messages.filter((m) => m.role !== "system").map(toDisplay);
+        setMessages(shown);
+        setConvoEmpty(shown.length === 0);
       } catch (err) {
         if (isAbort(err)) return;
         setMessages([]);
@@ -957,6 +954,11 @@ export function ChatPage() {
 
         <section className="chat-messages" aria-live="polite">
           {loadingMessages && <p className="muted">बातचीत लोड हो रही है…</p>}
+          {!loadingMessages && convoEmpty && messages.length === 0 && (
+            <p className="muted small" role="status">
+              इस बातचीत में अभी कोई संदेश सेव नहीं है। नीचे लिखकर बात जारी रखें।
+            </p>
+          )}
 
           {!loadingMessages && messages.length === 0 && (
             prefs.role === "partner" ? (
@@ -981,35 +983,6 @@ export function ChatPage() {
                 <p>अपना सवाल हिंदी या Hinglish में लिखें।</p>
                 {isGuest && (
                   <p className="small">मेहमान के रूप में आज {GUEST_MESSAGES_PER_DAY} संदेश मुफ़्त हैं।</p>
-                )}
-                {!guestBlocked && (
-                  <Suggestions
-                    mode={mode}
-                    onPick={(text) => setInput(text)}
-                    disabled={!ready || sending}
-                  />
-                )}
-                <div className="a11y-row" role="group" aria-label="अक्षर का आकार">
-                  {TEXT_SIZES.map((size) => (
-                    <button
-                      key={size}
-                      type="button"
-                      className="btn-ghost a11y-btn"
-                      aria-pressed={prefs.textSize === size}
-                      onClick={() => setPrefs({ ...prefs, textSize: size })}
-                    >
-                      {TEXT_SIZE_LABEL[size]}
-                    </button>
-                  ))}
-                </div>
-                {isMember && (
-                  <button
-                    type="button"
-                    className="btn-ghost a11y-btn"
-                    onClick={() => setPrefs({ ...prefs, role: "partner" })}
-                  >
-                    पार्टनर मोड (CSC / वकील)
-                  </button>
                 )}
               </div>
             )
@@ -1138,8 +1111,6 @@ export function ChatPage() {
             </button>
           </div>
         )}
-
-        {isMember && <ExpertFab getToken={getAccessToken} />}
 
         {/* Mode chips sirf khali home par: chalti baatcheet mein jagah bachti hai (mode wahi rehta hai). */}
         {!loadingMessages && messages.length === 0 && prefs.role === "user" && (
