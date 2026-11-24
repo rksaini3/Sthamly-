@@ -405,7 +405,9 @@ async function runChat(run: ChatRun): Promise<Response> {
     const outputTokens = providerOutput > 0 ? providerOutput : approxTokens(reply);
     const costInr = estimateCostInr(routed.entry, inputTokens, outputTokens, USD_TO_INR);
     const aborted = request.signal.aborted;
-    const succeeded = !aborted && reply.length > 0;
+    // Jitna jawab aaya woh save hota hai, chahe user ne beech mein roka ho (warna reload par sawal aur adhoora jawab dono gaayab).
+    // Khaali jawab (koi text nahi) kabhi save nahi hota.
+    const saveable = reply.length > 0;
 
     // 9 aur 10. Sirf logged-in user ka usage aur save. Guest ka kuch darj nahi hota.
     if (owner) {
@@ -420,7 +422,7 @@ async function runChat(run: ChatRun): Promise<Response> {
       }).catch(logFailure("usage_write_failed", traceId));
 
       const saveWrite =
-        succeeded && conversationId !== null
+        saveable && conversationId !== null
           ? saveTurn(db, {
               conversationId,
               traceId,
@@ -430,7 +432,7 @@ async function runChat(run: ChatRun): Promise<Response> {
               model: routed.model,
               inputTokens,
               outputTokens,
-              finishReason,
+              finishReason: aborted ? "stopped" : finishReason,
             }).catch(logFailure("save_turn_failed", traceId))
           : Promise.resolve();
 
