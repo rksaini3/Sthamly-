@@ -35,7 +35,7 @@ const FALLBACK_MESSAGE: Record<ErrorCode, string> = {
 };
 
 // Network ही नहीं पहुंचा (इंटरनेट, API का पता, CORS): असली वजह छिपाने के बजाय साफ़ बताएं।
-const NETWORK_MESSAGE = "सर्वर से संपर्क नहीं हो पाया। इंटरनेट जांचें या थोड़ी देर बाद दोबारा कोशिश करें।";
+export const NETWORK_MESSAGE = "सर्वर से संपर्क नहीं हो पाया। इंटरनेट जांचें या थोड़ी देर बाद दोबारा कोशिश करें।";
 
 export class ApiClientError extends Error {
   readonly code: ErrorCode;
@@ -461,4 +461,55 @@ export function deleteConversation(
     token,
     method: "DELETE",
   });
+}
+
+// ---------------------------------------------------------------
+// Experts (FAB se khulne wali sheet). Endpoint na ho, net na ho ya galat jawab: khaali list.
+// UI khaali list ko "अभी उपलब्ध नहीं" dikhata hai, error nahi.
+// ---------------------------------------------------------------
+
+export interface ExpertView {
+  id: string;
+  name: string;
+  photoUrl: string | null;
+  verified: boolean;
+  specialty: string;
+  rating: number;
+  ratingCount: number;
+  avgReplyMinutes: number;
+  feeEstimate: string;
+  // Sirf chune jaane par, consent ke baad, call ya WhatsApp ke liye. Khaali ho to button band.
+  phone: string | null;
+}
+
+function isExpertView(value: unknown): value is ExpertView {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    typeof v.name === "string" &&
+    typeof v.verified === "boolean" &&
+    typeof v.specialty === "string" &&
+    typeof v.rating === "number" &&
+    typeof v.ratingCount === "number" &&
+    typeof v.avgReplyMinutes === "number" &&
+    typeof v.feeEstimate === "string" &&
+    (typeof v.photoUrl === "string" || v.photoUrl === null) &&
+    (typeof v.phone === "string" || v.phone === null)
+  );
+}
+
+export async function getExperts(token: string | null, signal?: AbortSignal): Promise<ExpertView[]> {
+  try {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (token !== null) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/api/experts`, { headers, signal });
+    if (!res.ok) return [];
+    const body: unknown = await res.json();
+    if (typeof body !== "object" || body === null) return [];
+    const list = (body as { experts?: unknown }).experts;
+    return Array.isArray(list) ? list.filter(isExpertView) : [];
+  } catch {
+    return [];
+  }
 }
