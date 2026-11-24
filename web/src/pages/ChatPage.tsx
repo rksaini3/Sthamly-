@@ -32,6 +32,8 @@ import {
 import { findMode, type ModeKey } from "../lib/modes";
 import { ModeChips, Suggestions } from "../components/ModeBar";
 import { MessageActions } from "../components/MessageActions";
+import { Markdown } from "../components/Markdown";
+import "../components/HomeCalm.css";
 import { ComposerChip, ComposerPlus } from "../components/ComposerPlus";
 import { ImageViewer } from "../components/ImageViewer";
 import { AiImageBlock, UserAttachment, type MessageAttachment } from "../components/ChatMedia";
@@ -103,6 +105,14 @@ function titleFrom(text: string): string {
 }
 
 // Aaj ka UTC din, jaise 2026-11-19. Worker ke din se match karta hai.
+// Din ke samay ke hisaab se shuruaati shabd (phone ke local samay se).
+function greetingNow(now: Date = new Date()): string {
+  const h = now.getHours();
+  if (h >= 5 && h < 12) return "सुप्रभात!";
+  if (h >= 17 && h < 21) return "शुभ संध्या!";
+  return "नमस्ते!";
+}
+
 function utcDay(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -798,11 +808,12 @@ export function ChatPage() {
           <Link to="/create" className="btn-ghost" style={{ textDecoration: "none", fontSize: 13 }}>
             बनाएँ
           </Link>
-          {isGuest && !guestBlocked && (
-            <span className="muted small">आज बचे: {guestLeft}</span>
-          )}
           {isMember && plan !== null && <span className="plan-badge">{plan.name}</span>}
-          {isGuest && <span className="plan-badge">मेहमान</span>}
+          {isGuest && (
+            <span className="plan-badge">
+              {guestBlocked ? "मेहमान" : `मेहमान · ${guestLeft} बचे`}
+            </span>
+          )}
           <button
             type="button"
             className="chat-new-icon"
@@ -833,8 +844,9 @@ export function ChatPage() {
           {loadingMessages && <p className="muted">बातचीत लोड हो रही है…</p>}
 
           {!loadingMessages && messages.length === 0 && (
-            <div className="empty-state">
-              <h2>नमस्ते!</h2>
+            <div className="empty-state home-calm">
+              <span className="home-orb" aria-hidden="true" />
+              <h2>{greetingNow()}</h2>
               <p>अपना सवाल हिंदी या Hinglish में लिखें।</p>
               {isGuest && (
                 <p className="small">मेहमान के रूप में आज {GUEST_MESSAGES_PER_DAY} संदेश मुफ़्त हैं।</p>
@@ -867,8 +879,8 @@ export function ChatPage() {
                   <span>{m.status}</span>
                 </div>
               ) : (
-                <div className="bubble-text">
-                  {m.content}
+                <div className={m.role === "assistant" ? "bubble-text bubble-md" : "bubble-text"}>
+                  {m.role === "assistant" ? <Markdown text={m.content} /> : m.content}
                   {m.pending && (
                     <span className="cursor" aria-hidden="true">
                       ▍
@@ -939,22 +951,35 @@ export function ChatPage() {
         )}
 
         {error !== null && (
-          <div className="chat-error" role="alert" style={{ margin: "0 16px 8px" }}>
-            <p style={{ margin: 0 }}>{error}</p>
-            {profileFailed && (
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={handleRetryProfile}
-                style={{ marginTop: 8 }}
-              >
-                फिर से कोशिश करें
-              </button>
-            )}
+          <div className="chat-error chat-error-row" role="alert" style={{ margin: "0 16px 8px" }}>
+            <div className="chat-error-body">
+              <p style={{ margin: 0 }}>{error}</p>
+              {profileFailed && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={handleRetryProfile}
+                  style={{ marginTop: 8 }}
+                >
+                  फिर से कोशिश करें
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              className="chat-error-close"
+              onClick={() => setError(null)}
+              aria-label="संदेश बंद करें"
+            >
+              ✕
+            </button>
           </div>
         )}
 
-        <ModeChips mode={mode} onChange={setMode} disabled={sending} />
+        {/* Mode chips sirf khali home par: chalti baatcheet mein jagah bachti hai (mode wahi rehta hai). */}
+        {!loadingMessages && messages.length === 0 && (
+          <ModeChips mode={mode} onChange={setMode} disabled={sending} />
+        )}
 
         <form className="composer-form" onSubmit={handleSubmit}>
           <div className="composer-box">
