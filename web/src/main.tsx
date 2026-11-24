@@ -9,6 +9,9 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./styles.css";
 import "./styles/access.css";
+import { applyPrefs, readPrefs } from "./lib/prefs";
+
+applyPrefs(readPrefs());
 
 const rootElement = document.getElementById("root");
 
