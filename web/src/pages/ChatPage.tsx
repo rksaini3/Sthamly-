@@ -104,7 +104,6 @@ function titleFrom(text: string): string {
   return Array.from(text.trim()).slice(0, TITLE_CHARS).join("");
 }
 
-// Aaj ka UTC din, jaise 2026-11-19. Worker ke din se match karta hai.
 // Din ke samay ke hisaab se shuruaati shabd (phone ke local samay se).
 function greetingNow(now: Date = new Date()): string {
   const h = now.getHours();
@@ -113,6 +112,7 @@ function greetingNow(now: Date = new Date()): string {
   return "नमस्ते!";
 }
 
+// Aaj ka UTC din, jaise 2026-11-19. Worker ke din se match karta hai.
 function utcDay(): string {
   return new Date().toISOString().slice(0, 10);
 }
