@@ -21,6 +21,8 @@ import {
   type CreatedFile,
 } from "../api/create";
 import { ImageViewer } from "../components/ImageViewer";
+import { ResultCard } from "../components/ResultCard";
+import { shareFromUrl } from "../lib/share";
 
 const MAX_PROMPT_CHARS = 2000;
 
@@ -205,6 +207,7 @@ export function CreatePage() {
   const [files, setFiles] = useState<CreatedFile[]>([]);
   const [activeFile, setActiveFile] = useState<CreatedFile | null>(null);
   const [downloadedHint, setDownloadedHint] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -333,6 +336,33 @@ export function CreatePage() {
       setDownloadedHint("डाउनलोड शुरू हो गया।");
     } catch (err) {
       setError(errorText(err));
+    }
+  }
+
+  // Pehle phone ka share menu; support na ho to seedha download.
+  async function handleShare(file: CreatedFile): Promise<void> {
+    setShareBusy(true);
+    setDownloadedHint(null);
+    try {
+      const t = await getAccessToken();
+      if (!t) throw new CreateApiError("unauthenticated", "पहले लॉग-इन करें।", false);
+      const url = await getDownloadUrl(t, file.id);
+      const ext = extensionFor(file.kind, file.mime_type);
+      const outcome = await shareFromUrl(
+        url,
+        `${file.title}.${ext}`,
+        file.mime_type ?? "",
+        file.title,
+      );
+      if (outcome === "shared") setDownloadedHint("भेज दिया गया।");
+      else if (outcome === "unsupported") {
+        await openDownload(t, file.id, `${file.title}.${ext}`);
+        setDownloadedHint("इस फ़ोन पर सीधे भेजना नहीं हो सका, फ़ाइल सेव हो गई है।");
+      }
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setShareBusy(false);
     }
   }
 
@@ -482,37 +512,19 @@ export function CreatePage() {
           )}
 
           {isMember && stage === "done" && activeFile !== null && token !== "" && (
-            <section className="card" style={{ margin: "0 auto", maxWidth: 720 }} aria-label="पूर्वावलोकन">
-              <div>
-                <h2>{activeFile.title}</h2>
-                <p className="muted small">
-                  {KIND_LABELS[activeFile.kind]} {formatSize(activeFile.size_bytes)}
-                </p>
-              </div>
-
+            <ResultCard
+              kindLabel={KIND_LABELS[activeFile.kind]}
+              title={activeFile.title}
+              sizeLabel={formatSize(activeFile.size_bytes)}
+              busy={shareBusy}
+              hint={downloadedHint}
+              onShare={() => void handleShare(activeFile)}
+              onSave={() => void handleDownload(activeFile)}
+              onNew={handleNew}
+              onDelete={() => void handleDelete(activeFile)}
+            >
               <Preview file={activeFile} token={token} />
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="btn-primary"
-                  onClick={() => void handleDownload(activeFile)}
-                >
-                  डाउनलोड करें
-                </button>
-                <button type="button" className="btn-ghost" onClick={handleNew}>
-                  नया बनाएँ
-                </button>
-                <button
-                  type="button"
-                  className="btn-ghost"
-                  onClick={() => void handleDelete(activeFile)}
-                >
-                  हटाएँ
-                </button>
-              </div>
-              {downloadedHint !== null && <p className="muted small">{downloadedHint}</p>}
-            </section>
+            </ResultCard>
           )}
         </section>
 
