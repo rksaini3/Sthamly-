@@ -5,6 +5,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { applyPrefs, readPrefs, writePrefs, type Prefs } from "../lib/prefs";
 import { useAuth } from "../auth/AuthProvider";
 import {
   ApiClientError,
@@ -46,6 +47,14 @@ export function SettingsPage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  // Partner mode aur akshar ka aakar: yahin se badalte hain, chat screen par ye bhi dikhta hai.
+  const [prefs, setPrefs] = useState<Prefs>(() => readPrefs());
+
+  function changePrefs(next: Prefs): void {
+    setPrefs(next);
+    writePrefs(next);
+    applyPrefs(next);
+  }
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [deleteText, setDeleteText] = useState("");
@@ -268,6 +277,25 @@ export function SettingsPage() {
                 </label>
               ))}
             </fieldset>
+          </section>
+
+          <section className="card" aria-labelledby="look-title">
+            <h2 id="look-title">दिखावट और मोड</h2>
+
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={prefs.role === "partner"}
+                onChange={(e) =>
+                  changePrefs({ ...prefs, role: e.target.checked ? "partner" : "user" })
+                }
+              />
+              <span>
+                <strong>पार्टनर मोड (CSC / वकील)</strong>
+                <br />
+                <span className="muted small">चालू करने पर चैट की शुरुआत में पार्टनर के कार्ड दिखेंगे।</span>
+              </span>
+            </label>
           </section>
 
           <section className="card" aria-labelledby="privacy-title">
