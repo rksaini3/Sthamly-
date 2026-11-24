@@ -20,11 +20,13 @@ export interface PushToTalkButtonProps {
   getToken: () => Promise<string | null>;
   // Transcript mila (khaali nahi). Parent isse input mein daalta hai.
   onTranscript: (text: string) => void;
-  // Koi bhi error: message Hindi mein, seedha dikhane layak.
-  onError: (message: string) => void;
+  // Koi bhi error: message Hindi mein, seedha dikhane layak. code: mic ki vajah (friendlyFromMic ke liye).
+  onError: (message: string, code?: string) => void;
   disabled?: boolean;
   // Whisper ko hint. Hinglish ke liye undefined chhodein.
   language?: "hi" | "en";
+  // "orb": home par bada gol mic. Default: composer ke saath chhota.
+  variant?: "default" | "orb";
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
@@ -44,6 +46,10 @@ function isAbort(err: unknown): boolean {
 function messageFor(err: unknown): string {
   if (err instanceof RecorderError) return err.message;
   return FALLBACK_MESSAGE;
+}
+
+function codeFor(err: unknown): string | undefined {
+  return err instanceof RecorderError ? err.code : undefined;
 }
 
 // Worker ka error body: { error: { message } }. Galat ho to fallback.
@@ -116,6 +122,7 @@ export function PushToTalkButton({
   onError,
   disabled = false,
   language,
+  variant = "default",
 }: PushToTalkButtonProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsed, setElapsed] = useState(0);
@@ -153,7 +160,7 @@ export function PushToTalkButton({
         rec.cancel();
         setPhase("idle");
         busyRef.current = false;
-        onErrorRef.current(new RecorderError("too_long").message);
+        onErrorRef.current(new RecorderError("too_long").message, "too_long");
       }
     }, 250);
 
@@ -181,7 +188,7 @@ export function PushToTalkButton({
       setPhase("recording");
     } catch (err) {
       rec.cancel();
-      onErrorRef.current(messageFor(err));
+      onErrorRef.current(messageFor(err), codeFor(err));
     } finally {
       busyRef.current = false;
     }
@@ -200,7 +207,7 @@ export function PushToTalkButton({
       rec.cancel();
       setPhase("idle");
       busyRef.current = false;
-      onErrorRef.current(messageFor(err));
+      onErrorRef.current(messageFor(err), codeFor(err));
       return;
     }
 
@@ -246,7 +253,7 @@ export function PushToTalkButton({
         isRecord(body) && typeof body.transcript === "string" ? body.transcript.trim() : "";
 
       if (text.length === 0) {
-        onErrorRef.current(EMPTY_TRANSCRIPT_MESSAGE);
+        onErrorRef.current(EMPTY_TRANSCRIPT_MESSAGE, "empty");
         return;
       }
       onTranscriptRef.current(text);
@@ -288,8 +295,13 @@ export function PushToTalkButton({
 
       <button
         type="button"
-        className={phase === "recording" ? "btn-stop" : "btn-ghost"}
-        style={ROUND_BUTTON_STYLE}
+        className={[
+          phase === "recording" ? "btn-stop" : "btn-ghost",
+          variant === "orb" ? "ptt-orb" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        style={variant === "orb" ? undefined : ROUND_BUTTON_STYLE}
         onClick={handlePrimary}
         disabled={disabled || phase === "transcribing"}
         aria-label={labelFor(phase)}
