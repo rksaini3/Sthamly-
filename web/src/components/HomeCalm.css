@@ -1,0 +1,112 @@
+/* Sthamly AI web: shaant home (khali chat), jawab ka markdown bubble, aur band hone wala error.
+   Rang styles.css ke tokens se, light aur dark dono mein. */
+
+/* ---------- Header: chhoti screen par naam aur badge ek line mein ---------- */
+
+.chat-title,
+.plan-badge {
+  white-space: nowrap;
+}
+
+.chat-header {
+  gap: 8px;
+}
+
+/* ---------- Shaant home ---------- */
+
+.home-calm {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-calm h2 {
+  font-size: 28px;
+  letter-spacing: 0.2px;
+  margin: 10px 0 0;
+}
+
+.home-calm > p {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+/* Halka sa saans leta gola: ye ek sajawat hai, button nahi. */
+.home-orb {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe3b3 0%, #f6b25c 45%, #e8862f 100%);
+  box-shadow: 0 10px 34px rgba(232, 134, 47, 0.35);
+  animation: home-breathe 4.5s ease-in-out infinite;
+}
+
+@keyframes home-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-orb {
+    animation: none;
+  }
+}
+
+.home-calm .suggestions {
+  margin-top: 10px;
+}
+
+.home-calm .suggestion-card {
+  padding: 13px 16px;
+  min-height: 48px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  text-align: center;
+}
+
+/* ---------- Jawab ka markdown bubble ---------- */
+
+.bubble-text.bubble-md {
+  white-space: normal;
+}
+
+.bubble.assistant {
+  font-size: 16px;
+}
+
+/* ---------- Band hone wala error ---------- */
+
+.chat-error-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.chat-error-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-error-close {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -10px -8px -10px 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.chat-error-close:hover {
+  opacity: 1;
+}
