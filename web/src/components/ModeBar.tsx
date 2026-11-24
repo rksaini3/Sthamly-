@@ -44,7 +44,7 @@ export function Suggestions({ mode, onPick, disabled = false }: SuggestionsProps
   return (
     <div className="suggestions">
       <ul className="suggestion-list">
-        {def.suggestions.map((s) => (
+        {def.suggestions.slice(0, 3).map((s) => (
           <li key={s}>
             <button
               type="button"
