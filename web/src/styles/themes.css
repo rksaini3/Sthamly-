@@ -1,0 +1,19 @@
+/* Sthamly AI web: extra theme. Eye-care: garam, halka peela-bhura background, kam chamak.
+   Ye styles.css ke baad load hota hai, isliye iske token wahi rehte hain. Sirf data-theme="eye-care" par lagta hai. */
+
+:root[data-theme="eye-care"] {
+  color-scheme: light;
+  --bg: #f4ecd8;
+  --surface: #ebe1c6;
+  --text: #3d3322;
+  --muted: #7d6e55;
+  --border: #d9cba9;
+  --accent: #9a6b32;
+  --accent-strong: #7f5424;
+  --accent-bg: rgba(154, 107, 50, 0.14);
+  --amber-bg: rgba(200, 140, 60, 0.2);
+  --amber-text: #7a4e16;
+  --danger: #a33a2a;
+  --danger-bg: rgba(163, 58, 42, 0.1);
+  --scrim: rgba(40, 30, 15, 0.35);
+}
