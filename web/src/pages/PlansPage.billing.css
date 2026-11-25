@@ -1,0 +1,56 @@
+/* Sthamly AI web: plans screen ke billing hisse (credits card, notice, error). Rang styles.css ke tokens se. */
+
+.plans-credits {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border, #d0d7de);
+  border-radius: 12px;
+}
+
+.plans-credits h2 {
+  font-size: 18px;
+  margin: 0;
+  color: var(--text);
+}
+
+.credits-total {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.credits-breakdown {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.plans-notice,
+.plans-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.plans-notice {
+  border: 1px solid var(--border, #d0d7de);
+  color: var(--text);
+}
+
+.plans-error {
+  border: 1px solid #d93025;
+  color: #d93025;
+}
+
+.plans-page .pack {
+  flex-wrap: wrap;
+}
+
+.plans-page .pack .plan-cta {
+  width: 100%;
+  margin-top: 6px;
+}
