@@ -1,11 +1,12 @@
 // Sthamly AI web: settings (Blueprint 3.0, section 9 aur 10)
-// Profile (naam, bhasha), privacy toggles (history, memory), data export aur data delete.
+// Profile (naam, bhasha), dikhavat (theme, partner mode), privacy toggles (history, memory), data export aur data delete.
 // Memory default off hai (blueprint 8). Delete sirf conversations hatata hai, account nahi.
-// Har change Worker par jaata hai. Client par koi plan ya usage ka faisla nahi hota.
+// Bhasha aur history/memory ka change Worker par jaata hai. Theme sirf is device par yaad rehta hai.
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { applyPrefs, readPrefs, writePrefs, type Prefs } from "../lib/prefs";
+import { applyPrefs, readPrefs, writePrefs, type Prefs, type ThemeChoice } from "../lib/prefs";
+import { LANGUAGE_OPTIONS, isSupportedLanguage } from "../lib/languages";
 import { useAuth } from "../auth/AuthProvider";
 import {
   ApiClientError,
@@ -17,10 +18,11 @@ import {
 const DELETE_CONFIRM_TEXT = "DELETE_MY_DATA";
 const NAME_MAX = 60;
 
-const LANGUAGE_OPTIONS: Array<{ value: ProfileView["language"]; label: string }> = [
-  { value: "hi", label: "हिंदी" },
-  { value: "hinglish", label: "Hinglish" },
-  { value: "en", label: "English" },
+const THEME_OPTIONS: Array<{ value: ThemeChoice; label: string; hint: string }> = [
+  { value: "dark", label: "डार्क", hint: "डिफ़ॉल्ट। रात में आराम से पढ़ें।" },
+  { value: "light", label: "लाइट", hint: "सफ़ेद पृष्ठभूमि, दिन की रोशनी में।" },
+  { value: "system", label: "सिस्टम", hint: "फ़ोन की सेटिंग के हिसाब से।" },
+  { value: "eye_care", label: "आई-केयर", hint: "गर्म रंग, आँखों पर कम ज़ोर।" },
 ];
 
 function errorText(err: unknown): string {
@@ -47,7 +49,7 @@ export function SettingsPage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  // Partner mode aur akshar ka aakar: yahin se badalte hain, chat screen par ye bhi dikhta hai.
+  // Partner mode, akshar ka aakar aur theme: yahin se badalte hain, chat screen par ye bhi dikhta hai.
   const [prefs, setPrefs] = useState<Prefs>(() => readPrefs());
 
   function changePrefs(next: Prefs): void {
@@ -119,9 +121,16 @@ export function SettingsPage() {
     void applyPatch({ display_name: trimmed.length === 0 ? null : trimmed }, "नाम सहेज लिया गया।");
   }
 
-  function handleLanguage(value: ProfileView["language"]): void {
-    if (profile?.language === value) return;
-    void applyPatch({ language: value }, "भाषा बदल गई।");
+  // Sirf chalu bhashaayein server par jaati hain. Baaki (जल्द) par koi kaam nahi.
+  function handleLanguage(code: string): void {
+    if (!isSupportedLanguage(code)) return;
+    if (profile?.language === code) return;
+    void applyPatch({ language: code }, "भाषा बदल गई।");
+  }
+
+  function handleTheme(value: ThemeChoice): void {
+    if (prefs.theme === value) return;
+    changePrefs({ ...prefs, theme: value });
   }
 
   function handleHistoryToggle(enabled: boolean): void {
@@ -265,15 +274,17 @@ export function SettingsPage() {
             <fieldset className="lang-group" disabled={busy}>
               <legend>भाषा</legend>
               {LANGUAGE_OPTIONS.map((opt) => (
-                <label key={opt.value} className="radio">
+                <label key={opt.code} className="radio">
                   <input
                     type="radio"
                     name="language"
-                    value={opt.value}
-                    checked={profile.language === opt.value}
-                    onChange={() => handleLanguage(opt.value)}
+                    value={opt.code}
+                    checked={profile.language === opt.code}
+                    disabled={!opt.supported}
+                    onChange={() => handleLanguage(opt.code)}
                   />
                   {opt.label}
+                  {!opt.supported && <span className="muted small"> · जल्द</span>}
                 </label>
               ))}
             </fieldset>
@@ -281,6 +292,25 @@ export function SettingsPage() {
 
           <section className="card" aria-labelledby="look-title">
             <h2 id="look-title">दिखावट और मोड</h2>
+
+            <fieldset className="lang-group">
+              <legend>थीम</legend>
+              {THEME_OPTIONS.map((opt) => (
+                <label key={opt.value} className="radio">
+                  <input
+                    type="radio"
+                    name="theme"
+                    value={opt.value}
+                    checked={prefs.theme === opt.value}
+                    onChange={() => handleTheme(opt.value)}
+                  />
+                  <span>
+                    {opt.label}
+                    <span className="muted small"> · {opt.hint}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
 
             <label className="toggle">
               <input
