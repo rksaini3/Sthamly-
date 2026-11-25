@@ -1,7 +1,10 @@
-// Sthamly AI Worker: Razorpay subscription (billing).
+// Sthamly AI Worker: Razorpay billing (subscription aur booster).
 // POST /api/billing/checkout   login user, tier (basic | pro | super) ke liye Razorpay subscription banata hai; frontend ko subscription_id deta hai
-// POST /api/billing/webhook    Razorpay ke events (signature check ke baad) subscriptions table update karte hain
-// Plan aur status hamesha DB se padhe jaate hain. Client kabhi plan ko 'paid' nahi bana sakta: sirf webhook likhta hai.
+// POST /api/billing/topup      login user, booster pack (quick_try | mini | growth | vip) ke liye Razorpay order banata hai
+// POST /api/billing/webhook    Razorpay ke events (signature check ke baad):
+//                                subscription.* -> subscriptions table, aur billing cycle ke plan credits
+//                                order.paid     -> booster ke credits (amount pack se milaya jaata hai)
+// Plan, status aur credits hamesha DB se aate hain. Client kabhi plan ya credits ko 'paid' nahi bana sakta: sirf webhook likhta hai.
 // Ek user ek hi live subscription rakh sakta hai (checkout us par rok lagata hai).
 // Secrets: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET (wrangler secret put).
 // Vars/secrets: RAZORPAY_PLAN_ID_BASIC, RAZORPAY_PLAN_ID_PRO, RAZORPAY_PLAN_ID_SUPER.
@@ -12,7 +15,8 @@ import type { Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
 import { createSupabase, type SupabaseClient } from "../supabase";
 import { isPaidTier, PAID_TIERS, TIER_TO_DB_PLAN, type PaidTier } from "../tiers";
-import { grantPlanCredits, monthlyCreditsFor } from "../credits";
+import { grantPlanCredits, grantTopupCredits, monthlyCreditsFor } from "../credits";
+import { isTopupId, TOPUP_PACKS, type TopupId } from "../topups";
 
 // Ye events billing cycle ki shuruaat par credits dete hain (pehli baar aur har renewal par).
 // Ek hi cycle ke liye dono aaye to ref same hai, isliye credits ek hi baar jaate hain.
@@ -39,10 +43,25 @@ interface RazorpaySubscriptionEntity {
   notes?: unknown;
 }
 
+// Razorpay order aur payment object ke woh fields jo booster ke liye chahiye.
+interface RazorpayOrderEntity {
+  id?: unknown;
+  amount?: unknown;
+  notes?: unknown;
+}
+
+interface RazorpayPaymentEntity {
+  id?: unknown;
+  order_id?: unknown;
+  amount?: unknown;
+}
+
 interface RazorpayWebhookPayload {
   event?: unknown;
   payload?: {
     subscription?: { entity?: RazorpaySubscriptionEntity };
+    order?: { entity?: RazorpayOrderEntity };
+    payment?: { entity?: RazorpayPaymentEntity };
   };
 }
 
@@ -114,6 +133,18 @@ async function readTier(request: Request): Promise<PaidTier> {
   return parsed.tier;
 }
 
+// Topup body: { "pack": "quick_try" | "mini" | "growth" | "vip" }. Galat ho to invalid_request.
+async function readPack(request: Request): Promise<TopupId> {
+  let parsed: unknown;
+  try {
+    parsed = await request.json();
+  } catch {
+    throw new ApiError("invalid_request");
+  }
+  if (!isRecord(parsed) || !isTopupId(parsed.pack)) throw new ApiError("invalid_request");
+  return parsed.pack;
+}
+
 // Kya user ki koi subscription abhi chalu (active ya payment baaki) hai?
 async function hasLiveSubscription(db: SupabaseClient, userId: string): Promise<boolean> {
   const rows = await db.select<SubscriptionRow>(
@@ -149,6 +180,36 @@ export async function handleCheckout(request: Request, env: Env, user: AuthUser)
   }
 
   return json({ subscription_id: subscription.id, key_id: keyId, tier }, 201);
+}
+
+// Booster order: amount server tay karta hai (pack se), client nahi. Free pack sirf free user, baaki sirf paid user ko.
+export async function handleTopupOrder(request: Request, env: Env, user: AuthUser): Promise<Response> {
+  const packId = await readPack(request);
+  const pack = TOPUP_PACKS[packId];
+  const { keyId } = requireRazorpay(env);
+
+  const db = createSupabase(env);
+  const paid = await hasLiveSubscription(db, user.id);
+  if (pack.freeOnly && paid) {
+    throw new ApiError("invalid_request", "यह पैक सिर्फ़ फ़्री यूज़र के लिए है।");
+  }
+  if (!pack.freeOnly && !paid) {
+    throw new ApiError("plan_required");
+  }
+
+  const amountPaise = pack.amountInr * 100;
+  const order = await razorpayPost<{ id?: unknown }>(env, "/orders", {
+    amount: amountPaise,
+    currency: "INR",
+    receipt: `tp_${crypto.randomUUID()}`,
+    notes: { user_id: user.id, pack: packId },
+  });
+
+  if (typeof order.id !== "string" || order.id.length === 0) {
+    throw new ApiError("provider_unavailable");
+  }
+
+  return json({ order_id: order.id, key_id: keyId, amount: amountPaise, currency: "INR", pack: packId }, 201);
 }
 
 // Signature check: Razorpay HMAC-SHA256 (hex) raw body par bhejta hai. Compare constant-time.
@@ -242,6 +303,36 @@ async function grantCycleCredits(
   await grantPlanCredits(db, userId, amount, `sub:${subscriptionId}:${periodEndUnix}`);
 }
 
+// order.paid: booster ke credits. Amount pack se milaya jaata hai; mismatch par kuch nahi jorte (log hota hai).
+// Ref = payment id, isliye same payment dobara aaye to credits ek hi baar jaate hain.
+async function handleOrderPaid(parsed: RazorpayWebhookPayload, env: Env): Promise<Response> {
+  const order = parsed.payload?.order?.entity;
+  const payment = parsed.payload?.payment?.entity;
+  if (!order || !payment || typeof payment.id !== "string") {
+    return json({ received: true });
+  }
+
+  const notes = isRecord(order.notes) ? order.notes : {};
+  const userId = typeof notes.user_id === "string" ? notes.user_id : "";
+  if (!UUID_RE.test(userId) || !isTopupId(notes.pack)) {
+    console.error(JSON.stringify({ event: "razorpay_topup_missing_meta" }));
+    return json({ received: true });
+  }
+
+  const pack = TOPUP_PACKS[notes.pack];
+  const expectedPaise = pack.amountInr * 100;
+  if (order.amount !== expectedPaise || payment.amount !== expectedPaise) {
+    console.error(JSON.stringify({ event: "razorpay_topup_amount_mismatch", pack: pack.id }));
+    return json({ received: true });
+  }
+
+  const db = createSupabase(env);
+  await grantTopupCredits(db, userId, pack.credits, `topup:${payment.id}`);
+
+  console.error(JSON.stringify({ event: "razorpay_topup_applied", pack: pack.id }));
+  return json({ received: true });
+}
+
 // Webhook: pehle signature, phir event. Galat signature par 400, koi DB badlaav nahi.
 export async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const secret = env.RAZORPAY_WEBHOOK_SECRET;
@@ -264,6 +355,11 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   }
 
   const eventName = typeof parsed.event === "string" ? parsed.event : "";
+
+  if (eventName === "order.paid") {
+    return handleOrderPaid(parsed, env);
+  }
+
   const entity = parsed.payload?.subscription?.entity;
   // Subscription se juda event nahi hai (ya entity nahi): 200 do, taaki Razorpay dobara na bheje.
   if (!entity || !eventName.startsWith("subscription.")) {
@@ -327,6 +423,12 @@ export async function handleBilling(request: Request, env: Env): Promise<Respons
       if (request.method !== "POST") throw new ApiError("invalid_request");
       const user = await authenticate(request, env);
       return await handleCheckout(request, env, user);
+    }
+
+    if (url.pathname === "/api/billing/topup") {
+      if (request.method !== "POST") throw new ApiError("invalid_request");
+      const user = await authenticate(request, env);
+      return await handleTopupOrder(request, env, user);
     }
 
     throw new ApiError("invalid_request");
