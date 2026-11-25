@@ -1,18 +1,22 @@
 // Sthamly AI web: home screen ka upar wala hissa (header + plan ki patti).
-// Baayen: menu aur nayi baatcheet. Daayen: credits aur QR (jald aayega).
-// Credits ka number /api/billing/status se aata hai. Fail ho to chat nahi rukti, bas "—" dikhta hai.
+// Baayen: menu. Beech mein: naam. Daayen: QR (jald aayega) aur nayi baatcheet (ChatGPT ki tarah, sabse aakhir mein).
+// Sub-header: plan ka naam aur "+ Booster". Plan ka naam /api/billing/status se aata hai.
+// Fail ho to chat nahi rukti, bas "प्लान" dikhta hai.
+// Shabd bhasha ke hisaab se badalte hain (lib/uiText.ts).
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { fetchBillingStatus, type BillingStatus } from "../api/billing";
+import { useLang } from "../lib/langContext";
+import { t, type UiKey } from "../lib/uiText";
 import "./HomeTopBar.css";
 
-const PLAN_LABEL: Record<string, string> = {
-  free: "फ्री प्लान",
-  plus: "बेसिक प्लान",
-  pro: "प्रो प्लान",
-  super: "सुपर प्लान",
+const PLAN_KEY: Record<string, UiKey> = {
+  free: "planFree",
+  plus: "planBasic",
+  pro: "planPro",
+  super: "planSuper",
 };
 
 interface HomeTopBarProps {
@@ -22,6 +26,7 @@ interface HomeTopBarProps {
 
 export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
   const { status, getAccessToken } = useAuth();
+  const { lang } = useLang();
   const [billing, setBilling] = useState<BillingStatus | null>(null);
 
   useEffect(() => {
@@ -37,7 +42,7 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
         const data = await fetchBillingStatus(token);
         if (!cancelled) setBilling(data);
       } catch {
-        // Credits na mile to header chalta rahe; "—" dikhega.
+        // Plan na mile to header chalta rahe.
         if (!cancelled) setBilling(null);
       }
     })();
@@ -46,55 +51,33 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
     };
   }, [status, getAccessToken]);
 
-  const planName = billing ? (PLAN_LABEL[billing.plan] ?? "प्लान") : "प्लान";
-  const creditsText = billing ? billing.credits.total.toLocaleString("en-IN") : "—";
+  const planName = t(lang, billing ? (PLAN_KEY[billing.plan] ?? "planLoading") : "planLoading");
+  const fmt = (n: number) => n.toLocaleString("en-IN");
 
   return (
     <div className="htb">
       <div className="htb-row">
-        <div style={{ display: "flex", alignItems: "center", gap: 2, flex: "0 0 auto" }}>
-          <button
-            type="button"
-            className="htb-icon-btn"
-            onClick={onOpenMenu}
-            aria-label="मेन्यू खोलें"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-              <line x1="4" y1="7" x2="20" y2="7" />
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="17" x2="20" y2="17" />
-            </svg>
-          </button>
-
-          <button
-            type="button"
-            className="htb-icon-btn"
-            onClick={onNewChat}
-            aria-label="नई बातचीत"
-            title="नई बातचीत"
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" />
-              <path d="M9.5 14.5l5.6-5.6a1.4 1.4 0 0 1 2 2L11.5 16.5l-2.6.6z" />
-            </svg>
-          </button>
-        </div>
+        <button
+          type="button"
+          className="htb-icon-btn"
+          onClick={onOpenMenu}
+          aria-label={t(lang, "menuOpen")}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <line x1="4" y1="7" x2="20" y2="7" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="17" x2="20" y2="17" />
+          </svg>
+        </button>
 
         <h1 className="htb-title">Sthamly AI</h1>
-
-        <Link to="/plans" className="htb-credits" aria-label={`बचे क्रेडिट: ${creditsText}`}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
-          </svg>
-          <span>{creditsText}</span>
-        </Link>
 
         <button
           type="button"
           className="htb-icon-btn"
           disabled
-          title="QR जल्द आ रहा है"
-          aria-label="QR स्कैनर (जल्द आ रहा है)"
+          title={t(lang, "qrSoon")}
+          aria-label={t(lang, "qrSoon")}
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7" rx="1" />
@@ -103,12 +86,33 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
             <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
           </svg>
         </button>
+
+        <button
+          type="button"
+          className="htb-icon-btn"
+          onClick={onNewChat}
+          aria-label={t(lang, "newChat")}
+          title={t(lang, "newChat")}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" />
+            <path d="M9.5 14.5l5.6-5.6a1.4 1.4 0 0 1 2 2L11.5 16.5l-2.6.6z" />
+          </svg>
+        </button>
       </div>
 
       <div className="htb-sub">
-        <span className="htb-plan">{planName}</span>
-        <Link to="/plans" className="htb-chip htb-chip-primary">Upgrade</Link>
-        <Link to="/plans" className="htb-chip">+ Booster</Link>
+        <div className="htb-plan">
+          <span className="htb-plan-name">{planName}</span>
+          {billing && (
+            <span className="htb-credit-line">
+              {t(lang, "creditsLeftShort")}: <strong>{fmt(billing.credits.total)}</strong>
+              {" · "}
+              {t(lang, "creditsUsed")}: {fmt(billing.credits.used)}
+            </span>
+          )}
+        </div>
+        <Link to="/plans" className="htb-chip">{t(lang, "booster")}</Link>
       </div>
     </div>
   );
