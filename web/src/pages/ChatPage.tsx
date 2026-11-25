@@ -41,10 +41,11 @@ import {
   writeGuestLanguage,
 } from "../lib/languages";
 import { findMode, type ModeKey } from "../lib/modes";
-import { ModeChips } from "../components/ModeBar";
 import { MessageActions } from "../components/MessageActions";
 import { Markdown } from "../components/Markdown";
-import "../components/HomeCalm.css";
+import { HomeTopBar } from "../components/HomeTopBar";
+import { HomeToolPanel } from "../components/HomeToolPanel";
+import { type HomeCategoryId, type HomeTool } from "../lib/homeTools";
 import { ComposerChip, ComposerPlus } from "../components/ComposerPlus";
 import { ImageViewer } from "../components/ImageViewer";
 import { AiImageBlock, UserAttachment, type MessageAttachment } from "../components/ChatMedia";
@@ -65,6 +66,16 @@ const TITLE_CHARS = 40;
 // Asli limit Worker lagata hai, isliye browser mein counter badalne se limit nahi tootti.
 const GUEST_MESSAGES_PER_DAY = 3;
 const GUEST_USAGE_KEY = "sthamly_guest_usage";
+
+// Home ki category chune to chat ka mode bhi wahi. Seller ke liye alag mode nahi, to 'दुकान' jaisa.
+const HOME_CATEGORY_MODE: Record<HomeCategoryId, ModeKey> = {
+  seller: "shop",
+  general: "general",
+  shop: "shop",
+  creator: "creator",
+  study: "study",
+  legal: "legal",
+};
 
 interface DisplayMessage {
   key: string;
@@ -113,14 +124,6 @@ function toDisplay(m: StoredMessage): DisplayMessage {
 
 function titleFrom(text: string): string {
   return Array.from(text.trim()).slice(0, TITLE_CHARS).join("");
-}
-
-// Din ke samay ke hisaab se shuruaati shabd (phone ke local samay se).
-function greetingNow(now: Date = new Date()): string {
-  const h = now.getHours();
-  if (h >= 5 && h < 12) return "सुप्रभात!";
-  if (h >= 17 && h < 21) return "शुभ संध्या!";
-  return "नमस्ते!";
 }
 
 // Aaj ka UTC din, jaise 2026-11-19. Worker ke din se match karta hai.
@@ -195,7 +198,8 @@ export function ChatPage() {
   // Guest ki bhasha is device par. Login user ki bhasha profile se aati hai.
   const [guestLang, setGuestLang] = useState<string>(() => readGuestLanguage());
   const currentLang: string = isMember && profile !== null ? profile.language : guestLang;
-  // Role mode (सामान्य, दुकान, …). Abhi sirf screen par; server ko bhejna agle kadam mein.
+  // Home ki category (tabs) aur usse judaa mode (सामान्य, दुकान, …). Server ko mode bhejte hain.
+  const [homeCategory, setHomeCategory] = useState<HomeCategoryId>("general");
   const [mode, setMode] = useState<ModeKey>("general");
   // Chat mein bhejne ke liye chuni hui tasveer ya PDF (composer ke chip mein dikhti hai).
   const [attachment, setAttachment] = useState<Attachment | null>(null);
@@ -474,6 +478,18 @@ export function ChatPage() {
   function handlePartnerAction(_action: PartnerAction, prefill: string): void {
     if (prefill.length > 0) setInput(prefill);
     textareaRef.current?.focus();
+  }
+
+  // Home ka tool card: uska shuruaati prompt composer mein jaata hai; user aage likhkar bhejta hai.
+  function handlePickTool(tool: HomeTool): void {
+    if (tool.prompt.length > 0) setInput(tool.prompt);
+    textareaRef.current?.focus();
+  }
+
+  // Category tab badle: tool cards bhi badlein aur chat ka mode bhi.
+  function handleChangeCategory(id: HomeCategoryId): void {
+    setHomeCategory(id);
+    setMode(HOME_CATEGORY_MODE[id]);
   }
 
   // Mic se mila text input mein jaata hai, user dekh kar bheje.
@@ -907,50 +923,7 @@ export function ChatPage() {
       />
 
       <main className="chat-main">
-        <header className="chat-header">
-          <button
-            type="button"
-            className="btn-ghost menu-btn"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="मेन्यू खोलें"
-          >
-            ☰
-          </button>
-          <h1 className="chat-title">Sthamly AI</h1>
-          <Link to="/create" className="btn-ghost" style={{ textDecoration: "none", fontSize: 13 }}>
-            बनाएँ
-          </Link>
-          {isMember && plan !== null && <span className="plan-badge">{plan.name}</span>}
-          {isGuest && (
-            <span className="plan-badge">
-              {guestBlocked ? "मेहमान" : `मेहमान · ${guestLeft} बचे`}
-            </span>
-          )}
-          <button
-            type="button"
-            className="chat-new-icon"
-            onClick={handleNewChat}
-            disabled={status === "loading"}
-            aria-label="नई बातचीत"
-            title="नई बातचीत"
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-              focusable="false"
-            >
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-            </svg>
-          </button>
-        </header>
+        <HomeTopBar onOpenMenu={() => setSidebarOpen(true)} />
 
         <section className="chat-messages" aria-live="polite">
           {loadingMessages && <p className="muted">बातचीत लोड हो रही है…</p>}
@@ -967,24 +940,11 @@ export function ChatPage() {
                 onExit={() => setPrefs({ ...prefs, role: "user" })}
               />
             ) : (
-              <div className="empty-state home-calm">
-                {isMember ? (
-                  <PushToTalkButton
-                    variant="orb"
-                    getToken={() => getAccessToken()}
-                    onTranscript={handleTranscript}
-                    onError={handleMicError}
-                    disabled={!ready || sending}
-                  />
-                ) : (
-                  <span className="home-orb" aria-hidden="true" />
-                )}
-                <h2>{greetingNow()}</h2>
-                <p>अपना सवाल हिंदी या Hinglish में लिखें।</p>
-                {isGuest && (
-                  <p className="small">मेहमान के रूप में आज {GUEST_MESSAGES_PER_DAY} संदेश मुफ़्त हैं।</p>
-                )}
-              </div>
+              <HomeToolPanel
+                active={homeCategory}
+                onChangeCategory={handleChangeCategory}
+                onPickTool={handlePickTool}
+              />
             )
           )}
 
@@ -1110,11 +1070,6 @@ export function ChatPage() {
               ✕
             </button>
           </div>
-        )}
-
-        {/* Mode chips sirf khali home par: chalti baatcheet mein jagah bachti hai (mode wahi rehta hai). */}
-        {!loadingMessages && messages.length === 0 && prefs.role === "user" && (
-          <ModeChips mode={mode} onChange={setMode} disabled={sending} />
         )}
 
         <form className="composer-form" onSubmit={handleSubmit}>
