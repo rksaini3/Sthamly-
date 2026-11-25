@@ -22,6 +22,8 @@ export interface HomeTool {
   // Card dabane par input mein ye shuruaati text aata hai (bhasha ke hisaab se). Khaali ho to sirf focus.
   prompt: Localized;
   icon: HomeIconName;
+  // Tasveer chahiye: card dabane par photo ka menu khulta hai.
+  photo?: boolean;
 }
 
 export const HOME_CATEGORIES: HomeCategory[] = [
@@ -36,32 +38,35 @@ export const HOME_CATEGORIES: HomeCategory[] = [
 export const HOME_TOOLS: Record<HomeCategoryId, HomeTool[]> = {
   seller: [
     {
-      id: "seller_desc",
-      title: { hi: "प्रोडक्ट विवरण", hinglish: "Product vivran", en: "Product description" },
-      hint: { hi: "आइटम के लिए आकर्षक लिखावट", hinglish: "Item ke liye aakarshak likhawat", en: "Attractive text for your item" },
-      prompt: { hi: "मेरे प्रोडक्ट का विवरण लिखो: ", hinglish: "Mere product ka vivran likho: ", en: "Write a description for my product: " },
-      icon: "doc",
-    },
-    {
-      id: "seller_offer",
-      title: { hi: "ऑफ़र पोस्ट", hinglish: "Offer post", en: "Offer post" },
-      hint: { hi: "सेल या डिस्काउंट का मैसेज", hinglish: "Sale ya discount ka message", en: "Message for a sale or discount" },
-      prompt: { hi: "मेरी सेल के लिए ऑफ़र पोस्ट बनाओ: ", hinglish: "Meri sale ke liye offer post banao: ", en: "Create an offer post for my sale: " },
-      icon: "chat",
-    },
-    {
-      id: "seller_price",
-      title: { hi: "प्राइस लिस्ट", hinglish: "Price list", en: "Price list" },
-      hint: { hi: "सामान और दाम की सूची", hinglish: "Saman aur daam ki suchi", en: "List of items and prices" },
-      prompt: { hi: "इन सामानों की प्राइस लिस्ट बनाओ: ", hinglish: "In samaan ki price list banao: ", en: "Make a price list for these items: " },
-      icon: "chart",
-    },
-    {
-      id: "seller_photo",
-      title: { hi: "फ़ोटो से विवरण", hinglish: "Photo se vivran", en: "Description from photo" },
-      hint: { hi: "तस्वीर देखकर विवरण", hinglish: "Tasveer dekh kar vivran", en: "Describe from a picture" },
-      prompt: { hi: "इस फ़ोटो से प्रोडक्ट का विवरण बनाओ। ", hinglish: "Is photo se product ka vivran banao. ", en: "Write a product description from this photo. " },
+      id: "seller_green_screen",
+      title: { hi: "ग्रीन स्क्रीन साफ़ करें", hinglish: "Green screen saaf karein", en: "Clean green screen" },
+      hint: { hi: "फ़ोटो का बैकग्राउंड साफ़ और सफ़ेद", hinglish: "Photo ka background saaf aur safed", en: "Clean white background for your photo" },
+      prompt: { hi: "इस फ़ोटो का ग्रीन स्क्रीन साफ़ करके सफ़ेद बैकग्राउंड बनाओ। ", hinglish: "Is photo ka green screen saaf karke safed background banao. ", en: "Remove the green screen from this photo and make a clean white background. " },
+      photo: true,
       icon: "image",
+    },
+    {
+      id: "seller_model_wear",
+      title: { hi: "मॉडल पर पहनाएं", hinglish: "Model par pehnayein", en: "Put on a model" },
+      hint: { hi: "प्रोडक्ट को मॉडल पर दिखाएं", hinglish: "Product ko model par dikhayein", en: "Show your product on a model" },
+      prompt: { hi: "इस प्रोडक्ट को एक मॉडल पर पहनाकर दिखाओ। ", hinglish: "Is product ko ek model par pehnakar dikhao. ", en: "Show this product worn by a model. " },
+      photo: true,
+      icon: "image",
+    },
+    {
+      id: "seller_use_case",
+      title: { hi: "उपयोग वाली फ़ोटो", hinglish: "Use-case photo", en: "Use-case photo" },
+      hint: { hi: "प्रोडक्ट इस्तेमाल होते हुए दिखाएं", hinglish: "Product istemaal hote hue dikhayein", en: "Show the product in real use" },
+      prompt: { hi: "इस प्रोडक्ट के इस्तेमाल वाली फ़ोटो बनाओ। ", hinglish: "Is product ke istemaal wali photo banao. ", en: "Create a use-case photo of this product. " },
+      photo: true,
+      icon: "image",
+    },
+    {
+      id: "seller_meesho_seo",
+      title: { hi: "Meesho SEO लिस्टिंग", hinglish: "Meesho SEO listing", en: "Meesho SEO listing" },
+      hint: { hi: "Meesho के लिए खोजने लायक टाइटल और विवरण", hinglish: "Meesho ke liye searchable title aur vivran", en: "Searchable title and details for Meesho" },
+      prompt: { hi: "मेरे प्रोडक्ट के लिए Meesho SEO लिस्टिंग बनाओ: टाइटल, कीवर्ड और विवरण। ", hinglish: "Mere product ke liye Meesho SEO listing banao: title, keywords aur vivran. ", en: "Create a Meesho SEO listing for my product: title, keywords and description. " },
+      icon: "doc",
     },
   ],
   general: [
