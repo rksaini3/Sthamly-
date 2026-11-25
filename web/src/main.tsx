@@ -1,6 +1,7 @@
 // Sthamly AI web: React entry point (Blueprint 3.0, section 10)
 // Yahan koi business logic nahi hai. Sirf React ko #root se jodna, styles aur routing ka context dena.
 // Routes aur screens App.tsx mein hain. Session ka kaam AuthProvider mein hai.
+// Bhasha ka context (LangProvider) sabse upar hai, taaki har screen ek hi bhasha dekhe.
 // Production mein service worker register hota hai (PWA install ke liye). Dev mein nahi.
 
 import { StrictMode } from "react";
@@ -11,6 +12,7 @@ import "./styles.css";
 import "./styles/access.css";
 import "./styles/themes.css";
 import { applyPrefs, readPrefs } from "./lib/prefs";
+import { LangProvider } from "./lib/langContext";
 
 applyPrefs(readPrefs());
 
@@ -23,9 +25,11 @@ if (!rootElement) {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <LangProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </LangProvider>
   </StrictMode>,
 );
 
