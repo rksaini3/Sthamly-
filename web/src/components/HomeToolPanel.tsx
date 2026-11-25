@@ -1,7 +1,9 @@
 // Sthamly AI web: category tabs aur active category ke tool cards.
+// Ye composer ke bagal mein, neeche tairta hua dikhta hai (chat ki shuruaat mein).
 // Card dabane par parent ko tool dete hain; parent input mein prompt daalega.
 
 import { HOME_CATEGORIES, HOME_TOOLS, type HomeCategoryId, type HomeIconName, type HomeTool } from "../lib/homeTools";
+import "./HomeWorkspace.css";
 
 interface HomeToolPanelProps {
   active: HomeCategoryId;
@@ -10,7 +12,7 @@ interface HomeToolPanelProps {
 }
 
 function ToolIcon({ name }: { name: HomeIconName }) {
-  const common = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
+  const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
   switch (name) {
     case "chat":
       return <svg {...common}><path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.2A8 8 0 1 1 21 12z" /></svg>;
@@ -27,7 +29,7 @@ export function HomeToolPanel({ active, onChangeCategory, onPickTool }: HomeTool
   const tools = HOME_TOOLS[active];
 
   return (
-    <section className="htp">
+    <section className="htp" aria-label="टूल">
       <div className="htp-tabs" role="tablist" aria-label="श्रेणियाँ">
         {HOME_CATEGORIES.map((cat) => {
           const selected = cat.id === active;
