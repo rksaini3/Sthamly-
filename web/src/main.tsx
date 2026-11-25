@@ -9,6 +9,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./styles.css";
 import "./styles/access.css";
+import "./styles/themes.css";
 import { applyPrefs, readPrefs } from "./lib/prefs";
 
 applyPrefs(readPrefs());
