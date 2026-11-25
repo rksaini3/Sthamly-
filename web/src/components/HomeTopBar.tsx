@@ -1,4 +1,5 @@
 // Sthamly AI web: home screen ka upar wala hissa (header + plan ki patti).
+// Baayen: menu aur nayi baatcheet. Daayen: credits aur QR (jald aayega).
 // Credits ka number /api/billing/status se aata hai. Fail ho to chat nahi rukti, bas "—" dikhta hai.
 
 import { useEffect, useState } from "react";
@@ -16,9 +17,10 @@ const PLAN_LABEL: Record<string, string> = {
 
 interface HomeTopBarProps {
   onOpenMenu: () => void;
+  onNewChat: () => void;
 }
 
-export function HomeTopBar({ onOpenMenu }: HomeTopBarProps) {
+export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
   const { status, getAccessToken } = useAuth();
   const [billing, setBilling] = useState<BillingStatus | null>(null);
 
@@ -50,18 +52,33 @@ export function HomeTopBar({ onOpenMenu }: HomeTopBarProps) {
   return (
     <div className="htb">
       <div className="htb-row">
-        <button
-          type="button"
-          className="htb-icon-btn"
-          onClick={onOpenMenu}
-          aria-label="मेन्यू खोलें"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            <line x1="4" y1="7" x2="20" y2="7" />
-            <line x1="4" y1="12" x2="20" y2="12" />
-            <line x1="4" y1="17" x2="20" y2="17" />
-          </svg>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 2, flex: "0 0 auto" }}>
+          <button
+            type="button"
+            className="htb-icon-btn"
+            onClick={onOpenMenu}
+            aria-label="मेन्यू खोलें"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+
+          <button
+            type="button"
+            className="htb-icon-btn"
+            onClick={onNewChat}
+            aria-label="नई बातचीत"
+            title="नई बातचीत"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z" />
+              <path d="M9.5 14.5l5.6-5.6a1.4 1.4 0 0 1 2 2L11.5 16.5l-2.6.6z" />
+            </svg>
+          </button>
+        </div>
 
         <h1 className="htb-title">Sthamly AI</h1>
 
