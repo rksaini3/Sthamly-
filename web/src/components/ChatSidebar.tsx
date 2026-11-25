@@ -277,15 +277,14 @@ export function ChatSidebar(p: ChatSidebarProps) {
             <span className="cs-soon">जल्द</span>
           </button>
 
-          <button type="button" className="cs-nav-btn" disabled title="जल्द आएगा">
+          <Link to="/gallery" className="cs-nav-btn" onClick={onClose}>
             <Icon>
               <rect x="3" y="3" width="18" height="18" rx="3" />
               <circle cx="9" cy="9" r="2" />
               <path d="M21 15l-5-5L5 21" />
             </Icon>
             <span>मेरी गैलरी</span>
-            <span className="cs-soon">जल्द</span>
-          </button>
+          </Link>
 
           <button type="button" className="cs-nav-btn" disabled title="जल्द आएगा">
             <Icon>
@@ -450,16 +449,25 @@ export function ChatSidebar(p: ChatSidebarProps) {
                   </Link>
                 )}
 
-                <button type="button" role="menuitem" className="cs-menu-item" disabled title="जल्द आएगा">
-                  <Icon>
-                    <rect x="3" y="3" width="7" height="7" rx="1" />
-                    <rect x="14" y="3" width="7" height="7" rx="1" />
-                    <rect x="3" y="14" width="7" height="7" rx="1" />
-                    <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
-                  </Icon>
-                  <span className="cs-menu-label">मेरा QR और रेफरल</span>
-                  <span className="cs-soon">जल्द</span>
-                </button>
+                {p.isMember && (
+                  <Link
+                    to="/qr"
+                    role="menuitem"
+                    className="cs-menu-item"
+                    onClick={() => {
+                      closeMenu();
+                      onClose();
+                    }}
+                  >
+                    <Icon>
+                      <rect x="3" y="3" width="7" height="7" rx="1" />
+                      <rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" />
+                      <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
+                    </Icon>
+                    <span className="cs-menu-label">मेरा QR और रेफरल</span>
+                  </Link>
+                )}
 
                 <div className="cs-menu-sep" aria-hidden="true" />
 
