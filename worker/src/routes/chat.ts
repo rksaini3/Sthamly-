@@ -249,7 +249,7 @@ async function loadStoredHistory(
 ): Promise<ChatMessage[]> {
   const rows = await db.select<{ role: "user" | "assistant"; content: string }>(
     "messages",
-    `conversation_id=eq.${conversationId}&select=role,content&order=created_at.desc&limit=${MAX_HISTORY_ITEMS}`,
+    `conversation_id=eq.${conversationId}&select=role,content&order=created_at.desc,role.asc&limit=${MAX_HISTORY_ITEMS}`,
   );
   return rows.reverse().map((r) => ({ role: r.role, content: r.content }));
 }
