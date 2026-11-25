@@ -11,6 +11,7 @@ import { CreatePage } from "./pages/CreatePage";
 import { PlansPage } from "./pages/PlansPage";
 import { UsagePage } from "./pages/UsagePage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { QrPage } from "./pages/QrPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 // Login zaroori routes ke liye. Session load hone tak kuch nahi dikhata.
@@ -66,6 +67,14 @@ function AppRoutes() {
         element={
           <RequireAuth>
             <UsagePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/qr"
+        element={
+          <RequireAuth>
+            <QrPage />
           </RequireAuth>
         }
       />
