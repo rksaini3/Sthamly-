@@ -15,7 +15,6 @@ import {
   listConversations,
   listMessages,
   streamChat,
-  updateProfile,
   type ChatTurn,
   type ConversationSummary,
   type ProfileResponse,
@@ -35,11 +34,9 @@ import {
 import { enqueue, readOutbox, removeFromOutbox } from "../lib/outbox";
 import { applyPrefs, readPrefs, writePrefs, type Prefs } from "../lib/prefs";
 import { ChatSidebar } from "../components/ChatSidebar";
-import {
-  isSupportedLanguage,
-  readGuestLanguage,
-  writeGuestLanguage,
-} from "../lib/languages";
+import { isLangChoice } from "../lib/lang";
+import { useLang } from "../lib/langContext";
+import { t } from "../lib/uiText";
 import { findMode, type ModeKey } from "../lib/modes";
 import { MessageActions } from "../components/MessageActions";
 import { Markdown } from "../components/Markdown";
@@ -107,6 +104,11 @@ interface GuestUsage {
 
 function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === "AbortError";
+}
+
+// Credits khatam: error dikhane ke bajaye seedha plan page par le jao.
+function isOutOfCredits(err: unknown): boolean {
+  return err instanceof ApiClientError && err.code === "credits_exhausted";
 }
 
 function errorText(err: unknown): string {
@@ -195,9 +197,8 @@ export function ChatPage() {
   const [guestUsed, setGuestUsed] = useState<number>(() => readGuestCount());
   // Profile dobara load karne ke liye: badalne par profile effect phir chalta hai.
   const [profileRetry, setProfileRetry] = useState(0);
-  // Guest ki bhasha is device par. Login user ki bhasha profile se aati hai.
-  const [guestLang, setGuestLang] = useState<string>(() => readGuestLanguage());
-  const currentLang: string = isMember && profile !== null ? profile.language : guestLang;
+  // Bhasha: chunav (auto ya khud) aur abhi ki bhasha. Auto mein har message se badalti hai.
+  const { choice: langChoice, lang, setChoice, observe } = useLang();
   // Home ki category (tabs) aur usse judaa mode (सामान्य, दुकान, …). Server ko mode bhejte hain.
   const [homeCategory, setHomeCategory] = useState<HomeCategoryId>("general");
   const [mode, setMode] = useState<ModeKey>("general");
@@ -397,23 +398,10 @@ export function ChatPage() {
     abortRef.current?.abort();
   }
 
-  // Bhasha: login user ka profile mein save hota hai. Guest ki pasand is device par.
-  // Abhi sirf hi, hinglish, en server par chalti hain; baaki sirf dikhti hain (sidebar mein 'जल्द').
-  async function handleLanguage(code: string): Promise<void> {
-    if (!isSupportedLanguage(code)) return;
-    if (!isMember) {
-      setGuestLang(code);
-      writeGuestLanguage(code);
-      return;
-    }
-    if (profile !== null && profile.language === code) return;
-    try {
-      const token = await authToken();
-      const res = await updateProfile(token, { language: code });
-      setProfile(res.profile);
-    } catch (err) {
-      setError(errorText(err));
-    }
+  // Bhasha chunav: auto ya khud chuni hui bhasha. Device par yaad rehta hai (sidebar aur settings dono se).
+  function handleLanguage(code: string): void {
+    if (!isLangChoice(code)) return;
+    setChoice(code);
   }
 
   function handleNewChat(): void {
@@ -482,7 +470,8 @@ export function ChatPage() {
 
   // Home ka tool card: uska shuruaati prompt composer mein jaata hai; user aage likhkar bhejta hai.
   function handlePickTool(tool: HomeTool): void {
-    if (tool.prompt.length > 0) setInput(tool.prompt);
+    const starter = tool.prompt[lang];
+    if (starter.length > 0) setInput(starter);
     textareaRef.current?.focus();
   }
 
@@ -623,7 +612,11 @@ export function ChatPage() {
         setAttachment((prev) => prev ?? att);
         return;
       }
-      setError(errorText(err));
+      if (isOutOfCredits(err)) {
+        navigate("/plans");
+      } else {
+        setError(errorText(err));
+      }
       setMessages((prev) => prev.filter((m) => m.key !== userKey && m.key !== assistantKey));
       setInput(opts.restoreText);
       setAttachment((prev) => prev ?? att);
@@ -689,6 +682,8 @@ export function ChatPage() {
 
     const text = (override ? override.text : input).trim();
     if (!text || sending || !ready || guestBlocked) return;
+    // Is message ki bhasha tay karo (auto mein message se, warna jo user ne chuni).
+    const replyLang = observe(text);
 
     if (text.length > MAX_INPUT_CHARS) {
       setError(`संदेश ${MAX_INPUT_CHARS} अक्षर से ज़्यादा नहीं हो सकता।`);
@@ -740,6 +735,7 @@ export function ChatPage() {
           history: sendHistory ? priorTurns : undefined,
           idempotencyKey: crypto.randomUUID(),
           mode,
+          language: replyLang,
         },
         {
           onDelta: (chunk) => {
@@ -779,8 +775,12 @@ export function ChatPage() {
         } else if (!override) {
           setInput(text);
         }
-        setErrorInfo(friendlyFromApi(err));
-        setErrorRaw(null);
+        if (isOutOfCredits(err)) {
+          navigate("/plans");
+        } else {
+          setErrorInfo(friendlyFromApi(err));
+          setErrorRaw(null);
+        }
         setMessages((prev) =>
           prev.flatMap((m) => {
             if (m.key === userKey) return queued ? [m] : [];
@@ -896,7 +896,7 @@ export function ChatPage() {
       ? "लोड हो रहा है…"
       : guestBlocked
         ? "आज के मुफ़्त संदेश खत्म हो गए"
-        : "अपना सवाल लिखें…";
+        : t(lang, "composerPlaceholder");
 
   return (
     <div className="chat-layout">
@@ -913,7 +913,7 @@ export function ChatPage() {
         hasMore={nextCursor !== null}
         busy={sending}
         newChatDisabled={status === "loading"}
-        currentLang={currentLang}
+        currentLang={langChoice}
         onLanguage={(code) => void handleLanguage(code)}
         onNewChat={handleNewChat}
         onOpen={openConversation}
