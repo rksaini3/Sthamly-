@@ -9,6 +9,7 @@ const KNOWN_CODES: readonly ErrorCode[] = [
   "unauthenticated",
   "rate_limited",
   "budget_exceeded",
+  "credits_exhausted",
   "plan_required",
   "provider_unavailable",
   "tool_denied",
@@ -19,6 +20,7 @@ const KNOWN_CODES: readonly ErrorCode[] = [
 const FALLBACK: Partial<Record<ErrorCode, string>> = {
   unauthenticated: "पहले लॉग-इन करें।",
   budget_exceeded: "आज की तस्वीरों की सीमा पूरी हो गई। कल फिर कोशिश करें।",
+  credits_exhausted: "आपके क्रेडिट खत्म हो गए हैं। प्लान बदलें या बूस्टर लें।",
   provider_unavailable: "तस्वीर अभी नहीं बन पाई। थोड़ी देर बाद कोशिश करें।",
   invalid_request: "यह तस्वीर इस्तेमाल नहीं हो सकती।",
 };
