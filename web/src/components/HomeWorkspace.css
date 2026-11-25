@@ -1,21 +1,26 @@
-/* Home screen ke tabs, tool cards aur input bar. Rang styles.css ke tokens se. */
-
-/* ---- Category tabs ---- */
+/* Home ke tool panel: composer ke upar tairta hua, bina bhaari background ke.
+   Tabs ek line mein (phone par side scroll andar hi), cards 2 x 2 grid mein. */
 
 .htp {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 12px 16px 0;
+  gap: 10px;
   color: var(--text);
 }
 
+/* ---- Category tabs ---- */
+
 .htp-tabs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-bottom: 2px;
+  padding: 2px 0;
 }
 
 .htp-tabs::-webkit-scrollbar {
@@ -24,22 +29,21 @@
 
 .htp-tab {
   flex: 0 0 auto;
-  min-height: 36px;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
+  min-height: 32px;
+  padding: 5px 12px;
+  border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
   font: inherit;
   font-size: 14px;
-  cursor: pointer;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .htp-tab-active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--accent-bg);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 
@@ -49,34 +53,31 @@
   outline-offset: 2px;
 }
 
-/* ---- Tool cards: phone par 1 column, bade screen par 2 ---- */
+/* ---- Tool cards: 2 x 2, saaf aur halke border ke saath ---- */
 
 .htp-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-
-@media (min-width: 520px) {
-  .htp-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .htp-card {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  padding: 14px;
+  min-height: 84px;
+  padding: 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius, 14px);
-  background: var(--surface);
+  border-radius: 14px;
+  background: var(--bg);
   color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 
 .htp-card:hover {
@@ -85,84 +86,21 @@
 
 .htp-card-icon {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--accent-bg);
   color: var(--accent-strong);
 }
 
 .htp-card-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .htp-card-hint {
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.35;
   color: var(--muted);
-}
-
-/* ---- Input bar ---- */
-
-.hib {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-}
-
-.hib-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-height: 120px;
-  padding: 8px 4px;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 16px;
-  line-height: 1.4;
-  resize: none;
-}
-
-.hib-input::placeholder {
-  color: var(--muted);
-}
-
-.hib-icon,
-.hib-send {
-  flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.hib-send {
-  background: var(--accent);
-  color: #fff;
-}
-
-.hib-send:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.hib-icon:focus-visible,
-.hib-send:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
