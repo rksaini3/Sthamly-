@@ -1,4 +1,4 @@
-// Sthamly AI web: "मेरी गैलरी" page. Aapki banai hui sari tasveerein (Worker se, R2 storage par).
+/ Sthamly AI web: "मेरी गैलरी" page. Aapki banai hui sari tasveerein (Worker se, R2 storage par).
 // Thumbnail ke liye har tasveer ka signed link Worker se aata hai (1 ghanta chalta hai).
 // Download aur hatana (delete) yahin se. Sirf 'ready' tasveerein dikhti hain.
 
