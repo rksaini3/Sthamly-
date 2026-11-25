@@ -322,11 +322,18 @@ async function saveTurn(
     finishReason: string;
   },
 ): Promise<void> {
+  // PostgREST bulk insert mein sab objects ke keys ek jaise hone chahiye (warna poora insert rad hota hai).
+  // Isliye user row mein bhi wahi keys hain, khaali values ke saath.
   await db.insert("messages", [
     {
       conversation_id: p.conversationId,
       role: "user",
       content: p.userMessage,
+      provider: null,
+      model: null,
+      input_tokens: 0,
+      output_tokens: 0,
+      finish_reason: null,
       request_id: p.traceId,
     },
     {
