@@ -9,6 +9,7 @@ import { authenticate } from "../auth";
 import { assertBudget } from "../budget";
 import { assertSecretsPresent, loadConfig, type Config, type Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
+import { assertCredits, CREDITS_IMAGE, spendCredits } from "../credits";
 import { loadUserContext, type UserContext } from "../plan";
 import { cleanImagePrompt, generateImage } from "../providers/image";
 import { ProviderError } from "../providers/types";
@@ -208,6 +209,9 @@ async function createImage(
     isFreePlan: ctx.plan.plan === "free",
   });
 
+  // Credits: tasveer ke liye kam se kam CREDITS_IMAGE hon. Kharch sirf tasveer ban jaane par hota hai.
+  await assertCredits(db, ctx.userId, CREDITS_IMAGE);
+
   // Pending row: ab ye slot pakad chuka hai.
   const row = await insertPending(db, ctx.userId, title, requestId);
 
@@ -226,6 +230,15 @@ async function createImage(
     });
 
     await markReady(db, row.id, stored.path, stored.mimeType, stored.sizeBytes);
+
+    // Kharch: tasveer ready hone ke baad. Fail hone par credit nahi katta. Charge fail hone se file wapas nahi hoti.
+    await spendCredits(db, ctx.userId, CREDITS_IMAGE, `img:${requestId}`)
+      .then((ok) => {
+        if (!ok) console.error(JSON.stringify({ event: "credit_spend_short", request_id: traceId }));
+      })
+      .catch(() => {
+        console.error(JSON.stringify({ event: "credit_spend_failed", request_id: traceId }));
+      });
 
     execCtx.waitUntil(
       recordImageUsage(db, {
