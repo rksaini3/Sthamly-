@@ -84,3 +84,27 @@ export async function spendCredits(
   const row = Array.isArray(result) ? result[0] : result;
   return row?.ok === true;
 }
+
+// Plan ke monthly credits, database (plans table) se. Row na ho to 0.
+export async function monthlyCreditsFor(db: SupabaseClient, plan: string): Promise<number> {
+  const rows = await db.select<{ monthly_credits: number }>(
+    "plans",
+    `plan=eq.${encodeURIComponent(plan)}&select=monthly_credits&limit=1`,
+  );
+  return rows[0]?.monthly_credits ?? 0;
+}
+
+// Billing cycle shuru: plan ke credits. Purana plan balance reset hota hai (rollover nahi), booster nahi chhoota.
+// Same ref dobara aaye to kuch nahi badalta, isliye Razorpay ke retry se double grant nahi hota.
+export async function grantPlanCredits(
+  db: SupabaseClient,
+  userId: string,
+  amount: number,
+  ref: string,
+): Promise<void> {
+  await db.rpc<number>("grant_plan_credits", {
+    p_user: userId,
+    p_amount: amount,
+    p_ref: ref,
+  });
+}
