@@ -14,6 +14,7 @@ const ERROR_CODES = [
   "unauthenticated",
   "rate_limited",
   "budget_exceeded",
+  "credits_exhausted",
   "plan_required",
   "provider_unavailable",
   "tool_denied",
@@ -27,6 +28,7 @@ const FALLBACK_MESSAGE: Record<ErrorCode, string> = {
   unauthenticated: "पहले लॉग-इन करें।",
   rate_limited: "थोड़ी देर बाद कोशिश करें।",
   budget_exceeded: "आज की सीमा पूरी हो गई। कल फिर कोशिश करें या टॉप-अप करें।",
+  credits_exhausted: "आपके क्रेडिट खत्म हो गए हैं। प्लान बदलें या बूस्टर लें।",
   plan_required: "यह सुविधा आपके प्लान में नहीं है।",
   provider_unavailable: "अभी AI सेवा उपलब्ध नहीं है। थोड़ी देर बाद कोशिश करें।",
   tool_denied: "यह कार्रवाई अनुमति नहीं है।",
@@ -235,6 +237,8 @@ export interface StreamChatInput {
   idempotencyKey: string;
   // Role mode. Na ho to server 'general' maanta hai.
   mode?: "general" | "shop" | "study" | "legal" | "creator";
+  // Bhasha: auto ya chuni hui. Server is hisaab se jawab deta hai.
+  language?: "hi" | "hinglish" | "en";
 }
 
 export interface StreamChatHandlers {
@@ -314,6 +318,7 @@ export async function streamChat(
   };
   if (input.history) payload.history = input.history;
   if (input.mode) payload.mode = input.mode;
+  if (input.language) payload.language = input.language;
 
   // Login hai to token, nahi to guest ID. Dono ek saath nahi jaate.
   const identity: Record<string, string> =
