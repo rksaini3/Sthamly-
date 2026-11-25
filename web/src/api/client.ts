@@ -126,7 +126,7 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 // Ek JSON request. Non-2xx par ApiClientError.
-async function requestJson<T>(
+export async function requestJson<T>(
   path: string,
   opts: {
     token: string;
