@@ -12,6 +12,11 @@ import type { Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
 import { createSupabase, type SupabaseClient } from "../supabase";
 import { isPaidTier, PAID_TIERS, TIER_TO_DB_PLAN, type PaidTier } from "../tiers";
+import { grantPlanCredits, monthlyCreditsFor } from "../credits";
+
+// Ye events billing cycle ki shuruaat par credits dete hain (pehli baar aur har renewal par).
+// Ek hi cycle ke liye dono aaye to ref same hai, isliye credits ek hi baar jaate hain.
+const CREDIT_EVENTS: ReadonlySet<string> = new Set(["subscription.activated", "subscription.charged"]);
 
 const RAZORPAY_API = "https://api.razorpay.com/v1";
 // Ek subscription ke kitne billing cycles. 120 mahine = 10 saal, lamba enough hai.
@@ -217,6 +222,26 @@ async function upsertSubscription(
   }
 }
 
+// Billing cycle ke credits. Ref = subscription id + cycle ka end time, isliye ek cycle ek hi baar.
+async function grantCycleCredits(
+  db: SupabaseClient,
+  userId: string,
+  dbPlan: string,
+  subscriptionId: unknown,
+  periodEndUnix: number | null,
+): Promise<void> {
+  if (typeof subscriptionId !== "string" || periodEndUnix === null) {
+    console.error(JSON.stringify({ event: "razorpay_credit_skipped", reason: "missing_period" }));
+    return;
+  }
+  const amount = await monthlyCreditsFor(db, dbPlan);
+  if (amount <= 0) {
+    console.error(JSON.stringify({ event: "razorpay_credit_skipped", reason: "plan_credits_zero", plan: dbPlan }));
+    return;
+  }
+  await grantPlanCredits(db, userId, amount, `sub:${subscriptionId}:${periodEndUnix}`);
+}
+
 // Webhook: pehle signature, phir event. Galat signature par 400, koi DB badlaav nahi.
 export async function handleWebhook(request: Request, env: Env): Promise<Response> {
   const secret = env.RAZORPAY_WEBHOOK_SECRET;
@@ -278,6 +303,11 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     status,
     current_period_end: periodEnd,
   });
+
+  // Naya billing cycle: plan ke credits. Error par throw karte hain, taaki Razorpay dobara bheje (ref se safe).
+  if (status === "active" && CREDIT_EVENTS.has(eventName)) {
+    await grantCycleCredits(db, userId, plan, entity.id, currentEnd);
+  }
 
   console.error(JSON.stringify({ event: "razorpay_event_applied", type: eventName, status, plan }));
   return json({ received: true });
