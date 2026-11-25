@@ -49,6 +49,7 @@ import { AiImageBlock, UserAttachment, type MessageAttachment } from "../compone
 import { editImageInChat, type ImageIntent } from "../api/imageChat";
 import { CREDITS_CHAT, CREDITS_IMAGE, hasCredits } from "../lib/credits";
 import type { ComposerPlusHandle } from "../components/ComposerPlus";
+import { QrScanner } from "../components/QrScanner";
 import { askDocument } from "../api/documentChat";
 import {
   fileToAttachment,
@@ -209,6 +210,7 @@ export function ChatPage() {
   // Edit button se chuni tasveer ho to agla sandesh edit hoga.
   const [editNext, setEditNext] = useState(false);
   const composerRef = useRef<ComposerPlusHandle | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   // Jo AI ki tasveer full-screen dekhi ja rahi hai.
   const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null);
   // Saved chat khuli, par usmein ek bhi sandesh nahi mila: saaf batana, khaali home jaisa nahi dikhana.
@@ -481,6 +483,13 @@ export function ChatPage() {
       composerRef.current?.openMenu();
       return;
     }
+    textareaRef.current?.focus();
+  }
+
+  // QR se mila text composer mein jaata hai: user dekh kar bheje, AI us cheez ki jaankari de.
+  function handleScanResult(text: string): void {
+    setScannerOpen(false);
+    setInput(`इस QR की जानकारी दो: ${text}`);
     textareaRef.current?.focus();
   }
 
@@ -923,6 +932,12 @@ export function ChatPage() {
 
   return (
     <div className="chat-layout">
+      <QrScanner
+        open={scannerOpen}
+        onResult={handleScanResult}
+        onClose={() => setScannerOpen(false)}
+      />
+
       <ChatSidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -946,7 +961,11 @@ export function ChatPage() {
       />
 
       <main className="chat-main">
-        <HomeTopBar onOpenMenu={() => setSidebarOpen(true)} onNewChat={handleNewChat} />
+        <HomeTopBar
+          onOpenMenu={() => setSidebarOpen(true)}
+          onNewChat={handleNewChat}
+          onOpenScanner={() => setScannerOpen(true)}
+        />
 
         <section className="chat-messages" aria-live="polite">
           {loadingMessages && <p className="muted">बातचीत लोड हो रही है…</p>}
