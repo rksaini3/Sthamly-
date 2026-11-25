@@ -923,7 +923,7 @@ export function ChatPage() {
       />
 
       <main className="chat-main">
-        <HomeTopBar onOpenMenu={() => setSidebarOpen(true)} />
+        <HomeTopBar onOpenMenu={() => setSidebarOpen(true)} onNewChat={handleNewChat} />
 
         <section className="chat-messages" aria-live="polite">
           {loadingMessages && <p className="muted">बातचीत लोड हो रही है…</p>}
@@ -939,13 +939,7 @@ export function ChatPage() {
                 onAction={handlePartnerAction}
                 onExit={() => setPrefs({ ...prefs, role: "user" })}
               />
-            ) : (
-              <HomeToolPanel
-                active={homeCategory}
-                onChangeCategory={handleChangeCategory}
-                onPickTool={handlePickTool}
-              />
-            )
+            ) : null
           )}
 
           {messages.map((m) => (
@@ -1070,6 +1064,14 @@ export function ChatPage() {
               ✕
             </button>
           </div>
+        )}
+
+        {!loadingMessages && messages.length === 0 && prefs.role === "user" && !guestBlocked && (
+          <HomeToolPanel
+            active={homeCategory}
+            onChangeCategory={handleChangeCategory}
+            onPickTool={handlePickTool}
+          />
         )}
 
         <form className="composer-form" onSubmit={handleSubmit}>
