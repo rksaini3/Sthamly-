@@ -1,0 +1,168 @@
+/* Home screen ke tabs, tool cards aur input bar. Rang styles.css ke tokens se. */
+
+/* ---- Category tabs ---- */
+
+.htp {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 16px 0;
+  color: var(--text);
+}
+
+.htp-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.htp-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.htp-tab {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.htp-tab-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.htp-tab:focus-visible,
+.htp-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- Tool cards: phone par 1 column, bade screen par 2 ---- */
+
+.htp-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 520px) {
+  .htp-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.htp-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 14px);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.htp-card:hover {
+  border-color: var(--accent);
+}
+
+.htp-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--accent-bg);
+  color: var(--accent-strong);
+}
+
+.htp-card-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.htp-card-hint {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* ---- Input bar ---- */
+
+.hib {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.hib-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 120px;
+  padding: 8px 4px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+  resize: none;
+}
+
+.hib-input::placeholder {
+  color: var(--muted);
+}
+
+.hib-icon,
+.hib-send {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.hib-send {
+  background: var(--accent);
+  color: #fff;
+}
+
+.hib-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.hib-icon:focus-visible,
+.hib-send:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
