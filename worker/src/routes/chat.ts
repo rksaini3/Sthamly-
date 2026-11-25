@@ -32,8 +32,8 @@ const TITLE_CHARS = 40;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const IDEMPOTENCY_RE = /^[A-Za-z0-9_-]{8,128}$/;
 
-// USD se INR. Open decision (blueprint 13). Baad mein config variable mein jaayega.
-const USD_TO_INR = 85;
+// USD se INR (planning rate). Baad mein config variable mein jaayega.
+const USD_TO_INR = 93;
 
 // Guest ka plan free jaisa hai. Guest ko login wale plan ke fayde nahi milte.
 const GUEST_PLAN = "free";
