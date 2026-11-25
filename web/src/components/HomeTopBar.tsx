@@ -1,7 +1,7 @@
-// Sthamly AI web: home screen ka upar wala hissa (header + plan ki patti).
-// Baayen: menu. Beech mein: naam. Daayen: QR (jald aayega) aur nayi baatcheet (ChatGPT ki tarah, sabse aakhir mein).
-// Sub-header: plan ka naam aur "+ Booster". Plan ka naam /api/billing/status se aata hai.
-// Fail ho to chat nahi rukti, bas "प्लान" dikhta hai.
+// Sthamly AI web: home screen ka upar wala hissa.
+// Baayen: menu aur naam. Daayen: credits + Upgrade wala ek pill, QR (jald aayega), aur nayi baatcheet (sabse aakhir mein).
+// Credits ka number /api/billing/status se aata hai. Fail ho to chat nahi rukti, bas "—" dikhta hai.
+// Pill par click karne se plan page (/plans) khulta hai.
 // Shabd bhasha ke hisaab se badalte hain (lib/uiText.ts).
 
 import { useEffect, useState } from "react";
@@ -9,15 +9,8 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { fetchBillingStatus, type BillingStatus } from "../api/billing";
 import { useLang } from "../lib/langContext";
-import { t, type UiKey } from "../lib/uiText";
+import { t } from "../lib/uiText";
 import "./HomeTopBar.css";
-
-const PLAN_KEY: Record<string, UiKey> = {
-  free: "planFree",
-  plus: "planBasic",
-  pro: "planPro",
-  super: "planSuper",
-};
 
 interface HomeTopBarProps {
   onOpenMenu: () => void;
@@ -42,7 +35,7 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
         const data = await fetchBillingStatus(token);
         if (!cancelled) setBilling(data);
       } catch {
-        // Plan na mile to header chalta rahe.
+        // Credits na mile to header chalta rahe; "—" dikhega.
         if (!cancelled) setBilling(null);
       }
     })();
@@ -51,8 +44,7 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
     };
   }, [status, getAccessToken]);
 
-  const planName = t(lang, billing ? (PLAN_KEY[billing.plan] ?? "planLoading") : "planLoading");
-  const fmt = (n: number) => n.toLocaleString("en-IN");
+  const creditsText = billing ? billing.credits.total.toLocaleString("en-IN") : "—";
 
   return (
     <div className="htb">
@@ -71,6 +63,19 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
         </button>
 
         <h1 className="htb-title">Sthamly AI</h1>
+
+        <Link
+          to="/plans"
+          className="htb-pill"
+          aria-label={`${t(lang, "creditsLeft")}: ${creditsText}. ${t(lang, "upgrade")}`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
+          </svg>
+          <span className="htb-pill-credits">{creditsText}</span>
+          <span className="htb-pill-divider" aria-hidden="true" />
+          <span className="htb-pill-upgrade">{t(lang, "upgrade")}</span>
+        </Link>
 
         <button
           type="button"
@@ -99,20 +104,6 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
             <path d="M9.5 14.5l5.6-5.6a1.4 1.4 0 0 1 2 2L11.5 16.5l-2.6.6z" />
           </svg>
         </button>
-      </div>
-
-      <div className="htb-sub">
-        <div className="htb-plan">
-          <span className="htb-plan-name">{planName}</span>
-          {billing && (
-            <span className="htb-credit-line">
-              {t(lang, "creditsLeftShort")}: <strong>{fmt(billing.credits.total)}</strong>
-              {" · "}
-              {t(lang, "creditsUsed")}: {fmt(billing.credits.used)}
-            </span>
-          )}
-        </div>
-        <Link to="/plans" className="htb-chip">{t(lang, "booster")}</Link>
       </div>
     </div>
   );
