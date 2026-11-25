@@ -1,96 +1,328 @@
-// Sthamly AI web: plan aur top-up ka screen. Koi bhi dekh sakta hai. Kharidne ke liye login zaroori.
-// Payment abhi chalu nahi hai: kharidne ke buttons "जल्द" dikhte hain. Payment jodne par yahin badlein.
+/* Sthamly AI web: plans screen. Rang styles.css ke tokens se (light aur dark dono mein chalega).
+   Phone par ek column, bade screen par 2 ya 4 columns. Koi horizontal scroll nahi. */
 
-import { Link } from "react-router-dom";
-import { useAuth } from "../auth/AuthProvider";
-import { FREE_PLAN, PAID_PLANS, TOPUP_PACKS } from "../lib/plans";
-import "./PlansPage.css";
+.pp-page {
+  box-sizing: border-box;
+  min-height: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  color: var(--text);
+}
 
-export function PlansPage() {
-  const { status } = useAuth();
-  const signedIn = status === "signed_in";
+.pp-back {
+  align-self: flex-start;
+  font-size: 14px;
+  color: var(--muted);
+  text-decoration: none;
+}
 
-  return (
-    <div className="plans-page">
-      <header className="plans-head">
-        <Link to="/chat" className="plans-back">
-          ← चैट पर वापस
-        </Link>
-        <h1>प्लान और टॉपअप</h1>
-        <p className="muted">
-          अपनी ज़रूरत के हिसाब से चुनें। हर प्लान महीने के क्रेडिट देता है। टॉपअप अलग से, कभी expire नहीं होता।
-        </p>
-      </header>
+.pp-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 
-      <div className="plans-grid">
-        <section className="plan-card" aria-labelledby="plan-free">
-          <h2 id="plan-free">{FREE_PLAN.title}</h2>
-          <p className="price">
-            ₹0 <span className="muted small">हमेशा</span>
-          </p>
-          <ul className="benefits">
-            {FREE_PLAN.benefits.map((b) => (
-              <li key={b}>{b}</li>
-            ))}
-          </ul>
-          <button type="button" className="btn-ghost plan-cta" disabled>
-            अभी का प्लान
-          </button>
-        </section>
+.pp-head h1 {
+  margin: 4px 0 0;
+  font-size: 26px;
+  color: var(--text);
+}
 
-        {PAID_PLANS.map((plan) => (
-          <section
-            key={plan.id}
-            className={plan.featured ? "plan-card featured" : "plan-card"}
-            id={`plan-${plan.id}`}
-            aria-labelledby={`plan-${plan.id}-title`}
-          >
-            {plan.featured && <span className="plan-tag">सबसे अच्छा</span>}
-            <h2 id={`plan-${plan.id}-title`}>{plan.title}</h2>
-            <p className="price">
-              ₹{plan.priceInr.toLocaleString("en-IN")}
-              <span className="muted small"> / महीना</span>
-            </p>
-            <ul className="benefits">
-              {plan.benefits.map((b) => (
-                <li key={b}>{b}</li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              className={plan.featured ? "btn-primary plan-cta" : "btn-ghost plan-cta"}
-              disabled
-            >
-              जल्द उपलब्ध
-            </button>
-          </section>
-        ))}
+.pp-head p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
+}
 
-        <section className="plan-card" id="topup" aria-labelledby="plan-topup">
-          <h2 id="plan-topup">टॉपअप</h2>
-          <p className="muted small">जितना चाहिए उतना लें। ख़त्म होने पर फिर से।</p>
-          <ul className="pack-list">
-            {TOPUP_PACKS.map((p) => (
-              <li key={p.id} className="pack">
-                <div className="pack-text">
-                  <strong>{p.title}</strong>
-                  <span className="muted small">{p.note}</span>
-                </div>
-                <span className="price">₹{p.priceInr}</span>
-              </li>
-            ))}
-          </ul>
-          <button type="button" className="btn-primary plan-cta" disabled>
-            जल्द उपलब्ध
-          </button>
-        </section>
-      </div>
+.pp-h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--text);
+}
 
-      {!signedIn && (
-        <p className="muted small plans-login">
-          खरीदने के लिए <Link to="/login">लॉग-इन करें</Link>।
-        </p>
-      )}
-    </div>
-  );
+.pp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pp-section-head h2 {
+  margin: 0;
+  font-size: 19px;
+  color: var(--text);
+}
+
+.pp-section-head p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+/* ---- Mahine ke plan: cards ---- */
+
+.pp-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+@media (min-width: 640px) {
+  .pp-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1040px) {
+  .pp-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.pp-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 12px);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.pp-card-featured {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.pp-badge {
+  position: absolute;
+  top: -11px;
+  left: 14px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pp-card h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.pp-price {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pp-price small {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.pp-credits {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.pp-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.pp-card-foot {
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+/* ---- Booster aur credits: list rows (recharge list jaisi) ---- */
+
+.pp-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 12px);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.pp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.pp-row:first-child {
+  border-top: none;
+}
+
+.pp-row-main {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.pp-row-main strong {
+  display: block;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.pp-row-main span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.pp-row-price {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.pp-row-btn {
+  flex: 0 0 auto;
+  min-width: 130px;
+}
+
+@media (max-width: 420px) {
+  .pp-row-btn {
+    width: 100%;
+  }
+}
+
+/* ---- Buttons ---- */
+
+.pp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pp-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.pp-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.pp-btn-small {
+  width: auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 14px;
+  align-self: flex-start;
+}
+
+/* ---- Balance aur messages ---- */
+
+.pp-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: var(--radius, 12px);
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.pp-balance-total {
+  margin: 0;
+  font-size: 16px;
+}
+
+.pp-balance-total strong {
+  font-size: 24px;
+}
+
+.pp-balance-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.pp-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.pp-info,
+.pp-notice,
+.pp-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius, 12px);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.pp-info {
+  background: var(--amber-bg);
+  color: var(--amber-text);
+}
+
+.pp-notice {
+  background: var(--accent-bg);
+  color: var(--accent-strong);
+}
+
+.pp-error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.pp-login {
+  margin: 0;
+  font-size: 14px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.pp-login a {
+  color: var(--accent);
 }
