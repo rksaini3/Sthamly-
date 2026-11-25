@@ -209,13 +209,26 @@ export async function routeChat(
     hindi: opts.hindi,
   });
 
+  // DIAGNOSTIC: 503 ki asli wajah Cloudflare Logs mein dikhe. Key, body ya prompt kabhi nahi log hota.
   if (ordered.length === 0) {
+    console.error(
+      JSON.stringify({
+        event: "route_no_models",
+        plan: opts.planName,
+        hindi: opts.hindi,
+        cheap_only: opts.budget.useCheapTierOnly,
+        eligible_count: models.length,
+      }),
+    );
     throw new ApiError("provider_unavailable");
   }
 
   for (const entry of ordered) {
     if (opts.request.signal.aborted) throw new ApiError("internal");
-    if (await isDegraded(env, entry.provider)) continue;
+    if (await isDegraded(env, entry.provider)) {
+      console.error(JSON.stringify({ event: "route_skip_degraded", provider: entry.provider, model: entry.model }));
+      continue;
+    }
 
     try {
       const stream = await openStream(buildProvider(env, entry), opts.request);
@@ -227,9 +240,28 @@ export async function routeChat(
       };
     } catch (err) {
       if (!(err instanceof ProviderError)) throw err;
-      await recordFailure(env, entry.provider, Date.now());
+      console.error(
+        JSON.stringify({
+          event: "route_provider_failed",
+          provider: entry.provider,
+          model: entry.model,
+          status: err.status,
+          retryable: err.retryable,
+        }),
+      );
+      // Sirf asli outage (timeout / 5xx / 429) breaker ginta hai. Galat key ya hata hua model
+      // (401/403/404) sirf us model ko is request mein chhodta hai, poore provider ko band nahi karta.
+      if (err.retryable) {
+        await recordFailure(env, entry.provider, Date.now());
+      }
     }
   }
 
+  console.error(
+    JSON.stringify({
+      event: "route_all_failed",
+      tried: ordered.map((e) => `${e.provider}:${e.model}`),
+    }),
+  );
   throw new ApiError("provider_unavailable");
 }
