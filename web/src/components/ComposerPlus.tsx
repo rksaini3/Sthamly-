@@ -2,7 +2,15 @@
 // ComposerPlus: "+" button aur uska menu (फ़ोटो, कैमरा, PDF). ComposerChip: chuni hui tasveer ya PDF, composer ke andar.
 // Tasveer kahin edit nahi hoti: AI chat mein karta hai. Menu bahar click ya Esc se band hota hai.
 
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 import "./ChatControls.css";
 import "./ComposerPlus.css";
@@ -15,6 +23,11 @@ interface ComposerPlusProps {
   onFile: (file: File) => void;
   // Guest (login nahi): menu mein saaf likha dikhta hai ki tasveer aur PDF ke liye login chahiye.
   isGuest?: boolean;
+}
+
+// Parent (ChatPage) "+" menu ko bahar se khol sakta hai, click ke andar (browser ki file-picker ki shart).
+export interface ComposerPlusHandle {
+  openMenu: () => void;
 }
 
 interface ComposerChipProps {
@@ -73,17 +86,17 @@ export function ComposerChip({ attachment, onClear }: ComposerChipProps) {
   );
 }
 
-export function ComposerPlus({
-  modeLabel,
-  disabled = false,
-  onFile,
-  isGuest = false,
-}: ComposerPlusProps) {
+export const ComposerPlus = forwardRef<ComposerPlusHandle, ComposerPlusProps>(function ComposerPlus(
+  { modeLabel, disabled = false, onFile, isGuest = false },
+  ref,
+) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const photoRef = useRef<HTMLInputElement | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+
+  useImperativeHandle(ref, () => ({ openMenu: () => setOpen(true) }), []);
 
   useEffect(() => {
     if (!open) return;
@@ -194,4 +207,4 @@ export function ComposerPlus({
       />
     </div>
   );
-}
+});
