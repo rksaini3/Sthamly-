@@ -132,7 +132,9 @@ async function listMessages(
     "messages",
     `conversation_id=eq.${conversationId}` +
       `&select=id,role,content,provider,model,finish_reason,created_at` +
-      `&order=created_at.desc&limit=${MAX_MESSAGES}`,
+      // role.asc: ek hi time ki user + assistant rows mein assistant pehle aata hai,
+      // reverse ke baad user pehle dikhta hai.
+      `&order=created_at.desc,role.asc&limit=${MAX_MESSAGES}`,
   );
 
   return json({
