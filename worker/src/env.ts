@@ -31,6 +31,14 @@ export interface Env {
   WHATSAPP_PHONE_NUMBER_ID?: string;  // Meta WhatsApp phone number ID
   WHATSAPP_OTP_TEMPLATE?: string;     // approved authentication template ka naam
   WHATSAPP_OTP_LANG?: string;         // template ki language code, jaise "en" ya "hi"
+
+  // ---- Razorpay billing (optional: missing ho to billing band, chat chalti rahti hai) ----
+  RAZORPAY_KEY_ID?: string;           // Razorpay API key id (rzp_...)
+  RAZORPAY_KEY_SECRET?: string;       // Razorpay API key secret
+  RAZORPAY_WEBHOOK_SECRET?: string;   // Razorpay webhook ka secret (dashboard mein set karein)
+  RAZORPAY_PLAN_ID_BASIC?: string;    // Razorpay dashboard mein Basic (₹199) plan ka id (plan_...)
+  RAZORPAY_PLAN_ID_PRO?: string;      // Pro (₹499) plan ka id
+  RAZORPAY_PLAN_ID_SUPER?: string;    // Super (₹1,499) plan ka id
 }
 
 // Parsed, typed config jo baaki code use karega.
