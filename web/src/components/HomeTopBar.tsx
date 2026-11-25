@@ -15,9 +15,11 @@ import "./HomeTopBar.css";
 interface HomeTopBarProps {
   onOpenMenu: () => void;
   onNewChat: () => void;
+  // QR scanner kholne ke liye. Na mile to button band rehta hai.
+  onOpenScanner?: () => void;
 }
 
-export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
+export function HomeTopBar({ onOpenMenu, onNewChat, onOpenScanner }: HomeTopBarProps) {
   const { status, getAccessToken } = useAuth();
   const { lang } = useLang();
   const [billing, setBilling] = useState<BillingStatus | null>(null);
@@ -80,9 +82,10 @@ export function HomeTopBar({ onOpenMenu, onNewChat }: HomeTopBarProps) {
         <button
           type="button"
           className="htb-icon-btn"
-          disabled
-          title={t(lang, "qrSoon")}
-          aria-label={t(lang, "qrSoon")}
+          onClick={onOpenScanner}
+          disabled={!onOpenScanner}
+          title="QR स्कैन करें"
+          aria-label="QR स्कैन करें"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="3" width="7" height="7" rx="1" />
