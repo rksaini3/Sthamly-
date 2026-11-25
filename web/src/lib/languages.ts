@@ -1,9 +1,10 @@
 // Sthamly AI web: bhasha ki suchi. Bharat ki 22 scheduled bhashayein, English aur Hinglish.
 // `supported` sirf wahi true hai jo abhi poori tarah chalti hai (app ka text aur AI ka jawab).
+// "auto" chunav hai, bhasha nahi: message ki bhasha se apne-aap tay hoti hai (lib/lang.ts).
 // Nayi bhasha chalu karte waqt ye teen jagah ek saath badlein:
 //   1. worker/src/routes/user.ts ki LANGUAGES list
 //   2. worker/src/routes/chat.ts mein us bhasha ka prompt
-//   3. web ke UI text ka anuvaad (abhi sirf hi / hinglish / en)
+//   3. web ke UI text ka anuvaad (lib/uiText.ts)
 
 export type SupportedLanguage = "hi" | "hinglish" | "en";
 
@@ -15,6 +16,7 @@ export interface LanguageOption {
 }
 
 export const LANGUAGE_OPTIONS: readonly LanguageOption[] = [
+  { code: "auto", label: "अपने-आप", english: "Auto (message se pehchaane)", supported: true },
   { code: "hi", label: "हिन्दी", english: "Hindi", supported: true },
   { code: "hinglish", label: "Hinglish", english: "Roman Hindi", supported: true },
   { code: "en", label: "English", english: "English", supported: true },
@@ -51,7 +53,7 @@ export function isSupportedLanguage(code: string): code is SupportedLanguage {
 
 const GUEST_LANG_KEY = "sthamly_guest_lang";
 
-// Guest ki bhasha is device par. Storage band ho to default 'hi'.
+// Purani guest bhasha (ab lib/lang.ts ka chunav use hota hai). Compatibility ke liye rakhi hai.
 export function readGuestLanguage(): string {
   try {
     const raw = window.localStorage.getItem(GUEST_LANG_KEY);
