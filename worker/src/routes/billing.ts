@@ -15,7 +15,7 @@ import type { Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
 import { createSupabase, type SupabaseClient } from "../supabase";
 import { isPaidTier, PAID_TIERS, TIER_TO_DB_PLAN, type PaidTier } from "../tiers";
-import { grantPlanCredits, grantTopupCredits, monthlyCreditsFor } from "../credits";
+import { getBalance, grantPlanCredits, grantTopupCredits, monthlyCreditsFor } from "../credits";
 import { isTopupId, TOPUP_PACKS, type TopupId } from "../topups";
 
 // Ye events billing cycle ki shuruaat par credits dete hain (pehli baar aur har renewal par).
@@ -409,6 +409,27 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   return json({ received: true });
 }
 
+// Billing status: plan, subscription ki halat, credits ka balance, aur kya Quick Try pack milega.
+// Sirf padhna hai. Kuch likhta nahi, isliye client par kisi cheez ka bharosa nahi karna padta.
+export async function handleStatus(request: Request, env: Env, user: AuthUser): Promise<Response> {
+  const db = createSupabase(env);
+  const rows = await db.select<SubscriptionRow>(
+    "subscriptions",
+    `user_id=eq.${user.id}&select=plan,status,current_period_end&order=updated_at.desc&limit=1`,
+  );
+  const row = rows[0];
+  const live = row !== undefined && (row.status === "active" || row.status === "past_due");
+  const balance = await getBalance(db, user.id);
+
+  return json({
+    plan: live ? row.plan : "free",
+    subscription_status: row ? row.status : "none",
+    current_period_end: row?.current_period_end ?? null,
+    credits: balance ?? { plan: 0, topup: 0, total: 0 },
+    quick_try_available: !live,
+  });
+}
+
 export async function handleBilling(request: Request, env: Env): Promise<Response> {
   const traceId = crypto.randomUUID();
   try {
@@ -423,6 +444,12 @@ export async function handleBilling(request: Request, env: Env): Promise<Respons
       if (request.method !== "POST") throw new ApiError("invalid_request");
       const user = await authenticate(request, env);
       return await handleCheckout(request, env, user);
+    }
+
+    if (url.pathname === "/api/billing/status") {
+      if (request.method !== "GET") throw new ApiError("invalid_request");
+      const user = await authenticate(request, env);
+      return await handleStatus(request, env, user);
     }
 
     if (url.pathname === "/api/billing/topup") {
