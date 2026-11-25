@@ -47,6 +47,8 @@ import { ComposerChip, ComposerPlus } from "../components/ComposerPlus";
 import { ImageViewer } from "../components/ImageViewer";
 import { AiImageBlock, UserAttachment, type MessageAttachment } from "../components/ChatMedia";
 import { editImageInChat, type ImageIntent } from "../api/imageChat";
+import { CREDITS_CHAT, CREDITS_IMAGE, hasCredits } from "../lib/credits";
+import type { ComposerPlusHandle } from "../components/ComposerPlus";
 import { askDocument } from "../api/documentChat";
 import {
   fileToAttachment,
@@ -206,6 +208,7 @@ export function ChatPage() {
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   // Edit button se chuni tasveer ho to agla sandesh edit hoga.
   const [editNext, setEditNext] = useState(false);
+  const composerRef = useRef<ComposerPlusHandle | null>(null);
   // Jo AI ki tasveer full-screen dekhi ja rahi hai.
   const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null);
   // Saved chat khuli, par usmein ek bhi sandesh nahi mila: saaf batana, khaali home jaisa nahi dikhana.
@@ -472,6 +475,12 @@ export function ChatPage() {
   function handlePickTool(tool: HomeTool): void {
     const starter = tool.prompt[lang];
     if (starter.length > 0) setInput(starter);
+    // Tasveer wala card: "+" ka menu (फ़ोटो / कैमरा) seedha khulta hai, aur agla sandesh edit hoga.
+    if (tool.photo) {
+      setEditNext(true);
+      composerRef.current?.openMenu();
+      return;
+    }
     textareaRef.current?.focus();
   }
 
@@ -526,6 +535,14 @@ export function ChatPage() {
     // Edit button se chuni tasveer ho to "edit"; warna tasveer ke liye "auto" (server prompt padh kar tay karega).
     const intent: ImageIntent =
       opts.intent ?? (editNext ? "edit" : att.kind === "image" ? "auto" : "ask");
+    // Credits ka pre-check: tasveer edit / background 10, baaki 1. 'ask' (sawal) par kharcha nahi.
+    if (isMember && intent !== "ask") {
+      const needed = intent === "edit" || intent === "remove_bg" ? CREDITS_IMAGE : CREDITS_CHAT;
+      if (!(await hasCredits(await authToken(), needed))) {
+        navigate("/plans");
+        return;
+      }
+    }
     const typed = opts.prompt.trim();
     const label =
       opts.label.trim().length > 0
@@ -687,6 +704,12 @@ export function ChatPage() {
 
     if (text.length > MAX_INPUT_CHARS) {
       setError(`संदेश ${MAX_INPUT_CHARS} अक्षर से ज़्यादा नहीं हो सकता।`);
+      return;
+    }
+
+    // Credits kam hon to server tak jaane se pehle plan page.
+    if (isMember && !(await hasCredits(await authToken(), CREDITS_CHAT))) {
+      navigate("/plans");
       return;
     }
 
@@ -1081,6 +1104,7 @@ export function ChatPage() {
             )}
             <div className="composer-row">
               <ComposerPlus
+                ref={composerRef}
                 modeLabel={findMode(mode).label}
                 disabled={sending || !ready || guestBlocked}
                 isGuest={isGuest}
