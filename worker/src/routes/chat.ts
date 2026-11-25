@@ -22,6 +22,7 @@ import { estimateCostInr, type ChatMessage } from "../providers/types";
 import { createSseResponse } from "../sse";
 import { signedDownloadUrl } from "../storage";
 import { createSupabase, type SupabaseClient } from "../supabase";
+import { assertCredits, CREDITS_CHAT, spendCredits } from "../credits";
 
 // ---- Limits ----
 const MAX_BODY_BYTES = 32 * 1024;
@@ -375,6 +376,11 @@ async function runChat(run: ChatRun): Promise<Response> {
   // Nayi conversation: provider call se pehle bana do, taaki reply ka sahi id mile.
   const conversationId = owner ? await owner.resolveConversation() : null;
 
+  // 4b. Credits: logged-in user ke paas kam se kam ek chat ke credits hon. Guest ka alag limit hai (guest.ts).
+  if (owner) {
+    await assertCredits(db, owner.userId, CREDITS_CHAT);
+  }
+
   // 5. Model chunav. Yahin provider ka pehla chunk tak wait hota hai.
   const routed = await routeChat(env, db, {
     planName: run.planName,
@@ -443,7 +449,18 @@ async function runChat(run: ChatRun): Promise<Response> {
             }).catch(logFailure("save_turn_failed", traceId))
           : Promise.resolve();
 
-      execCtx.waitUntil(Promise.all([usageWrite, saveWrite]));
+      // Credits sirf tab katte hain jab jawab mila ho (khaali ya provider error par nahi).
+      const creditWrite = saveable
+        ? spendCredits(db, owner.userId, CREDITS_CHAT, `chat:${traceId}`)
+            .then((ok) => {
+              if (!ok) {
+                console.error(JSON.stringify({ event: "credit_spend_short", request_id: traceId }));
+              }
+            })
+            .catch(logFailure("credit_spend_failed", traceId))
+        : Promise.resolve();
+
+      execCtx.waitUntil(Promise.all([usageWrite, saveWrite, creditWrite]));
     }
 
     if (aborted) return;
