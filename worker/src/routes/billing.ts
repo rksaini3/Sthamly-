@@ -1,27 +1,25 @@
 // Sthamly AI Worker: Razorpay subscription (billing).
-// POST /api/billing/checkout   login user ke liye Razorpay subscription banata hai, frontend ko subscription_id deta hai
+// POST /api/billing/checkout   login user, tier (basic | pro | super) ke liye Razorpay subscription banata hai; frontend ko subscription_id deta hai
 // POST /api/billing/webhook    Razorpay ke events (signature check ke baad) subscriptions table update karte hain
 // Plan aur status hamesha DB se padhe jaate hain. Client kabhi plan ko 'paid' nahi bana sakta: sirf webhook likhta hai.
+// Ek user ek hi live subscription rakh sakta hai (checkout us par rok lagata hai).
 // Secrets: RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET (wrangler secret put).
-// Var: RAZORPAY_PLAN_ID (wrangler.toml ya secret). Raw Razorpay error, key aur payload kabhi log ya client tak nahi jaate.
+// Vars/secrets: RAZORPAY_PLAN_ID_BASIC, RAZORPAY_PLAN_ID_PRO, RAZORPAY_PLAN_ID_SUPER.
+// Raw Razorpay error, key aur payload kabhi log ya client tak nahi jaate.
 
 import { authenticate, type AuthUser } from "../auth";
 import type { Env } from "../env";
 import { ApiError, toErrorResponse } from "../errors";
 import { createSupabase, type SupabaseClient } from "../supabase";
+import { isPaidTier, PAID_TIERS, TIER_TO_DB_PLAN, type PaidTier } from "../tiers";
 
 const RAZORPAY_API = "https://api.razorpay.com/v1";
 // Ek subscription ke kitne billing cycles. 120 mahine = 10 saal, lamba enough hai.
 const TOTAL_COUNT = 120;
-// App mein "premium" plan ka database naam. plan.ts ke PLAN_ORDER mein yahi hona chahiye.
-// TODO: confirm karein ki Premium = 'plus' hai ya 'pro'.
-const PREMIUM_DB_PLAN = "plus";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface SubscriptionRow {
-  id: string;
-  user_id: string;
   plan: string;
   status: string;
   current_period_end: string | null;
@@ -57,13 +55,24 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// Razorpay ke secrets hain ya nahi. Na hon to billing band, baaki app chalti rahti hai.
-function requireRazorpay(env: Env): { keyId: string; keySecret: string; planId: string } {
+// Tier ka Razorpay plan id. Na ho to us tier ki billing band.
+function planIdFor(env: Env, tier: PaidTier): string | undefined {
+  switch (tier) {
+    case "basic":
+      return env.RAZORPAY_PLAN_ID_BASIC;
+    case "pro":
+      return env.RAZORPAY_PLAN_ID_PRO;
+    case "super":
+      return env.RAZORPAY_PLAN_ID_SUPER;
+  }
+}
+
+// Razorpay ke API secrets hain ya nahi. Na hon to billing band, baaki app chalti rahti hai.
+function requireRazorpay(env: Env): { keyId: string; keySecret: string } {
   const keyId = env.RAZORPAY_KEY_ID;
   const keySecret = env.RAZORPAY_KEY_SECRET;
-  const planId = env.RAZORPAY_PLAN_ID;
-  if (!keyId || !keySecret || !planId) throw new ApiError("provider_unavailable");
-  return { keyId, keySecret, planId };
+  if (!keyId || !keySecret) throw new ApiError("provider_unavailable");
+  return { keyId, keySecret };
 }
 
 // Razorpay ko POST. Error par sirf status log hota hai, body nahi.
@@ -88,23 +97,53 @@ async function razorpayPost<T>(
   return (await res.json()) as T;
 }
 
+// Checkout body: { "tier": "basic" | "pro" | "super" }. Galat ho to invalid_request.
+async function readTier(request: Request): Promise<PaidTier> {
+  let parsed: unknown;
+  try {
+    parsed = await request.json();
+  } catch {
+    throw new ApiError("invalid_request");
+  }
+  if (!isRecord(parsed) || !isPaidTier(parsed.tier)) throw new ApiError("invalid_request");
+  return parsed.tier;
+}
+
+// Kya user ki koi subscription abhi chalu (active ya payment baaki) hai?
+async function hasLiveSubscription(db: SupabaseClient, userId: string): Promise<boolean> {
+  const rows = await db.select<SubscriptionRow>(
+    "subscriptions",
+    `user_id=eq.${userId}&status=in.(active,past_due)&select=plan,status,current_period_end&limit=1`,
+  );
+  return rows.length > 0;
+}
+
 // Checkout: naya subscription banata hai. Frontend Razorpay Checkout ko subscription_id aur key_id deta hai.
-// user_id notes mein jaata hai, taaki webhook sahi user ko pehchane.
+// user_id aur tier notes mein jaate hain, taaki webhook sahi user aur sahi plan pehchane.
 export async function handleCheckout(request: Request, env: Env, user: AuthUser): Promise<Response> {
-  const { keyId, planId } = requireRazorpay(env);
+  const tier = await readTier(request);
+
+  const planId = planIdFor(env, tier);
+  const { keyId } = requireRazorpay(env);
+  if (!planId) throw new ApiError("provider_unavailable");
+
+  const db = createSupabase(env);
+  if (await hasLiveSubscription(db, user.id)) {
+    throw new ApiError("invalid_request", "आपका सब्सक्रिप्शन पहले से चालू है।");
+  }
 
   const subscription = await razorpayPost<{ id?: unknown }>(env, "/subscriptions", {
     plan_id: planId,
     total_count: TOTAL_COUNT,
     customer_notify: 1,
-    notes: { user_id: user.id },
+    notes: { user_id: user.id, tier },
   });
 
   if (typeof subscription.id !== "string" || subscription.id.length === 0) {
     throw new ApiError("provider_unavailable");
   }
 
-  return json({ subscription_id: subscription.id, key_id: keyId, plan: "premium" }, 201);
+  return json({ subscription_id: subscription.id, key_id: keyId, tier }, 201);
 }
 
 // Signature check: Razorpay HMAC-SHA256 (hex) raw body par bhejta hai. Compare constant-time.
@@ -146,6 +185,20 @@ function mapStatus(razorpayStatus: string): "active" | "past_due" | "cancelled" 
     default:
       return null;
   }
+}
+
+// Tier pehchan: pehle notes.tier (checkout ne bheja), warna Razorpay plan id se milaana.
+function tierFromEvent(
+  env: Env,
+  notes: Record<string, unknown>,
+  planIdRaw: unknown,
+): PaidTier | null {
+  if (isPaidTier(notes.tier)) return notes.tier;
+  if (typeof planIdRaw !== "string") return null;
+  for (const tier of PAID_TIERS) {
+    if (planIdFor(env, tier) === planIdRaw) return tier;
+  }
+  return null;
 }
 
 // Subscription row update karta hai. Na mile to naya banata hai.
@@ -207,14 +260,26 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     return json({ received: true });
   }
 
+  const tier = tierFromEvent(env, notes, entity.plan_id);
+  let plan: string;
+  if (status === "cancelled") {
+    plan = "free";
+  } else if (tier !== null) {
+    plan = TIER_TO_DB_PLAN[tier];
+  } else {
+    // Active ya payment baaki, par tier pata nahi: plan na badlein, sirf log.
+    console.error(JSON.stringify({ event: "razorpay_tier_unknown", type: eventName }));
+    return json({ received: true });
+  }
+
   const db = createSupabase(env);
   await upsertSubscription(db, userId, {
-    plan: status === "cancelled" ? "free" : PREMIUM_DB_PLAN,
+    plan,
     status,
     current_period_end: periodEnd,
   });
 
-  console.error(JSON.stringify({ event: "razorpay_event_applied", type: eventName, status }));
+  console.error(JSON.stringify({ event: "razorpay_event_applied", type: eventName, status, plan }));
   return json({ received: true });
 }
 
