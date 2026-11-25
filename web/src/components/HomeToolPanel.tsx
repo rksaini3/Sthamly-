@@ -1,7 +1,9 @@
 // Sthamly AI web: tool cards aur category tabs. Dono composer ke upar tairte hain.
 // Order: pehle 4 cards (upar), phir tabs (sabse neeche, input box ke ठीक ऊपर).
-// Card dabane par parent ko tool dete hain; parent input mein prompt daalega.
+// Shabd bhasha ke hisaab se (useLang). Card dabane par parent ko tool dete hain.
 
+import { useLang } from "../lib/langContext";
+import { t } from "../lib/uiText";
 import { HOME_CATEGORIES, HOME_TOOLS, type HomeCategoryId, type HomeIconName, type HomeTool } from "../lib/homeTools";
 import "./HomeWorkspace.css";
 
@@ -26,10 +28,11 @@ function ToolIcon({ name }: { name: HomeIconName }) {
 }
 
 export function HomeToolPanel({ active, onChangeCategory, onPickTool }: HomeToolPanelProps) {
+  const { lang } = useLang();
   const tools = HOME_TOOLS[active];
 
   return (
-    <section className="htp" aria-label="टूल">
+    <section className="htp" aria-label={t(lang, "toolsAria")}>
       <div className="htp-grid" role="list">
         {tools.map((tool) => (
           <button
@@ -40,13 +43,13 @@ export function HomeToolPanel({ active, onChangeCategory, onPickTool }: HomeTool
             onClick={() => onPickTool(tool)}
           >
             <span className="htp-card-icon"><ToolIcon name={tool.icon} /></span>
-            <span className="htp-card-title">{tool.title}</span>
-            <span className="htp-card-hint">{tool.hint}</span>
+            <span className="htp-card-title">{tool.title[lang]}</span>
+            <span className="htp-card-hint">{tool.hint[lang]}</span>
           </button>
         ))}
       </div>
 
-      <div className="htp-tabs" role="tablist" aria-label="श्रेणियाँ">
+      <div className="htp-tabs" role="tablist" aria-label={t(lang, "categoriesAria")}>
         {HOME_CATEGORIES.map((cat) => {
           const selected = cat.id === active;
           return (
@@ -58,7 +61,7 @@ export function HomeToolPanel({ active, onChangeCategory, onPickTool }: HomeTool
               className={selected ? "htp-tab htp-tab-active" : "htp-tab"}
               onClick={() => onChangeCategory(cat.id)}
             >
-              {cat.label}
+              {cat.label[lang]}
             </button>
           );
         })}
