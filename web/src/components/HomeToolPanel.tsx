@@ -1,5 +1,5 @@
-// Sthamly AI web: category tabs aur active category ke tool cards.
-// Ye composer ke bagal mein, neeche tairta hua dikhta hai (chat ki shuruaat mein).
+// Sthamly AI web: tool cards aur category tabs. Dono composer ke upar tairte hain.
+// Order: pehle 4 cards (upar), phir tabs (sabse neeche, input box ke ठीक ऊपर).
 // Card dabane par parent ko tool dete hain; parent input mein prompt daalega.
 
 import { HOME_CATEGORIES, HOME_TOOLS, type HomeCategoryId, type HomeIconName, type HomeTool } from "../lib/homeTools";
@@ -30,6 +30,22 @@ export function HomeToolPanel({ active, onChangeCategory, onPickTool }: HomeTool
 
   return (
     <section className="htp" aria-label="टूल">
+      <div className="htp-grid" role="list">
+        {tools.map((tool) => (
+          <button
+            key={tool.id}
+            type="button"
+            role="listitem"
+            className="htp-card"
+            onClick={() => onPickTool(tool)}
+          >
+            <span className="htp-card-icon"><ToolIcon name={tool.icon} /></span>
+            <span className="htp-card-title">{tool.title}</span>
+            <span className="htp-card-hint">{tool.hint}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="htp-tabs" role="tablist" aria-label="श्रेणियाँ">
         {HOME_CATEGORIES.map((cat) => {
           const selected = cat.id === active;
@@ -46,22 +62,6 @@ export function HomeToolPanel({ active, onChangeCategory, onPickTool }: HomeTool
             </button>
           );
         })}
-      </div>
-
-      <div className="htp-grid" role="list">
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            type="button"
-            role="listitem"
-            className="htp-card"
-            onClick={() => onPickTool(tool)}
-          >
-            <span className="htp-card-icon"><ToolIcon name={tool.icon} /></span>
-            <span className="htp-card-title">{tool.title}</span>
-            <span className="htp-card-hint">{tool.hint}</span>
-          </button>
-        ))}
       </div>
     </section>
   );
