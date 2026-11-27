@@ -1,0 +1,44 @@
+/* Login ke teen raaste ka tab switch (phone / email). Rang tokens se: light aur dark dono mein. */
+
+.auth-method {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 12px 0 14px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.auth-method-btn {
+  height: 38px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-method-btn.is-active {
+  background: var(--accent-bg);
+  color: var(--accent-strong);
+}
+
+.auth-method-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-method-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.auth-note {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
