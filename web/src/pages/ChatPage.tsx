@@ -50,6 +50,7 @@ import { editImageInChat, type ImageIntent } from "../api/imageChat";
 import { CREDITS_CHAT, CREDITS_IMAGE, hasCredits } from "../lib/credits";
 import type { ComposerPlusHandle } from "../components/ComposerPlus";
 import { QrScanner } from "../components/QrScanner";
+import { useFeatureOn } from "../lib/features";
 import { askDocument } from "../api/documentChat";
 import {
   fileToAttachment,
@@ -211,6 +212,7 @@ export function ChatPage() {
   const [editNext, setEditNext] = useState(false);
   const composerRef = useRef<ComposerPlusHandle | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const scannerOn = useFeatureOn("qr_scanner");
   // Jo AI ki tasveer full-screen dekhi ja rahi hai.
   const [viewing, setViewing] = useState<{ src: string; alt: string } | null>(null);
   // Saved chat khuli, par usmein ek bhi sandesh nahi mila: saaf batana, khaali home jaisa nahi dikhana.
@@ -293,7 +295,14 @@ export function ChatPage() {
   }, [isGuest]);
 
   // Login badle (login ya logout): pichhli screen ka chat saaf. Guest ki chat login par nahi jaati.
+  // Sirf asli login/logout par saaf karein. Shuruaat mein "loading" se badalne par nahi,
+  // warna jo aap likh rahe hain woh mit jaata hai.
+  const prevAuthRef = useRef<{ status: string; id: string | undefined } | null>(null);
   useEffect(() => {
+    const prev = prevAuthRef.current;
+    prevAuthRef.current = { status, id: user?.id };
+    if (prev === null || prev.status === "loading" || status === "loading") return;
+    if (prev.status === status && prev.id === user?.id) return;
     abortRef.current?.abort();
     loadedIdRef.current = null;
     setMessages([]);
@@ -922,13 +931,12 @@ export function ChatPage() {
 
   // Profile fail ho to "लोड हो रहा है…" par atkaayen nahi, saaf batayen.
   const profileFailed = isMember && profile === null && error !== null;
+  // Input hamesha khula rehta hai: profile aane ka intezaar nahi. Bhejne ka bataan (canSend) ready par nirbhar hai.
   const placeholder = profileFailed
     ? "प्रोफ़ाइल नहीं खुली। ऊपर का संदेश देखें।"
-    : !ready
-      ? "लोड हो रहा है…"
-      : guestBlocked
-        ? "आज के मुफ़्त संदेश खत्म हो गए"
-        : t(lang, "composerPlaceholder");
+    : guestBlocked
+      ? "आज के मुफ़्त संदेश खत्म हो गए"
+      : t(lang, "composerPlaceholder");
 
   return (
     <div className="chat-layout">
@@ -964,7 +972,7 @@ export function ChatPage() {
         <HomeTopBar
           onOpenMenu={() => setSidebarOpen(true)}
           onNewChat={handleNewChat}
-          onOpenScanner={() => setScannerOpen(true)}
+          onOpenScanner={scannerOn ? () => setScannerOpen(true) : undefined}
         />
 
         <section className="chat-messages" aria-live="polite">
@@ -1138,7 +1146,7 @@ export function ChatPage() {
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 maxLength={MAX_INPUT_CHARS}
-                disabled={!ready || guestBlocked}
+                disabled={guestBlocked}
                 aria-label="संदेश"
               />
 
