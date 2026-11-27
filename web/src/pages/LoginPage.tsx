@@ -1,10 +1,12 @@
-// Sthamly AI web: login aur signup page (Blueprint 3.0, section 9 aur 10)
-// Google login sabse upar, phir email aur password. Ek hi page, do modes: login aur signup.
-// Login hone par App.tsx ka RedirectIfSignedIn khud /chat par bhejta hai.
+// Sthamly AI web: login aur signup page.
+// Mukhya raasta: WhatsApp par OTP (phone). Naya number ho to khata apne-aap ban jaata hai, alag signup ki zaroorat nahi.
+// Backup: Google, aur email+password (neeche, chhote hisse mein). Email par signup aur login ek hi form mein hain.
 // Errors AuthProvider se Hindi mein aate hain. Raw error yahan nahi dikhta.
 
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { PhoneOtpForm } from "../components/PhoneOtpForm";
+import "../styles/login-method.css";
 
 type Mode = "login" | "signup";
 
@@ -38,6 +40,7 @@ function GoogleIcon() {
 export function LoginPage() {
   const { signIn, signUp, signInWithGoogle } = useAuth();
 
+  const [showEmail, setShowEmail] = useState(false);
   const [mode, setMode] = useState<Mode>("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -50,6 +53,12 @@ export function LoginPage() {
 
   function switchMode(next: Mode): void {
     setMode(next);
+    setError(null);
+    setInfo(null);
+  }
+
+  function openEmail(open: boolean): void {
+    setShowEmail(open);
     setError(null);
     setInfo(null);
   }
@@ -97,13 +106,32 @@ export function LoginPage() {
     }
   }
 
+  const title = showEmail
+    ? isSignup
+      ? "ईमेल से नया खाता बनाएँ"
+      : "ईमेल से लॉग-इन करें"
+    : "WhatsApp पर OTP से लॉग-इन करें";
+
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="auth-title">
         <h1 id="auth-title" className="auth-title">
           Sthamly AI
         </h1>
-        <p className="auth-subtitle">{isSignup ? "नया खाता बनाएँ" : "लॉग-इन करें"}</p>
+        <p className="auth-subtitle">{title}</p>
+
+        {!showEmail && (
+          <>
+            <PhoneOtpForm />
+            <p className="auth-switch auth-note">
+              नया नंबर है तो खाता अपने-आप बनेगा।
+            </p>
+          </>
+        )}
+
+        <div className="auth-divider auth-backup-divider" role="separator">
+          <span>बैकअप तरीका</span>
+        </div>
 
         <div className="auth-form">
           <button
@@ -116,86 +144,98 @@ export function LoginPage() {
             <GoogleIcon />
             <span>Google से लॉग-इन करें</span>
           </button>
-
-          <div className="auth-divider" role="separator">
-            <span>या ईमेल से</span>
-          </div>
         </div>
 
-        <form className="auth-form" onSubmit={handleSubmit} noValidate>
-          {isSignup && (
-            <label className="auth-field">
-              <span>नाम (वैकल्पिक)</span>
-              <input
-                type="text"
-                name="name"
-                autoComplete="name"
-                maxLength={60}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+        {!showEmail ? (
+          <p className="auth-switch auth-note">
+            <button type="button" className="auth-link" onClick={() => openEmail(true)} disabled={busy}>
+              ईमेल से लॉग-इन करें
+            </button>
+          </p>
+        ) : (
+          <>
+            <form className="auth-form auth-email-form" onSubmit={handleSubmit} noValidate>
+              {isSignup && (
+                <label className="auth-field">
+                  <span>नाम (वैकल्पिक)</span>
+                  <input
+                    type="text"
+                    name="name"
+                    autoComplete="name"
+                    maxLength={60}
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+              )}
+
+              <label className="auth-field">
+                <span>ईमेल</span>
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={busy}
+                />
+              </label>
+
+              <label className="auth-field">
+                <span>पासवर्ड</span>
+                <input
+                  type="password"
+                  name="password"
+                  autoComplete={isSignup ? "new-password" : "current-password"}
+                  minLength={8}
+                  maxLength={72}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={busy}
+                />
+              </label>
+
+              {isSignup && <p className="auth-hint">पासवर्ड कम से कम 8 अक्षर का हो।</p>}
+
+              {error && (
+                <p className="auth-error" role="alert">
+                  {error}
+                </p>
+              )}
+              {info && (
+                <p className="auth-info" role="status">
+                  {info}
+                </p>
+              )}
+
+              <button type="submit" className="auth-submit" disabled={busy}>
+                {busy ? "कृपया प्रतीक्षा करें…" : isSignup ? "खाता बनाएँ" : "लॉग-इन करें"}
+              </button>
+            </form>
+
+            <p className="auth-switch">
+              {isSignup ? "पहले से खाता है?" : "नया ईमेल खाता चाहिए?"}{" "}
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => switchMode(isSignup ? "login" : "signup")}
                 disabled={busy}
-              />
-            </label>
-          )}
-
-          <label className="auth-field">
-            <span>ईमेल</span>
-            <input
-              type="email"
-              name="email"
-              autoComplete="email"
-              inputMode="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={busy}
-            />
-          </label>
-
-          <label className="auth-field">
-            <span>पासवर्ड</span>
-            <input
-              type="password"
-              name="password"
-              autoComplete={isSignup ? "new-password" : "current-password"}
-              minLength={8}
-              maxLength={72}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={busy}
-            />
-          </label>
-
-          {isSignup && <p className="auth-hint">पासवर्ड कम से कम 8 अक्षर का हो।</p>}
-
-          {error && (
-            <p className="auth-error" role="alert">
-              {error}
+              >
+                {isSignup ? "लॉग-इन करें" : "खाता बनाएँ"}
+              </button>
             </p>
-          )}
-          {info && (
-            <p className="auth-info" role="status">
-              {info}
+
+            <p className="auth-switch auth-note">
+              <button type="button" className="auth-link" onClick={() => openEmail(false)} disabled={busy}>
+                फ़ोन से लॉग-इन करें
+              </button>
             </p>
-          )}
-
-          <button type="submit" className="auth-submit" disabled={busy}>
-            {busy ? "कृपया प्रतीक्षा करें…" : isSignup ? "खाता बनाएँ" : "लॉग-इन करें"}
-          </button>
-        </form>
-
-        <p className="auth-switch">
-          {isSignup ? "पहले से खाता है?" : "नया खाता चाहिए?"}{" "}
-          <button
-            type="button"
-            className="auth-link"
-            onClick={() => switchMode(isSignup ? "login" : "signup")}
-            disabled={busy}
-          >
-            {isSignup ? "लॉग-इन करें" : "खाता बनाएँ"}
-          </button>
-        </p>
+          </>
+        )}
       </section>
     </main>
   );
