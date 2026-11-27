@@ -31,6 +31,7 @@ export interface Env {
   WHATSAPP_PHONE_NUMBER_ID?: string;  // Meta WhatsApp phone number ID
   WHATSAPP_OTP_TEMPLATE?: string;     // approved authentication template ka naam
   WHATSAPP_OTP_LANG?: string;         // template ki language code, jaise "en" ya "hi"
+  WHATSAPP_OTP_COPY_BUTTON?: string;  // "true" (default) agar template mein copy code button hai, warna "false"
 
   // ---- Razorpay billing (optional: missing ho to billing band, chat chalti rahti hai) ----
   RAZORPAY_KEY_ID?: string;           // Razorpay API key id (rzp_...)
